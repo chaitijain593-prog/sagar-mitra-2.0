@@ -469,36 +469,70 @@
     }
 
     /* -------------------------------------------------------------
-       5. MAP SECTION
+       5. ORCA CONTROL ROOM DASHBOARD (MAP + OPERATIONS PANEL)
        ------------------------------------------------------------- */
-    .map-slide-container {
-      max-width: 1280px;
+    .dashboard-slide-container {
+      max-width: 1600px;
       margin: 0 auto;
       padding: 40px 32px 80px;
+      min-height: calc(100vh - 80px);
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      height: calc(100vh - 80px);
+      gap: 20px;
     }
 
-    .map-header {
+    .dashboard-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
 
-    .map-header h3 {
+    .dashboard-header h3 {
       font-size: 1.8rem;
       font-weight: 800;
       color: var(--text-main);
     }
 
-    .map-wrapper {
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 60% 40%;
+      gap: 20px;
+      height: calc(100vh - 240px);
+      min-height: 480px;
+    }
+
+    /* --- Left: Map Panel (60%) --- */
+    .dashboard-map-panel {
       position: relative;
-      flex: 1;
       border-radius: 16px;
       overflow: hidden;
       box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+    }
+
+    .map-base-controls {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 400;
+      display: flex;
+      gap: 10px;
+    }
+
+    .map-base-controls button {
+      background: var(--card-bg);
+      color: var(--text-main);
+      border: 1px solid var(--card-border);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: 700;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+    }
+
+    .map-base-controls button.active-base {
+      background: var(--accent-cyan);
+      color: #020914;
+      border: none;
     }
 
     #oceanMap {
@@ -532,64 +566,307 @@
       box-shadow: 0 0 16px #10b981;
     }
 
-    /* -------------------------------------------------------------
-       6. CHATBOT INTERFACE (RADIATING GLOW SEARCH SPACE)
-       ------------------------------------------------------------- */
-    .chat-slide-container {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 60px 24px 100px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 32px;
-      min-height: calc(100vh - 80px);
-      justify-content: center;
+    .vessel-marker {
+      font-size: 24px;
+      line-height: 1;
+      filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.9));
+      transform: translateY(2px);
     }
 
-    .chat-output-box {
-      width: 100%;
-      min-height: 180px;
-      max-height: 400px;
-      overflow-y: auto;
+    /* --- Right: Operations Panel (40%) --- */
+    .dashboard-side-panel {
       display: flex;
       flex-direction: column;
       gap: 16px;
-      padding-right: 8px;
+      height: 100%;
+      min-height: 0;
     }
 
-    .chat-bubble-user {
-      align-self: flex-end;
-      background: #0284c7;
+    /* 5a. Hazard Status Banner */
+    .hazard-banner {
+      border-radius: 14px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 800;
+      letter-spacing: 0.5px;
       color: #ffffff;
-      padding: 14px 20px;
-      border-radius: 20px 20px 4px 20px;
-      font-size: 0.95rem;
-      max-width: 80%;
-      box-shadow: 0 4px 15px rgba(2, 132, 199, 0.3);
+      background: #16a34a;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      transition: background-color 0.4s ease;
     }
 
-    .chat-bubble-bot {
-      align-self: flex-start;
+    .hazard-banner.hazard-safe { background: #16a34a; }
+    .hazard-banner.hazard-caution { background: #d97706; }
+    .hazard-banner.hazard-hazardous { background: #dc2626; }
+
+    .hazard-banner-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      opacity: 0.85;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .hazard-banner-status {
+      font-size: 1.15rem;
+      font-weight: 800;
+    }
+
+    .hazard-banner-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.18);
+      flex-shrink: 0;
+    }
+
+    .hazard-banner-icon svg {
+      width: 22px;
+      height: 22px;
+      color: #ffffff;
+    }
+
+    /* 5b. Agent Operational Stream */
+    .agent-stream-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
       background: var(--card-bg);
-      color: var(--text-main);
-      padding: 16px 22px;
-      border-radius: 20px 20px 20px 4px;
-      font-size: 0.95rem;
-      max-width: 85%;
-      line-height: 1.6;
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 18px;
+      min-height: 0;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     }
 
+    .agent-stream-header {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--accent-cyan);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .agent-stream-feed {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-right: 4px;
+    }
+
+    .agent-badge {
+      align-self: flex-start;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      color: var(--text-main);
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      opacity: 0;
+      animation: badgeFadeIn 0.4s ease forwards;
+    }
+
+    @keyframes badgeFadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .advisory-card {
+      align-self: stretch;
+      background: var(--card-bg);
+      border: 1px solid var(--accent-cyan);
+      border-radius: 14px;
+      padding: 16px 18px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      opacity: 0;
+      animation: badgeFadeIn 0.5s ease forwards;
+    }
+
+    .advisory-card h4 {
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--accent-cyan);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .advisory-card .advisory-row {
+      font-size: 0.88rem;
+      color: var(--text-sub);
+      margin-bottom: 6px;
+      line-height: 1.5;
+    }
+
+    .advisory-card .advisory-alert {
+      display: block;
+      padding: 6px 10px;
+      margin-top: 4px;
+      border-left: 3px solid var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.08);
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: var(--text-main);
+    }
+
+    /* 5d. Vessel Safety Buffer (pulsating 5 NM ring) */
+    .vessel-safety-buffer {
+      animation: safetyBufferPulse 2.4s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes safetyBufferPulse {
+      0%, 100% { opacity: 0.85; }
+      50% { opacity: 0.25; }
+    }
+
+    /* 5e. Tactical Route Tooltip */
+    .route-tooltip {
+      background: rgba(2, 9, 20, 0.92) !important;
+      color: #ffffff !important;
+      border: 1px solid var(--accent-cyan) !important;
+      border-radius: 8px !important;
+      font-size: 0.78rem !important;
+      font-weight: 600;
+      padding: 4px 10px !important;
+      box-shadow: 0 0 14px rgba(56, 189, 248, 0.5);
+    }
+
+    .route-tooltip::before {
+      border-top-color: var(--accent-cyan) !important;
+    }
+
+    /* 5f. Prediction Telemetry Panel */
+    .dashboard-footer-row {
+      display: flex;
+      gap: 20px;
+      align-items: stretch;
+    }
+
+    .telemetry-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .telemetry-metrics-row {
+      display: flex;
+      gap: 24px;
+    }
+
+    .telemetry-metric {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .telemetry-metric-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-sub);
+    }
+
+    .telemetry-metric-label span:last-child {
+      color: var(--text-main);
+      font-weight: 700;
+    }
+
+    .telemetry-bar-track {
+      width: 100%;
+      height: 8px;
+      border-radius: 6px;
+      background: rgba(148, 163, 184, 0.18);
+      overflow: hidden;
+    }
+
+    .telemetry-bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      width: 0%;
+      transition: width 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    /* 5g. Mayday / SOS Button */
+    .sos-button {
+      flex-shrink: 0;
+      width: 180px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 18px;
+      border: 1px solid rgba(220, 38, 38, 0.55);
+      border-radius: 16px;
+      background: rgba(220, 38, 38, 0.14);
+      color: #f87171;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      transition: background 0.2s ease, transform 0.15s ease;
+    }
+
+    .sos-button::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #ef4444;
+      box-shadow: 0 0 5px #ef4444;
+      animation: sosDotPulse 1.6s ease-in-out infinite;
+    }
+
+    .sos-button:hover { background: rgba(220, 38, 38, 0.24); transform: scale(1.02); }
+    .sos-button:active { transform: scale(0.97); }
+
+    @media (max-width: 700px) {
+      .dashboard-footer-row { flex-direction: column; align-items: stretch; }
+      .sos-button { width: 100%; }
+    }
+
+    @keyframes sosDotPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* -------------------------------------------------------------
+       6. AGENT QUERY INPUT (RADIATING GLOW SEARCH BAR, REUSED)
+       ------------------------------------------------------------- */
     .radiating-search-bar {
       position: relative;
       width: 100%;
       background: var(--card-bg);
       border-radius: 40px;
-      padding: 8px 12px 8px 24px;
+      padding: 6px 8px 6px 20px;
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 12px;
       box-shadow: var(--search-glow);
       border: 1px solid rgba(56, 189, 248, 0.4);
       transition: box-shadow 0.4s ease, border-color 0.4s ease;
@@ -606,15 +883,15 @@
       border: none;
       outline: none;
       color: var(--text-main);
-      font-size: 1.05rem;
+      font-size: 0.98rem;
       font-family: inherit;
     }
 
     .search-input::placeholder { color: var(--text-sub); }
 
     .search-send-btn {
-      width: 44px;
-      height: 44px;
+      width: 40px;
+      height: 40px;
       background: var(--accent-cyan);
       border: none;
       border-radius: 50%;
@@ -625,6 +902,7 @@
       cursor: pointer;
       box-shadow: 0 0 16px var(--accent-cyan);
       transition: transform 0.2s ease;
+      flex-shrink: 0;
     }
 
     .search-send-btn:hover { transform: scale(1.06); }
@@ -633,7 +911,7 @@
       display: none;
       align-items: center;
       gap: 14px;
-      padding: 12px 18px;
+      padding: 8px 14px;
       background: var(--card-bg);
       border-radius: 24px;
       align-self: flex-start;
@@ -669,6 +947,13 @@
       font-weight: 600;
       color: var(--accent-cyan);
       letter-spacing: 0.8px;
+    }
+
+    @media (max-width: 1100px) {
+      .dashboard-grid { grid-template-columns: 1fr; height: auto; }
+      .dashboard-slide-container { height: auto; }
+      .dashboard-map-panel { height: 420px; }
+      .agent-stream-feed { max-height: 320px; }
     }
 
     @media (max-width: 900px) {
@@ -828,72 +1113,110 @@
   </section>
 
   <!-- ============================================================
-       SECTION 3: MAP SECTION (OVERLAPPING SLIDE)
+       SECTION 3: ORCA CONTROL ROOM DASHBOARD (MAP + OPERATIONS PANEL)
        ============================================================ -->
   <section class="overlapping-slide" id="map-slide">
-    <div class="map-slide-container">
-      <div class="map-header">
+    <div class="dashboard-slide-container">
+      <div class="dashboard-header">
         <div>
-          <h3>Interactive Hydrography Map</h3>
-          <p style="color: var(--text-sub); font-size: 0.9rem;">Live ARGO telemetry buoys & high-biomass fishing zones in the Indian Ocean Basin.</p>
-        </div>
-        <div style="display:flex; gap:12px;">
-          <button onclick="setMapBase('ocean')" style="background:var(--accent-cyan); color:#020914; border:none; padding:6px 14px; border-radius:6px; font-weight:700; cursor:pointer;">Ocean</button>
-          <button onclick="setMapBase('satellite')" style="background:var(--card-bg); color:var(--text-main); border:1px solid var(--card-border); padding:6px 14px; border-radius:6px; font-weight:700; cursor:pointer;">Satellite</button>
+          <h3>ORCA Control Room</h3>
+          <p style="color: var(--text-sub); font-size: 0.9rem;">Live vessel telemetry, EEZ boundaries & fishing zone intelligence in the Indian Ocean Basin.</p>
         </div>
       </div>
 
-      <div class="map-wrapper">
-        <div id="oceanMap"></div>
+      <div class="dashboard-grid">
+
+        <!-- LEFT: Map Container (60%) -->
+        <div class="dashboard-map-panel">
+          <div class="map-base-controls">
+            <button id="baseBtnOcean" class="active-base" onclick="setMapBase('ocean')">Ocean</button>
+            <button id="baseBtnSat" onclick="setMapBase('satellite')">Satellite</button>
+          </div>
+          <div id="oceanMap"></div>
+        </div>
+
+        <!-- RIGHT: Operations Panel (40%) -->
+        <div class="dashboard-side-panel" id="chat-slide">
+
+          <!-- Hazard Status Banner -->
+          <div class="hazard-banner hazard-safe" id="hazardBanner">
+            <div>
+              <span class="hazard-banner-label">Marine Safety Status</span>
+              <span class="hazard-banner-status" id="hazardBannerStatus">SAFE</span>
+            </div>
+            <span id="hazardBannerIcon" class="hazard-banner-icon"></span>
+          </div>
+
+          <!-- Agent Operational Stream -->
+          <div class="agent-stream-panel">
+            <span class="agent-stream-header">Agent Operational Stream</span>
+
+            <div class="agent-stream-feed" id="agentStreamFeed">
+              <div class="agent-badge">🌊 Sagar Mitra ORCA orchestrator online. Ask about your route, weather or fishing zones.</div>
+            </div>
+
+            <!-- Scaled-down Wave Processing Animation (Mini White/Cyan Wave) -->
+            <div class="chat-processing-indicator" id="chatLoader">
+              <div class="mini-wave">
+                <span class="mini-bar"></span>
+                <span class="mini-bar"></span>
+                <span class="mini-bar"></span>
+                <span class="mini-bar"></span>
+                <span class="mini-bar"></span>
+              </div>
+              <span class="mini-verb-text" id="miniVerbText">Surfing...</span>
+            </div>
+
+            <!-- Radiating Blue Light Search Bar -->
+            <form class="radiating-search-bar" id="chatForm" onsubmit="handleQuerySubmit(event)">
+              <i data-lucide="search" class="w-5 h-5 text-cyan-400"></i>
+              <input
+                type="text"
+                id="chatInput"
+                class="search-input"
+                placeholder="Ask ORCA about hazards, EEZ or fishing zones..."
+                autocomplete="off"
+              />
+              <button type="submit" class="search-send-btn">
+                <i data-lucide="arrow-up" class="w-5 h-5"></i>
+              </button>
+            </form>
+          </div>
+
+        </div>
+
       </div>
+
+      <!-- Prediction Telemetry & Mayday Protocol (full-width footer row) -->
+      <div class="dashboard-footer-row">
+        <div class="telemetry-panel">
+          <span class="agent-stream-header">Prediction Telemetry</span>
+
+          <div class="telemetry-metrics-row">
+            <div class="telemetry-metric">
+              <div class="telemetry-metric-label"><span>SST Anomaly</span><span>85%</span></div>
+              <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetrySST" style="background:#38bdf8;"></div></div>
+            </div>
+
+            <div class="telemetry-metric">
+              <div class="telemetry-metric-label"><span>Chlorophyll Gradient</span><span>72%</span></div>
+              <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetryChlorophyll" style="background:#10b981;"></div></div>
+            </div>
+
+            <div class="telemetry-metric">
+              <div class="telemetry-metric-label"><span>ML Confidence Score</span><span>91%</span></div>
+              <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetryML" style="background:#a78bfa;"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mayday Protocol -->
+        <button class="sos-button" id="sosButton" onclick="triggerMayday()">Initiate SOS</button>
+      </div>
+
     </div>
   </section>
-
-  <!-- ============================================================
-       SECTION 4: CHATBOT INTERFACE (OVERLAPPING SLIDE)
-       ============================================================ -->
-  <section class="overlapping-slide" id="chat-slide">
-    <div class="chat-slide-container">
-      
-      <!-- Output Thread -->
-      <div class="chat-output-box" id="chatOutput">
-        <!-- Exact Short Prompt as Requested -->
-        <div class="chat-bubble-bot">
-          Namaste! I am your Sagar Mitra Ocean Assistant. Ask me anything related to ocean.
-        </div>
-      </div>
-
-      <!-- Scaled-down Wave Processing Animation (Mini White/Cyan Wave) -->
-      <div class="chat-processing-indicator" id="chatLoader">
-        <div class="mini-wave">
-          <span class="mini-bar"></span>
-          <span class="mini-bar"></span>
-          <span class="mini-bar"></span>
-          <span class="mini-bar"></span>
-          <span class="mini-bar"></span>
-        </div>
-        <span class="mini-verb-text" id="miniVerbText">Surfing...</span>
-      </div>
-
-      <!-- Radiating Blue Light Search Bar -->
-      <form class="radiating-search-bar" id="chatForm" onsubmit="handleQuerySubmit(event)">
-        <i data-lucide="search" class="w-5 h-5 text-cyan-400"></i>
-        <input 
-          type="text" 
-          id="chatInput" 
-          class="search-input" 
-          placeholder="Ask Sagar Mitra about ocean anomalies, sea conditions, or floats..." 
-          autocomplete="off"
-        />
-        <button type="submit" class="search-send-btn">
-          <i data-lucide="arrow-up" class="w-5 h-5"></i>
-        </button>
-      </form>
-
-    </div>
-  </section>
-
-  <script>
+<script>
     // -------------------------------------------------------------
     // 1. OCEAN VERBS CYCLER (Every 3 seconds)
     // -------------------------------------------------------------
@@ -958,13 +1281,13 @@
     // 4. THEME TOGGLE (Deep Navy Dark / Light Ocean)
     // -------------------------------------------------------------
     function scrollToTop() {
-  const heroSection = document.getElementById("#hero-slide");
-  if (heroSection) {
-    heroSection.scrollIntoView({ behavior: "smooth" });
-  } else {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-}
+      const heroSection = document.getElementById("#hero-slide");
+      if (heroSection) {
+        heroSection.scrollIntoView({ behavior: "smooth" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }
     const themeBtn = document.getElementById("themeToggle");
     const themeIcon = document.getElementById("themeIcon");
     const themeLabel = document.getElementById("themeLabel");
@@ -986,92 +1309,97 @@
     // 5. OCEAN SOUNDSCAPE TOGGLE
     // -------------------------------------------------------------
     // Ocean Soundscape Synthesizer (Web Audio API)
-let audioCtx = null;
-let noiseNode = null;
-let isAudioPlaying = false;
-const soundToggle = document.getElementById("soundToggle");
+    let audioCtx = null;
+    let noiseNode = null;
+    let isAudioPlaying = false;
+    const soundToggle = document.getElementById("soundToggle");
 
-function createOceanSound() {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function createOceanSound() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  // Generate 5 seconds of pink noise buffer
-  const bufferSize = audioCtx.sampleRate * 5;
-  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const output = noiseBuffer.getChannelData(0);
+      // Generate 5 seconds of pink noise buffer
+      const bufferSize = audioCtx.sampleRate * 5;
+      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
 
-  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-  for (let i = 0; i < bufferSize; i++) {
-    const white = Math.random() * 2 - 1;
-    b0 = 0.99886 * b0 + white * 0.0555179;
-    b1 = 0.99332 * b1 + white * 0.0750759;
-    b2 = 0.96900 * b2 + white * 0.1538520;
-    b3 = 0.86650 * b3 + white * 0.3104856;
-    b4 = 0.55000 * b4 + white * 0.5329522;
-    b5 = -0.7616 * b5 - white * 0.0168980;
-    output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.08;
-    b6 = white * 0.115926;
-  }
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.08;
+        b6 = white * 0.115926;
+      }
 
-  noiseNode = audioCtx.createBufferSource();
-  noiseNode.buffer = noiseBuffer;
-  noiseNode.loop = true;
+      noiseNode = audioCtx.createBufferSource();
+      noiseNode.buffer = noiseBuffer;
+      noiseNode.loop = true;
 
-  // Lowpass filter for deep oceanic timbre
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.setValueAtTime(380, audioCtx.currentTime);
+      // Lowpass filter for deep oceanic timbre
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(380, audioCtx.currentTime);
 
-  // Rhythmic wave swell generator
-  const lfo = audioCtx.createOscillator();
-  const lfoGain = audioCtx.createGain();
-  lfo.frequency.setValueAtTime(0.12, audioCtx.currentTime); // ~8s wave period
-  lfoGain.gain.setValueAtTime(220, audioCtx.currentTime);
-  lfo.connect(filter.frequency);
+      // Rhythmic wave swell generator
+      const lfo = audioCtx.createOscillator();
+      const lfoGain = audioCtx.createGain();
+      lfo.frequency.setValueAtTime(0.12, audioCtx.currentTime); // ~8s wave period
+      lfoGain.gain.setValueAtTime(220, audioCtx.currentTime);
+      lfo.connect(filter.frequency);
 
-  const masterGain = audioCtx.createGain();
-  masterGain.gain.setValueAtTime(0.7, audioCtx.currentTime);
+      const masterGain = audioCtx.createGain();
+      masterGain.gain.setValueAtTime(0.7, audioCtx.currentTime);
 
-  noiseNode.connect(filter);
-  filter.connect(masterGain);
-  masterGain.connect(audioCtx.destination);
+      noiseNode.connect(filter);
+      filter.connect(masterGain);
+      masterGain.connect(audioCtx.destination);
 
-  noiseNode.start();
-  lfo.start();
-}
-
-soundToggle.addEventListener("click", () => {
-  if (!isAudioPlaying) {
-    if (!audioCtx) {
-      createOceanSound();
-    } else if (audioCtx.state === "suspended") {
-      audioCtx.resume();
+      noiseNode.start();
+      lfo.start();
     }
-    isAudioPlaying = true;
-    soundToggle.style.borderColor = "var(--accent-cyan)";
-  } else {
-    if (audioCtx && audioCtx.state === "running") {
-      audioCtx.suspend();
-    }
-    isAudioPlaying = false;
-    soundToggle.style.borderColor = "var(--card-border)";
-  }
-});
+
+    soundToggle.addEventListener("click", () => {
+      if (!isAudioPlaying) {
+        if (!audioCtx) {
+          createOceanSound();
+        } else if (audioCtx.state === "suspended") {
+          audioCtx.resume();
+        }
+        isAudioPlaying = true;
+        soundToggle.style.borderColor = "var(--accent-cyan)";
+      } else {
+        if (audioCtx && audioCtx.state === "running") {
+          audioCtx.suspend();
+        }
+        isAudioPlaying = false;
+        soundToggle.style.borderColor = "var(--card-border)";
+      }
+    });
 
     // -------------------------------------------------------------
-    // 6. LEAFLET MAP INITIALIZATION & ARGO DATA
+    // 6. LEAFLET MAP INITIALIZATION — VESSEL, EEZ & PFZ LAYERS
     // -------------------------------------------------------------
-    const map = L.map("oceanMap", { center: [13.5, 75.5], zoom: 5, zoomControl: false });
-    const oceanLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}", {className: 'dark-ocean-tiles',
-  maxZoom: 13}).addTo(map);
+    const map = L.map("oceanMap", { center: [18.9, 72.8], zoom: 6, zoomControl: false });
+    const oceanLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}", {className: 'dark-ocean-tiles', maxZoom: 13}).addTo(map);
     const satLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { className: 'dark-sat-tiles', maxZoom: 18 });
 
     function setMapBase(type) {
+      const oceanBtn = document.getElementById("baseBtnOcean");
+      const satBtn = document.getElementById("baseBtnSat");
       if (type === "ocean") {
         if (map.hasLayer(satLayer)) map.removeLayer(satLayer);
-    oceanLayer.addTo(map);
+        oceanLayer.addTo(map);
+        oceanBtn.classList.add("active-base");
+        satBtn.classList.remove("active-base");
       } else {
         if (map.hasLayer(oceanLayer)) map.removeLayer(oceanLayer);
-    satLayer.addTo(map);
+        satLayer.addTo(map);
+        satBtn.classList.add("active-base");
+        oceanBtn.classList.remove("active-base");
       }
     }
 
@@ -1100,76 +1428,304 @@ soundToggle.addEventListener("click", () => {
         .bindPopup(`<b>${p.id} — ${p.name}</b><br>High Biomass Aggregation Zone`);
     });
 
+    // --- 6a. Vessel Marker Layer ---
+    let vesselMarker = null;
+    let vesselSafetyBuffer = null;
+    const vesselIcon = L.divIcon({ className: "", html: '<div class="vessel-marker">🚢</div>', iconSize: [24, 24] });
+    const NM_IN_METERS = 1852;
+
+    function plotVesselMarker(lat, lon) {
+      if (vesselMarker) map.removeLayer(vesselMarker);
+      if (vesselSafetyBuffer) map.removeLayer(vesselSafetyBuffer);
+
+      // Pulsating 5 NM safety buffer ring around the vessel
+      vesselSafetyBuffer = L.circle([lat, lon], {
+        radius: 5 * NM_IN_METERS,
+        color: "#facc15",
+        weight: 1.5,
+        fillColor: "#facc15",
+        fillOpacity: 0.16,
+        className: "vessel-safety-buffer"
+      }).addTo(map).bindPopup("5 NM Safety Buffer");
+
+      vesselMarker = L.marker([lat, lon], { icon: vesselIcon, zIndexOffset: 1000 })
+        .addTo(map)
+        .bindPopup("<b>Your Vessel</b>");
+      return vesselMarker;
+    }
+
+    // --- 6b. Indian EEZ Boundary Layer ---
+    const indianEEZCoords = [
+      [23.5, 68.1], [20.5, 66.5], [15.5, 68.0], [10.5, 71.0],
+      [7.0, 74.5], [5.5, 78.0], [7.5, 81.5], [11.0, 83.5],
+      [16.0, 84.5], [20.5, 87.5]
+    ];
+    L.polyline(indianEEZCoords, {
+      color: "#ef4444",
+      weight: 2,
+      dashArray: "6, 8",
+      opacity: 0.85
+    }).addTo(map).bindPopup("Indian EEZ Boundary (approximate)");
+
+    // --- 6c. Potential Fishing Zone (PFZ) Polygons ---
+    let pfzPolygons = [];
+    function plotPFZZones(zones) {
+      pfzPolygons.forEach(p => map.removeLayer(p));
+      pfzPolygons = [];
+      (zones || []).forEach(z => {
+        const poly = L.polygon(z.coordinates, {
+          color: "#10b981",
+          fillColor: "#10b981",
+          fillOpacity: 0.3,
+          weight: 2
+        }).addTo(map).bindPopup(`<b>${z.name || "Potential Fishing Zone"}</b>`);
+        pfzPolygons.push(poly);
+      });
+    }
+
+    // --- 6d. Tactical Route to Nearest PFZ ---
+    let routeLine = null;
+
+    function polygonCentroid(coords) {
+      const total = coords.reduce((acc, [lat, lon]) => {
+        acc[0] += lat;
+        acc[1] += lon;
+        return acc;
+      }, [0, 0]);
+      return [total[0] / coords.length, total[1] / coords.length];
+    }
+
+    function plotRoute(vesselCoords, pfzCoords) {
+      if (routeLine) map.removeLayer(routeLine);
+      if (!vesselCoords || !pfzCoords || pfzCoords.length === 0) return;
+
+      const firstZone = pfzCoords[0];
+      const target = firstZone.coordinates ? polygonCentroid(firstZone.coordinates) : firstZone;
+
+      const from = L.latLng(vesselCoords[0], vesselCoords[1]);
+      const to = L.latLng(target[0], target[1]);
+      const distanceNM = from.distanceTo(to) / NM_IN_METERS;
+
+      // Assume a cruising speed of ~10 knots for the ETA estimate
+      const hoursTotal = distanceNM / 10;
+      const hours = Math.floor(hoursTotal);
+      const minutes = Math.round((hoursTotal - hours) * 60);
+
+      routeLine = L.polyline([from, to], {
+        color: "#ffffff",
+        weight: 2,
+        opacity: 0.85,
+        dashArray: "8, 8"
+      }).addTo(map);
+
+      routeLine.bindTooltip(
+        `Distance: ${distanceNM.toFixed(0)} NM | Est. Time: ${hours}h ${minutes}m`,
+        { permanent: true, direction: "center", className: "route-tooltip" }
+      );
+
+      return routeLine;
+    }
+
     // -------------------------------------------------------------
-    // 7. CHATBOT QUERY HANDLING WITH MINI WAVE LOADER
+    // 7. DYNAMIC HAZARD STATUS BANNER
     // -------------------------------------------------------------
-    function handleQuerySubmit(e) {
+    const HAZARD_ICONS = {
+      SAFE: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.35 8.95a1 1 0 0 1-1.3 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>',
+      CAUTION: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+      HAZARDOUS: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16h.01"/><path d="M12 8v4"/><path d="M15.312 2a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586l-4.688-4.688A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2z"/></svg>'
+    };
+
+    function updateHazardBanner(status) {
+      const banner = document.getElementById("hazardBanner");
+      const statusEl = document.getElementById("hazardBannerStatus");
+      const iconEl = document.getElementById("hazardBannerIcon");
+      const normalized = (status || "SAFE").toUpperCase();
+
+      banner.classList.remove("hazard-safe", "hazard-caution", "hazard-hazardous");
+      if (normalized === "HAZARDOUS") {
+        banner.classList.add("hazard-hazardous");
+      } else if (normalized === "CAUTION") {
+        banner.classList.add("hazard-caution");
+      } else {
+        banner.classList.add("hazard-safe");
+      }
+      iconEl.innerHTML = HAZARD_ICONS[normalized] || HAZARD_ICONS.SAFE;
+      statusEl.textContent = normalized;
+    }
+
+    // -------------------------------------------------------------
+    // 8. AGENT OPERATIONAL STREAM (REPLACES LEGACY CHATBOT)
+    // -------------------------------------------------------------
+    function appendAgentBadge(text) {
+      const feed = document.getElementById("agentStreamFeed");
+      const badge = document.createElement("div");
+      badge.className = "agent-badge";
+      badge.textContent = text;
+      feed.appendChild(badge);
+      feed.scrollTop = feed.scrollHeight;
+      return badge;
+    }
+
+    function runAgentSequence() {
+      const steps = [
+        "🛰️ Satellite Agent Active",
+        "🐟 Ocean & PFZ Advisor Validating Baseline",
+        "⚓ Compliance Agent Verifying Boundaries"
+      ];
+      return new Promise((resolve) => {
+        steps.forEach((step, i) => setTimeout(() => appendAgentBadge(step), i * 650));
+        setTimeout(resolve, steps.length * 650);
+      });
+    }
+
+    function appendAdvisoryCard(data) {
+      const feed = document.getElementById("agentStreamFeed");
+      const card = document.createElement("div");
+      card.className = "advisory-card";
+
+      const alertsHtml = (data.alerts || [])
+        .map(a => `<span class="advisory-alert">⚠ ${a}</span>`)
+        .join("");
+
+      card.innerHTML = `
+        <h4>🧭 Maritime Advisory</h4>
+        <div class="advisory-row"><b>Status:</b> ${(data.hazard_status || "SAFE").toUpperCase()}</div>
+        <div class="advisory-row"><b>Vessel Position:</b> ${data.vessel_coord ? data.vessel_coord.join(", ") : "Unknown"}</div>
+        ${alertsHtml || '<div class="advisory-row">No active alerts.</div>'}
+      `;
+
+      feed.appendChild(card);
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    // -------------------------------------------------------------
+    // 9. MOCK ORCHESTRATOR PAYLOAD (IMMEDIATE UI TEST / FALLBACK)
+    // -------------------------------------------------------------
+    const MOCK_ORCHESTRATOR_RESPONSE = {
+      vessel_coord: [18.95, 72.75],
+      hazard_status: "CAUTION",
+      alerts: [
+        "Approaching Indian EEZ boundary (12 nm remaining)",
+        "Moderate wave swell (1.8m) forecast over next 6 hours"
+      ],
+      pfz_location: [
+        {
+          name: "Ratnagiri Front PFZ",
+          coordinates: [[18.5, 69.5], [18.5, 70.1], [18.0, 70.1], [18.0, 69.5]]
+        },
+        {
+          name: "Kochi Shoal PFZ",
+          coordinates: [[10.4, 75.2], [10.4, 75.8], [9.9, 75.8], [9.9, 75.2]]
+        }
+      ]
+    };
+
+    // -------------------------------------------------------------
+    // 10. ORCA ORCHESTRATOR QUERY HANDLING (/api/orchestrate)
+    // -------------------------------------------------------------
+    function getVesselCoordinates() {
+      return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+          resolve([18.9, 72.8]);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve([pos.coords.latitude, pos.coords.longitude]),
+          () => resolve([18.9, 72.8]),
+          { timeout: 4000 }
+        );
+      });
+    }
+
+    async function handleQuerySubmit(e) {
       e.preventDefault();
       const input = document.getElementById("chatInput");
       const text = input.value.trim();
       if (!text) return;
 
-      const outputBox = document.getElementById("chatOutput");
       const loader = document.getElementById("chatLoader");
-
-      // 1. Append User Message
-      const userBubble = document.createElement("div");
-      userBubble.className = "chat-bubble-user";
-      userBubble.textContent = text;
-      outputBox.appendChild(userBubble);
       input.value = "";
+      appendAgentBadge(`🧑‍✈️ Query: "${text}"`);
 
-      // 2. Show Scaled Wave Loader
       loader.style.display = "flex";
-      outputBox.scrollTop = outputBox.scrollHeight;
+      await runAgentSequence();
 
-      // 3. Call the REAL Sagar Mitra backend
-      const API_BASE = "https://sagar-mitra-1.onrender.com";
-      fetch(`${API_BASE}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          loader.style.display = "none";
-          const botBubble = document.createElement("div");
-          botBubble.className = "chat-bubble-bot";
+      const coords = await getVesselCoordinates();
+      
+      // Point to your local FastAPI server running on port 8000
+      const API_BASE = "http://127.0.0.1:8000";
 
-          let html = (data.reply || "No response received.")
-            .replace(/\*\*(.*?)\*\*/g, "$1")   // strip any stray markdown bold
-            .replace(/\n/g, "<br>");             // real line breaks
-
-          if (data.confidence) {
-            const colors = { HIGH: "#2ecc71", MODERATE: "#f39c12", LOW: "#e74c3c" };
-            const c = colors[data.confidence.split(" ")[0]] || "#999";
-            html += `<div style="margin-top:8px;"><span style="background:${c};color:#fff;padding:2px 8px;border-radius:12px;font-size:12px;">Confidence: ${data.confidence}</span></div>`;
-          }
-
-          if (data.alert) {
-            const alertColors = { SAFE: "#2ecc71", CAUTION: "#f39c12", WARNING: "#e74c3c" };
-            const ac = alertColors[data.alert.level] || "#999";
-            html += `<div style="margin-top:6px;padding:8px;border-left:4px solid ${ac};background:${ac}22;">⚠ <b>${data.alert.level}:</b> ${data.alert.message}</div>`;
-          }
-
-          if (data.plot_url) {
-            html += `<div style="margin-top:8px;"><img src="${data.plot_url}" style="max-width:100%;border-radius:8px;" /></div>`;
-          }
-
-          botBubble.innerHTML = html;
-          outputBox.appendChild(botBubble);
-          outputBox.scrollTop = outputBox.scrollHeight;
-        })
-        .catch((err) => {
-          loader.style.display = "none";
-          const botBubble = document.createElement("div");
-          botBubble.className = "chat-bubble-bot";
-          botBubble.innerHTML = `⚠️ Could not reach backend: ${err.message}. Is uvicorn running on port 8000?`;
-          outputBox.appendChild(botBubble);
+      let parsedData;
+      try {
+        const res = await fetch(`${API_BASE}/api/orchestrate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, coordinates: coords }),
         });
+        
+        if (!res.ok) throw new Error("Backend not responding correctly");
+        const backendData = await res.json();
+        
+        // Map the LangGraph backend response to match your UI's expected variables
+        parsedData = {
+          vessel_coord: coords,
+          hazard_status: backendData.details?.compliance?.status || "SAFE", 
+          alerts: [backendData.advisory || "No specific advisory generated."],
+          pfz_location: backendData.details?.fishing?.zones || []
+        };
+      } catch (err) {
+        console.error("API Connection Error:", err);
+        // Fall back to the mock payload if the backend is off
+        parsedData = { ...MOCK_ORCHESTRATOR_RESPONSE, vessel_coord: coords };
+      }
+
+      loader.style.display = "none";
+      updateHazardBanner(parsedData.hazard_status);
+      plotVesselMarker(parsedData.vessel_coord[0], parsedData.vessel_coord[1]);
+      plotPFZZones(parsedData.pfz_location);
+      plotRoute(parsedData.vessel_coord, parsedData.pfz_location);
+      appendAdvisoryCard(parsedData);
+      setLastKnownState(parsedData.vessel_coord, parsedData.hazard_status);
     }
 
-    lucide.createIcons();
-  </script>
+    // -------------------------------------------------------------
+    // 11. MAYDAY / SOS PROTOCOL
+    // -------------------------------------------------------------
+    let lastVesselCoord = MOCK_ORCHESTRATOR_RESPONSE.vessel_coord;
+    let lastHazardStatus = MOCK_ORCHESTRATOR_RESPONSE.hazard_status;
+
+    function setLastKnownState(vesselCoord, hazardStatus) {
+      lastVesselCoord = vesselCoord;
+      lastHazardStatus = hazardStatus;
+    }
+
+    function triggerMayday() {
+      const [lat, lon] = lastVesselCoord;
+      const message = `[MAYDAY] Vessel at [${lat.toFixed(3)}, ${lon.toFixed(3)}] | Hazard: ${(lastHazardStatus || "SAFE").toUpperCase()} | Nearest Port: 45 NM`;
+      alert(message);
+    }
+
+    // -------------------------------------------------------------
+    // 12. PREDICTION TELEMETRY (MOCK VALUES)
+    // -------------------------------------------------------------
+    function seedTelemetryBars() {
+      const bars = { telemetrySST: 85, telemetryChlorophyll: 72, telemetryML: 91 };
+      Object.entries(bars).forEach(([id, pct]) => {
+        const el = document.getElementById(id);
+        if (el) requestAnimationFrame(() => { el.style.width = `${pct}%`; });
+      });
+    }
+
+    // Seed the dashboard with the mock payload on load so it isn't empty before the first query.
+    updateHazardBanner(MOCK_ORCHESTRATOR_RESPONSE.hazard_status);
+    plotVesselMarker(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord[0], MOCK_ORCHESTRATOR_RESPONSE.vessel_coord[1]);
+    plotPFZZones(MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
+    plotRoute(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord, MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
+    seedTelemetryBars();
+
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
 </body>
 </html>
