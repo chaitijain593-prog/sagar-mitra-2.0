@@ -1,7 +1,7 @@
 import os
 import math
+import requests
 import pandas as pd
-import geopandas as gpd
 
 def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Haversine formula to calculate great-circle distance in km."""
@@ -33,27 +33,34 @@ def _query_local_csv(user_lat: float, user_lon: float) -> str:
             best_row = row
             
     if best_row is not None:
-        return (f"[Offline Archive Alert] Nearest PFZ is near {best_row['Landing Center']} "
-                f"({best_row['State_Sector']}). Coordinates: [{best_row['Latitude']}, {best_row['Longitude']}]. "
+        return (f"[Offline Archive Alert] Nearest PFZ is near {best_row.get('Landing Center', 'Coast')} "
+                f"({best_row.get('State_Sector', 'Region')}). Coordinates: [{best_row['Latitude']}, {best_row['Longitude']}]. "
                 f"Distance: {round(min_dist, 2)} km away.")
     return "No records found in local PFZ dataset."
 
 def get_nearest_pfz(user_lat: float, user_lon: float) -> str:
-    """Primary tool: attempts live WebGIS, falls back to local CSV on failure."""
+    """Primary tool: attempts live WebGIS via requests/json, falls back to local CSV on failure."""
     wfs_url = "https://incois.gov.in/geoserver/wfs?request=GetFeature&service=WFS&version=1.1.0&typeName=incois:pfz_today&outputFormat=application/json"
     
     try:
-        pfz_gdf = gpd.read_file(wfs_url)
+        response = requests.get(wfs_url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
         min_dist = float('inf')
         nearest_zone = None
         
-        for _, row in pfz_gdf.iterrows():
-            pt = row.get('geometry')
-            if pt:
-                dist = calculate_distance(user_lat, user_lon, pt.y, pt.x)
+        for feature in data.get('features', []):
+            geometry = feature.get('geometry')
+            properties = feature.get('properties', {})
+            if geometry and geometry.get('coordinates'):
+                coords = geometry.get('coordinates')
+                # Point coordinates are [lon, lat]
+                pt_lon, pt_lat = coords[0], coords[1]
+                dist = calculate_distance(user_lat, user_lon, pt_lat, pt_lon)
                 if dist < min_dist:
                     min_dist = dist
-                    nearest_zone = row
+                    nearest_zone = properties
                     
         if nearest_zone is not None:
             landing = nearest_zone.get('LandingCenter', nearest_zone.get('landing_center', 'Coast'))
@@ -64,5 +71,4 @@ def get_nearest_pfz(user_lat: float, user_lon: float) -> str:
     return _query_local_csv(user_lat, user_lon)
 
 if __name__ == "__main__":
-    # Test with coordinates off Mumbai coast
     print(get_nearest_pfz(18.9, 72.8))
