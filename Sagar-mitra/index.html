@@ -1660,7 +1660,7 @@
         const res = await fetch(`${API_BASE}/api/orchestrate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text, coordinates: coords }),
+          body: JSON.stringify({ user_message: text, coordinates: coords }),
         });
         
         if (!res.ok) throw new Error("Backend not responding correctly");
