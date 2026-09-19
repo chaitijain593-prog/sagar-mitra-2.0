@@ -1,4 +1,5 @@
 import os
+import re
 import traceback
 from dotenv import load_dotenv
 load_dotenv()  # reads .env in the working directory, if present
@@ -8,6 +9,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from app.graph import create_orca_graph
 from app.state import AgentState
+from app.boundary_toool import check_maritime_boundary
+from app.pfz_tool import get_nearest_pfz
+from app.satellite_tool import get_live_ocean_conditions
+from app.chlorophyll_tool import get_chlorophyll_data
+from app.nlp_extract import extract_coordinates_from_message
+from app.statistical_engine import PFZStatisticalValidator
+from app.pfz_ml import predict_pfz_confidence
+from app.data import store
 
 app = FastAPI(title="ORCA Backend API", version="0.1.0")
 
@@ -30,6 +39,92 @@ class OrchestrateRequest(BaseModel):
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
 
 
+# --- Dashboard signal derivation ------------------------------------------
+# These two checks are cheap and deterministic, so we run them for EVERY
+# request regardless of which single agent (navigation/fishing/compliance)
+# the LangGraph supervisor routed the user's actual question to. Otherwise
+# the hazard banner and PFZ map would only ever update when the user's
+# wording happened to match the branch that computes that particular field,
+# and would silently show a stale/default value the rest of the time.
+_PFZ_COORD_RE = re.compile(r"Coordinates:\s*\[\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\]")
+_PFZ_ZONE_HALF_WIDTH_DEG = 0.08  # ~9 km box drawn around the nearest known PFZ point
+
+
+def _derive_hazard_status(boundary_report: str, ocean_report: str) -> str:
+    if boundary_report.startswith("ALERT"):
+        return "HAZARDOUS"
+    if "HAZARDOUS" in ocean_report.upper():
+        return "HAZARDOUS"
+    if boundary_report.startswith("UNVERIFIED"):
+        return "CAUTION"
+    return "SAFE"
+
+
+def _derive_pfz_zones(pfz_report: str) -> list[dict]:
+    match = _PFZ_COORD_RE.search(pfz_report)
+    if not match:
+        return []
+    lat, lon = float(match.group(1)), float(match.group(2))
+    d = _PFZ_ZONE_HALF_WIDTH_DEG
+    return [{
+        "name": "Nearest Potential Fishing Zone",
+        "coordinates": [
+            [lat + d, lon - d], [lat + d, lon + d],
+            [lat - d, lon + d], [lat - d, lon - d],
+        ],
+    }]
+
+
+# --- Prediction Telemetry (real values, not the old hardcoded 85/72/91) ---
+_SST_RE = re.compile(r"Water Temp:\s*([-\d.]+)")
+_CHLOROPHYLL_RE = re.compile(r"Chlorophyll-a:\s*([\d.]+)")
+_pfz_validator = PFZStatisticalValidator()
+
+
+def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_report: str) -> dict:
+    """
+    Builds the three Prediction Telemetry values from real, live-computed
+    signals instead of the frontend's old hardcoded 85%/72%/91% placeholders:
+
+      - sst_anomaly_pct: Z-Test confidence (1 - p_value) that live SST at
+        this coordinate deviates from the Arabian Sea baseline.
+      - chlorophyll_gradient_pct: same Z-Test confidence, for chlorophyll --
+        i.e. how strong the biological-productivity gradient is here.
+      - ml_confidence_pct: the trained PFZ classifier's own predicted
+        probability for this point (None if the model hasn't been trained
+        yet -- see backend/scripts/train_pfz_model.py).
+    """
+    sst_match = _SST_RE.search(ocean_report)
+    chl_match = _CHLOROPHYLL_RE.search(chlorophyll_report)
+
+    sst = float(sst_match.group(1)) if sst_match else None
+    chlorophyll = float(chl_match.group(1)) if chl_match else None
+    # No live salinity feed is wired up yet -- use the real historical
+    # Arabian Sea baseline (computed from actual Argo data) as the best
+    # available stand-in, rather than fabricating a "current" reading.
+    salinity = store.calibrated_clim["sal"]["median"]
+
+    sst_anomaly_pct = None
+    if sst is not None:
+        z_check = _pfz_validator.zscore_baseline_check("sst", sst)
+        sst_anomaly_pct = round((1 - z_check["p_value"]) * 100, 1)
+
+    chlorophyll_gradient_pct = None
+    if chlorophyll is not None:
+        chl_check = _pfz_validator.zscore_baseline_check("chlorophyll", chlorophyll)
+        chlorophyll_gradient_pct = round((1 - chl_check["p_value"]) * 100, 1)
+
+    ml_confidence_pct = None
+    if sst is not None and chlorophyll is not None:
+        ml_confidence_pct = predict_pfz_confidence(sst, chlorophyll, salinity, lat, lon)
+
+    return {
+        "sst_anomaly_pct": sst_anomaly_pct,
+        "chlorophyll_gradient_pct": chlorophyll_gradient_pct,
+        "ml_confidence_pct": ml_confidence_pct,
+    }
+
+
 # --- Endpoints ----------------------------------------------------------
 @app.get("/")
 def root():
@@ -46,27 +141,44 @@ def health():
 
 @app.post("/api/orchestrate")
 def run_orchestration(request: OrchestrateRequest):
+    # Coordinate resolution: a place named IN THE MESSAGE ("fishing zones
+    # near Chennai") always takes priority over the vessel's own reported
+    # GPS position. The GPS coordinate is only used when the message itself
+    # is asking about "here" / "my current location", or names no place at
+    # all -- see extract_coordinates_from_message()'s docstring.
+    extracted = extract_coordinates_from_message(request.user_message)
+    coordinates = list(extracted) if extracted else request.coordinates
+
     # Package incoming request into the AgentState format
     initial_state: AgentState = {
         "user_message": request.user_message,
-        "coordinates": request.coordinates,
+        "coordinates": coordinates,
         "next_step": "",
         "hazard_alerts": [],
         "final_output": "",
         "final_advisory": ""
     }
-    
+
     try:
         # Run the compiled graph workflow
         result = orca_graph.invoke(initial_state)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal error during orchestration: {e}")
-    
+
+    lat, lon = coordinates[0], coordinates[1]
+    boundary_report = check_maritime_boundary(lat, lon)
+    ocean_report = get_live_ocean_conditions(lat, lon)
+    pfz_report = get_nearest_pfz(lat, lon)
+    chlorophyll_report = get_chlorophyll_data(lat, lon)
+
     # Return the final synthesized response as JSON to the frontend
     return {
         "status": "success",
         "user_message": request.user_message,
-        "coordinates": request.coordinates,
-        "advisory": result.get("final_advisory", "Advisory generated successfully.")
+        "coordinates": coordinates,
+        "advisory": result.get("final_advisory", "Advisory generated successfully."),
+        "hazard_status": _derive_hazard_status(boundary_report, ocean_report),
+        "pfz_location": _derive_pfz_zones(pfz_report),
+        "telemetry": _build_telemetry(lat, lon, ocean_report, chlorophyll_report),
     }

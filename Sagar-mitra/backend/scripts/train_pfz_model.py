@@ -40,7 +40,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.statistical_engine import PFZStatisticalValidator  # noqa: E402
 
 DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "pfz_training_data.csv")
-MODEL_OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "pfz_predictor_best.joblib")
+# Must match app/pfz_ml.py's MODEL_PATH -- that's where the backend loads it from.
+MODEL_OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "..", "app", "pfz_predictor_best.joblib")
 
 FEATURE_COLS = ["sst", "chlorophyll", "salinity", "latitude", "longitude"]
 TARGET_COL = "is_pfz"
