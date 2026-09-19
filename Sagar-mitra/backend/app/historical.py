@@ -12,11 +12,13 @@ directly as an <img src>.
 """
 import os
 import uuid
+from typing import Optional, cast
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 from google.genai import types
+from google.genai.types import FunctionDeclaration
 
 from app.data import store
 from app.advisory import generate_content
@@ -33,8 +35,8 @@ BASE_URL = os.environ.get("SAGAR_MITRA_BASE_URL", "http://127.0.0.1:8000")
 # TOOL FUNCTIONS (Gemini calls these automatically when needed)
 # ---------------------------------------------------------------------------
 
-def query_historical_extreme(parameter: str, mode: str, region_lat: float = None,
-                              region_lon: float = None, radius_deg: float = 2.0) -> dict:
+def query_historical_extreme(parameter: str, mode: str, region_lat: Optional[float] = None,
+                              region_lon: Optional[float] = None, radius_deg: float = 2.0) -> dict:
     """
     Finds the historical max/min/last-occurrence of a parameter.
     parameter: one of 'TEMP','PSAL','PRES'
@@ -47,7 +49,8 @@ def query_historical_extreme(parameter: str, mode: str, region_lat: float = None
     if df.empty or parameter not in df.columns:
         return {"error": "No matching data found."}
 
-    row = df.loc[df[parameter].idxmax()] if mode == "max" else df.loc[df[parameter].idxmin()]
+    column = cast(pd.Series, df[parameter])
+    row = df.loc[column.idxmax()] if mode == "max" else df.loc[column.idxmin()]
     return {
         "value": float(row[parameter]),
         "date": str(row.get("JULD", "unknown")),
@@ -55,20 +58,21 @@ def query_historical_extreme(parameter: str, mode: str, region_lat: float = None
     }
 
 
-def get_yearly_trend(parameter: str, region_lat: float = None,
-                      region_lon: float = None, radius_deg: float = 2.0) -> dict:
+def get_yearly_trend(parameter: str, region_lat: Optional[float] = None,
+                      region_lon: Optional[float] = None, radius_deg: float = 2.0) -> dict:
     """Returns yearly average of a parameter for trend/graph questions."""
     df = store.final_dataset.copy()
     if region_lat is not None and region_lon is not None:
         df = df[(df["LATITUDE"].between(region_lat - radius_deg, region_lat + radius_deg)) &
                 (df["LONGITUDE"].between(region_lon - radius_deg, region_lon + radius_deg))]
-    df["YEAR"] = pd.to_datetime(df["JULD"]).dt.year
-    yearly = df.groupby("YEAR")[parameter].mean().dropna()
-    return {"years": yearly.index.tolist(), "values": yearly.values.round(2).tolist()}
+    juld = cast(pd.Series, df["JULD"])
+    df["YEAR"] = pd.to_datetime(juld).dt.year
+    yearly = cast(pd.Series, df.groupby("YEAR")[parameter].mean()).dropna()
+    return {"years": yearly.index.tolist(), "values": yearly.to_numpy().round(2).tolist()}
 
 
-def plot_yearly_trend(parameter: str, region_lat: float = None,
-                       region_lon: float = None) -> dict:
+def plot_yearly_trend(parameter: str, region_lat: Optional[float] = None,
+                       region_lon: Optional[float] = None) -> dict:
     """Generates and saves a trend graph, returns the file path + public URL."""
     data = get_yearly_trend(parameter, region_lat, region_lon)
     plt.figure(figsize=(8, 4))
@@ -85,8 +89,8 @@ def plot_yearly_trend(parameter: str, region_lat: float = None,
     return {"file_path": path, "url": f"{BASE_URL}/static/plots/{filename}"}
 
 
-def plot_category_distribution(parameter: str = "TEMP", region_lat: float = None,
-                                region_lon: float = None) -> dict:
+def plot_category_distribution(parameter: str = "TEMP", region_lat: Optional[float] = None,
+                                region_lon: Optional[float] = None) -> dict:
     """
     Generates a colored pie chart showing what % of historical SURFACE
     (<=30m) readings fall into each anomaly category (Cold / Normal / Warm /
@@ -94,7 +98,7 @@ def plot_category_distribution(parameter: str = "TEMP", region_lat: float = None
     asks for a 'pie chart' or 'distribution' or 'breakdown' of conditions.
     """
     df = store.final_dataset.copy()
-    df = df[df["PRES"] <= 30]  # match the surface-only climatology baseline
+    df = cast(pd.DataFrame, df[df["PRES"] <= 30])  # match the surface-only climatology baseline
     if region_lat is not None and region_lon is not None:
         df = df[(df["LATITUDE"].between(region_lat - 2.0, region_lat + 2.0)) &
                 (df["LONGITUDE"].between(region_lon - 2.0, region_lon + 2.0))]
@@ -205,7 +209,7 @@ def sagar_mitra_historical_query(user_message: str, persona: str = "Researcher",
     Answers historical/trend questions using function calling against the
     real dataset. Returns a dict: {reply, mode, plot_url (if a graph was made)}.
     """
-    tool = types.Tool(function_declarations=TOOLS)
+    tool = types.Tool(function_declarations=cast(list[FunctionDeclaration], TOOLS))
     config = types.GenerateContentConfig(
         tools=[tool],
         system_instruction=(
@@ -217,10 +221,17 @@ def sagar_mitra_historical_query(user_message: str, persona: str = "Researcher",
 
     response = generate_content(model=model, contents=user_message, config=config)
 
-    part = response.candidates[0].content.parts[0]
-    if part.function_call:
+    if not response.candidates or not response.candidates[0].content:
+        return {"reply": response.text or "", "mode": "historical", "plot_url": None}
+
+    call_content = response.candidates[0].content
+    parts = call_content.parts
+    if not parts:
+        return {"reply": response.text or "", "mode": "historical", "plot_url": None}
+    part = parts[0]
+    if part.function_call and part.function_call.name:
         fn_name = part.function_call.name
-        fn_args = dict(part.function_call.args)
+        fn_args = dict(part.function_call.args or {})
         result = _FUNCTION_MAP[fn_name](**fn_args)
 
         # plot_yearly_trend returns a dict with file_path/url; other tools
@@ -233,7 +244,7 @@ def sagar_mitra_historical_query(user_message: str, persona: str = "Researcher",
             model=model,
             contents=[
                 {"role": "user", "parts": [{"text": user_message}]},
-                response.candidates[0].content,
+                call_content,
                 {"role": "user", "parts": [{"function_response": {
                     "name": fn_name, "response": {"result": tool_result_for_model}}}]},
             ],
@@ -244,4 +255,4 @@ def sagar_mitra_historical_query(user_message: str, persona: str = "Researcher",
         plot_url = result["url"] if fn_name in ("plot_yearly_trend", "plot_category_distribution") else None
         return {"reply": answer, "mode": "historical", "plot_url": plot_url}
 
-    return {"reply": response.text, "mode": "historical", "plot_url": None}
+    return {"reply": response.text or "", "mode": "historical", "plot_url": None}

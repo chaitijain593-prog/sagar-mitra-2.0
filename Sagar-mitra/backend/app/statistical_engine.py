@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from scipy import stats
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, cast
 import gsw
 
 
@@ -71,7 +71,7 @@ class ArgoStatisticalAnomalyEngine:
             mask &= df["TEMP_QC"] < 3
         if "PSAL_QC" in df.columns:
             mask &= df["PSAL_QC"] < 3
-        return df[mask].reset_index(drop=True)
+        return cast(pd.DataFrame, df[mask]).reset_index(drop=True)
 
     # ------------------------------------------------------------------ #
     # TIER 2: STATISTICAL SCORING HELPERS
@@ -101,7 +101,7 @@ class ArgoStatisticalAnomalyEngine:
     @staticmethod
     def _ks_test(observed: np.ndarray, climatology_sample: np.ndarray) -> tuple[float, float]:
         d_stat, p_val = stats.ks_2samp(observed, climatology_sample)
-        return float(d_stat), float(p_val)
+        return float(cast(float, d_stat)), float(cast(float, p_val))
 
     # ------------------------------------------------------------------ #
     # TIER 3: PHYSICAL LAYER METRICS
@@ -109,9 +109,9 @@ class ArgoStatisticalAnomalyEngine:
     def calculate_layer_metrics(self, df_profile: pd.DataFrame) -> dict:
         """Computes MLD, ILD, BLT, D20 isotherm depth from a standardized profile."""
         df = df_profile.sort_values("DEPTH_M").reset_index(drop=True)
-        depth = df["DEPTH_M"].values
-        ct = df["CT"].values
-        sigma0 = df["SIGMA0"].values
+        depth = np.asarray(df["DEPTH_M"].values)
+        ct = np.asarray(df["CT"].values)
+        sigma0 = np.asarray(df["SIGMA0"].values)
 
         ref_idx = int(np.argmin(np.abs(depth - 10.0)))
         sigma0_ref = sigma0[ref_idx]
@@ -146,7 +146,7 @@ class ArgoStatisticalAnomalyEngine:
         clim_key = {"MHW": "temp", "MCS": "temp", "PH": "ph", "EDDY": "d20"}[anomaly_type]
         mu, sigma = self.clim[clim_key]["mu"], self.clim[clim_key]["sigma"]
 
-        vals = daily_df[col].values
+        vals = np.asarray(daily_df[col].values)
         z_scores = (vals - mu) / (sigma if sigma > 0 else 1e-6)
 
         if anomaly_type in ("MHW", "EDDY"):
@@ -205,9 +205,9 @@ class ArgoStatisticalAnomalyEngine:
         anomalies: List[Dict[str, Any]] = []
 
         # --- 1 & 2: MHW / MCS (surface layer, <=30m) ---
-        surface = df[df["DEPTH_M"] <= 30.0]
+        surface = cast(pd.DataFrame, df[df["DEPTH_M"] <= 30.0])
         if not surface.empty:
-            ct_mean = float(surface["CT"].mean())
+            ct_mean = float(cast(float, surface["CT"].mean()))
             z, p = self._zscore(ct_mean, self.clim["temp"]["mu"], self.clim["temp"]["sigma"])
             persistence = (self.evaluate_multi_day_timeseries(historical_timeseries, "MHW")
                            if historical_timeseries is not None else
@@ -226,10 +226,10 @@ class ArgoStatisticalAnomalyEngine:
 
         # --- 3: OMZ / Hypoxia (100-1000m) ---
         if "DOXY" in df.columns:
-            omz_layer = df[(df["DEPTH_M"] >= 100) & (df["DEPTH_M"] <= 1000)]
-            hypoxic = omz_layer[omz_layer["DOXY"] < 60.0]
+            omz_layer = cast(pd.DataFrame, df[(df["DEPTH_M"] >= 100) & (df["DEPTH_M"] <= 1000)])
+            hypoxic = cast(pd.DataFrame, omz_layer[omz_layer["DOXY"] < 60.0])
             if len(hypoxic) >= 3:
-                mi = self._modified_zscore(float(hypoxic["DOXY"].mean()),
+                mi = self._modified_zscore(float(cast(float, hypoxic["DOXY"].mean())),
                                             self.clim["doxy"]["median"], self.clim["doxy"]["mad"])
                 anomalies.append(self._pack(
                     "Oxygen Minimum Zone (OMZ / Hypoxia)", hypoxic,
@@ -240,9 +240,9 @@ class ArgoStatisticalAnomalyEngine:
                     "3+ consecutive depth bins."))
 
         # --- 4: Salinity Anomaly & Barrier Layer ---
-        deep_ok = df[df["DEPTH_M"] <= 200]
+        deep_ok = cast(pd.DataFrame, df[df["DEPTH_M"] <= 200])
         if not deep_ok.empty:
-            sa_val = float(deep_ok["SA"].mean())
+            sa_val = float(cast(float, deep_ok["SA"].mean()))
             mi_sal = self._modified_zscore(sa_val, self.clim["sal"]["median"], self.clim["sal"]["mad"])
             blt = layers["BLT"]
             if abs(mi_sal) >= 3.5 or blt >= 15.0:
@@ -255,7 +255,7 @@ class ArgoStatisticalAnomalyEngine:
 
         # --- 5: Ocean Acidification Spike ---
         if "PH_IN_SITU_TOTAL" in df.columns:
-            ph_val = float(df["PH_IN_SITU_TOTAL"].mean())
+            ph_val = float(cast(float, df["PH_IN_SITU_TOTAL"].mean()))
             z_ph, p_ph = self._zscore(ph_val, self.clim["ph"]["mu"], self.clim["ph"]["sigma"])
             delta_ph = ph_val - self.clim["ph"]["mu"]
             if delta_ph <= -0.15 or z_ph <= -2.0:
@@ -272,7 +272,7 @@ class ArgoStatisticalAnomalyEngine:
             ks_p = 0.005  # placeholder unless historical_timeseries K-S supplied
             if historical_timeseries is not None and "D20" in historical_timeseries.columns:
                 ks_stat, ks_p = self._ks_test(
-                    np.array([layers["D20"]]), historical_timeseries["D20"].values)
+                    np.array([layers["D20"]]), np.asarray(historical_timeseries["D20"].values))
             if (z_d20 >= 2.0 and delta_d20 >= 30 and ks_p < 0.01):
                 anomalies.append(self._pack(
                     "Mesoscale Warm-Core Eddy", df,
@@ -285,17 +285,19 @@ class ArgoStatisticalAnomalyEngine:
                     z_d20, "High", "D20 isotherm shoaled upward, indicating cold-core eddy."))
 
         # --- 7: Sensor / Biofouling Drift ---
-        deep_sensor = df[df["DEPTH_M"] > 1500]
+        deep_sensor = cast(pd.DataFrame, df[df["DEPTH_M"] > 1500])
         qc_flagged = False
         if "TEMP_QC" in df_profile.columns or "PSAL_QC" in df_profile.columns:
-            qc_flagged = bool(((df_profile.get("TEMP_QC", 0) >= 3) |
-                                (df_profile.get("PSAL_QC", 0) >= 3)).any())
+            temp_flag = cast(Any, df_profile.get("TEMP_QC", 0))
+            psal_flag = cast(Any, df_profile.get("PSAL_QC", 0))
+            qc_flagged = bool(((temp_flag >= 3) | (psal_flag >= 3)).any())
         beta, p_beta = 0.0, 1.0
         if not deep_sensor.empty and "JULD" in deep_sensor.columns and len(deep_sensor) >= 3:
             juld_numeric = pd.to_datetime(deep_sensor["JULD"]).astype("int64") / 1e9  # seconds
-            slope, intercept, r, p_beta, se = stats.linregress(
-                juld_numeric, deep_sensor["SA"].values)
-            beta = float(slope) * 30 * 86400  # SA units per month (slope is per second)
+            slope, _intercept, _r, p_beta_raw, _se = stats.linregress(
+                juld_numeric, np.asarray(deep_sensor["SA"]))
+            beta = float(cast(float, slope)) * 30 * 86400  # SA units per month (slope is per second)
+            p_beta = float(cast(float, p_beta_raw))
         if qc_flagged or (abs(beta) > 0.05 and p_beta < 0.01):
             anomalies.append(self._pack(
                 "Sensor / Biofouling Drift", deep_sensor if not deep_sensor.empty else df,
@@ -317,7 +319,7 @@ class ArgoStatisticalAnomalyEngine:
     @staticmethod
     def _pack(name: str, depth_df: pd.DataFrame, metrics: dict, score: float,
               severity: str, summary: str) -> dict:
-        depth_range = [float(depth_df["DEPTH_M"].min()), float(depth_df["DEPTH_M"].max())] \
+        depth_range = [float(cast(float, depth_df["DEPTH_M"].min())), float(cast(float, depth_df["DEPTH_M"].max()))] \
             if "DEPTH_M" in depth_df.columns and len(depth_df) else [0.0, 0.0]
         return {
             "anomaly_type": name,

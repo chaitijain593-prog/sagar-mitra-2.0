@@ -3,6 +3,7 @@ from app.satellite_tool import get_live_ocean_conditions
 from app.pfz_tool import get_nearest_pfz
 from app.chlorophyll_tool import get_chlorophyll_data
 from app.boundary_toool import check_maritime_boundary
+from app.state import AgentState
 
 # 1. Navigation & Hazard Worker (Powered by satellite_tool.py)
 @tool
@@ -10,7 +11,7 @@ def check_marine_hazards(lat: float, lon: float) -> str:
     """Checks wave heights, temperature, and maritime hazards for given coordinates using live NOAA/Open-Meteo data."""
     return get_live_ocean_conditions(lat, lon)
 
-def navigation_node(state: dict) -> dict:
+def navigation_node(state: AgentState) -> dict:
     coordinates = state.get("coordinates", [18.9, 72.8])
     lat, lon = coordinates[0], coordinates[1]
     result = check_marine_hazards.invoke({"lat": lat, "lon": lon})
@@ -28,7 +29,7 @@ def check_pfz_and_chlorophyll(lat: float, lon: float) -> str:
     chlorophyll_result = get_chlorophyll_data(lat, lon)
     return f"{pfz_result} | {chlorophyll_result}"
 
-def fishing_node(state: dict) -> dict:
+def fishing_node(state: AgentState) -> dict:
     coordinates = state.get("coordinates", [18.9, 72.8])
     lat, lon = coordinates[0], coordinates[1]
     result = check_pfz_and_chlorophyll.invoke({"lat": lat, "lon": lon})
@@ -43,7 +44,7 @@ def check_legal_boundaries(lat: float, lon: float) -> str:
     """Checks if coordinates violate Marine Protected Areas (MPA) or cross the Indian EEZ boundary."""
     return check_maritime_boundary(lat, lon)
 
-def compliance_node(state: dict) -> dict:
+def compliance_node(state: AgentState) -> dict:
     coordinates = state.get("coordinates", [18.9, 72.8])
     lat, lon = coordinates[0], coordinates[1]
     result = check_legal_boundaries.invoke({"lat": lat, "lon": lon})

@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from app.graph import create_orca_graph
+from app.state import AgentState
 
 app = FastAPI(title="ORCA Backend API", version="0.1.0")
 
@@ -46,7 +47,7 @@ def health():
 @app.post("/api/orchestrate")
 def run_orchestration(request: OrchestrateRequest):
     # Package incoming request into the AgentState format
-    initial_state = {
+    initial_state: AgentState = {
         "user_message": request.user_message,
         "coordinates": request.coordinates,
         "next_step": "",

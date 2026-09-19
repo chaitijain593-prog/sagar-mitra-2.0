@@ -58,7 +58,7 @@ def extract_query_parameters(user_message: str, model: str = "gemini-3.6-flash")
         ),
     )
 
-    text = response.text.strip()
+    text = (response.text or "").strip()
     text = re.sub(r"^```json|```$", "", text, flags=re.MULTILINE).strip()
 
     try:

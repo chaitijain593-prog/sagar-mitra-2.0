@@ -1,5 +1,6 @@
 import os
 import math
+from typing import cast
 import requests
 import pandas as pd
 
@@ -27,7 +28,7 @@ def _query_local_csv(user_lat: float, user_lon: float) -> str:
     best_row = None
     
     for _, row in df.iterrows():
-        dist = calculate_distance(user_lat, user_lon, float(row['Latitude']), float(row['Longitude']))
+        dist = calculate_distance(user_lat, user_lon, float(cast(float, row['Latitude'])), float(cast(float, row['Longitude'])))
         if dist < min_dist:
             min_dist = dist
             best_row = row
