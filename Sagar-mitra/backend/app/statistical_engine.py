@@ -331,3 +331,119 @@ class ArgoStatisticalAnomalyEngine:
 
 
 # ---------------------------------------------------------------------- #
+# PFZ STATISTICAL GROUNDING LAYER
+# ---------------------------------------------------------------------- #
+class PFZStatisticalValidator:
+    """
+    Statistical grounding layer for ML-predicted Potential Fishing Zones (PFZ).
+
+    A Random Forest / XGBoost classifier trained to flag PFZ coordinates can
+    report unrealistically high test accuracy (95%+) because the engineered
+    features correlate too tightly with the label, or the label itself is
+    noisy/leaky. Before ORCA surfaces a "predicted PFZ" to a fisherman, these
+    two independent, classical statistical checks confirm the prediction is
+    grounded in real, physically anomalous ocean conditions rather than being
+    a model artifact:
+
+      1. Z-Test  (zscore_baseline_check) -- is the real-time SST/salinity at
+         the predicted coordinate a genuine statistical outlier against the
+         known Arabian Sea historical climatology? Confirms the zone is
+         physically anomalous (e.g. consistent with upwelling) rather than
+         an average, unremarkable patch of ocean the model mislabeled.
+
+      2. KS-Test (ks_distribution_check) -- does the distribution of
+         environmental readings *inside* the predicted PFZ differ
+         significantly from a sample of readings in known barren (non-PFZ)
+         water? A significant KS result shows the model is separating two
+         distinct oceanographic populations, not making random guesses.
+    """
+
+    # Arabian Sea baseline climatology (mean/std). Override with values
+    # computed from real historical data (e.g. DataStore.calibrated_clim)
+    # wherever available -- these are permissive fallback defaults.
+    DEFAULT_BASELINE = {
+        "sst": {"mu": 27.8, "sigma": 1.1},
+        "salinity": {"mu": 35.5, "sigma": 0.6},
+        "chlorophyll": {"mu": 0.35, "sigma": 0.25},
+    }
+
+    def __init__(self, baseline: Optional[dict] = None):
+        self.baseline = baseline or self.DEFAULT_BASELINE
+
+    @staticmethod
+    def _zscore(x: float, mu: float, sigma: float) -> tuple[float, float]:
+        sigma = sigma if sigma > 0 else 1e-6
+        z = (x - mu) / sigma
+        p_value = float(2 * (1 - stats.norm.cdf(abs(z))))
+        return float(z), p_value
+
+    def zscore_baseline_check(self, parameter: str, observed_value: float,
+                               z_threshold: float = 2.0) -> dict:
+        """Tier 1 -- Z-Test for Baseline Comparison (see class docstring)."""
+        if parameter not in self.baseline:
+            raise ValueError(f"No baseline climatology configured for '{parameter}'.")
+        mu = self.baseline[parameter]["mu"]
+        sigma = self.baseline[parameter]["sigma"]
+        z, p_value = self._zscore(observed_value, mu, sigma)
+        return {
+            "parameter": parameter,
+            "observed_value": round(float(observed_value), 3),
+            "baseline_mean": mu,
+            "baseline_sigma": sigma,
+            "z_score": round(z, 3),
+            "p_value": round(p_value, 5),
+            "is_anomalous": bool(abs(z) >= z_threshold and p_value < 0.05),
+        }
+
+    @staticmethod
+    def ks_distribution_check(pfz_samples, barren_samples, p_threshold: float = 0.05) -> dict:
+        """Tier 2 -- KS-Test for Distribution Validation (see class docstring)."""
+        pfz_samples = np.asarray(pfz_samples, dtype=float)
+        barren_samples = np.asarray(barren_samples, dtype=float)
+        if len(pfz_samples) < 2 or len(barren_samples) < 2:
+            return {
+                "ks_statistic": 0.0,
+                "p_value": 1.0,
+                "distributions_differ": False,
+                "note": "Insufficient samples for a KS test (need >= 2 per group).",
+            }
+        d_stat, p_value = stats.ks_2samp(pfz_samples, barren_samples)
+        return {
+            "ks_statistic": round(float(d_stat), 4),
+            "p_value": round(float(p_value), 5),
+            "distributions_differ": bool(p_value < p_threshold),
+        }
+
+    def validate_prediction(self, pfz_point: Dict[str, float],
+                             pfz_samples, barren_samples) -> dict:
+        """
+        Runs both checks for a single ML-flagged PFZ coordinate.
+
+        pfz_point: dict of real-time readings at the predicted coordinate,
+            e.g. {"sst": 25.1, "salinity": 34.9, "chlorophyll": 0.42}.
+        pfz_samples / barren_samples: 1D arrays of a single parameter's
+            readings from inside the predicted zone vs. known barren water
+            (e.g. chlorophyll concentrations), used for the KS test.
+
+        Returns a combined verdict: the prediction is only considered
+        "statistically_grounded" if the zone is both a genuine baseline
+        outlier AND distributionally distinct from barren water.
+        """
+        zscore_results = {
+            param: self.zscore_baseline_check(param, value)
+            for param, value in pfz_point.items()
+            if param in self.baseline
+        }
+        ks_result = self.ks_distribution_check(pfz_samples, barren_samples)
+
+        grounded = ks_result["distributions_differ"] and any(
+            r["is_anomalous"] for r in zscore_results.values()
+        )
+        return {
+            "zscore_checks": zscore_results,
+            "ks_test": ks_result,
+            "statistically_grounded": grounded,
+        }
+
+
+# ---------------------------------------------------------------------- #
