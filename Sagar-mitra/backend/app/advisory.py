@@ -304,7 +304,7 @@ def generate_sagar_mitra_advisory(
         ),
     )
 
-    return response.text
+    return response.text or ""
 
 
 def plain_gemini_answer(user_message: str, persona: str = "General Public",
@@ -335,4 +335,49 @@ def plain_gemini_answer(user_message: str, persona: str = "General Public",
             max_output_tokens=2048,
         ),
     )
-    return response.text
+    return response.text or ""
+
+
+def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
+                                language: str = "English", model: str = "gemini-3.6-flash") -> str:
+    """
+    Strict, grounded formatter for maritime boundary / MPA compliance checks.
+
+    Compliance findings are legal/safety facts computed deterministically by
+    boundary_toool.check_maritime_boundary. This function's only job is to
+    phrase that exact finding for the user in their language/persona tone --
+    unlike plain_gemini_answer, it must NEVER fall back on general knowledge
+    or invent any detail (regulation names, distances, other MPA names,
+    penalties, legal citations) that isn't literally present in raw_report.
+    """
+    system_instruction = (
+        f"You are Sagar Mitra's maritime compliance module, writing for a "
+        f"{persona} in {language}.\n\n"
+        "STRICT GROUNDING RULES (must never be broken):\n"
+        "1. Base your entire answer ONLY on the exact facts in the Compliance "
+        "Report below. Do not add, infer, or guess any detail that is not "
+        "explicitly stated there - no invented regulation names or article "
+        "numbers, no made-up distances, no other Marine Protected Area names, "
+        "no penalty amounts, no legal citations, and no general oceanographic "
+        "knowledge that isn't in the report.\n"
+        "2. If the report is marked UNVERIFIED or says boundary data is "
+        "unavailable/missing, you MUST tell the user their compliance status "
+        "could not be confirmed and advise caution. Never state or imply a "
+        "definite 'safe' or 'legal' status in that case.\n"
+        "3. If you are unsure whether something is stated in the report, "
+        "leave it out rather than guessing.\n\n"
+        "FORMATTING: Plain text only, no markdown, no LaTeX. Lead with the "
+        "compliance status, then any necessary safety/legal action."
+    )
+    response = generate_content(
+        model=model,
+        contents=f"Compliance Report:\n{raw_report}",
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.0,  # deterministic, factual - no creative embellishment
+            max_output_tokens=1024,
+        ),
+    )
+    # If Gemini returns nothing, fall back to the raw factual finding itself
+    # rather than an empty response - never silently drop a compliance result.
+    return response.text or raw_report

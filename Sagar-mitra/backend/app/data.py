@@ -13,6 +13,7 @@ DATA SOURCE PRIORITY:
      finished separately.
 """
 import os
+from typing import cast
 import numpy as np
 import pandas as pd
 
@@ -133,20 +134,20 @@ class DataStore:
         real Arabian Sea D20 depths of 500-600m).
         """
         surface = df[df["PRES"] <= 30]
-        temp_mu = float(surface["TEMP"].mean()) if len(surface) else 27.5
-        temp_sigma = float(surface["TEMP"].std()) if len(surface) > 1 else 0.9
+        temp_mu = float(cast(float, surface["TEMP"].mean())) if len(surface) else 27.5
+        temp_sigma = float(cast(float, surface["TEMP"].std())) if len(surface) > 1 else 0.9
 
-        sal_median = float(df["PSAL"].median())
-        sal_mad = float((df["PSAL"] - sal_median).abs().median())
+        sal_median = float(cast(float, df["PSAL"].median()))
+        sal_mad = float(cast(float, (df["PSAL"] - sal_median).abs().median()))
 
         # D20: depth (PRES as proxy) of first crossing below 20C, per cast
         # (grouped by lat/lon/time -- each unique combo ~= one real cast).
         d20_values = []
-        for _, cast in df.groupby(["LATITUDE", "LONGITUDE", "JULD"]):
-            cast = cast.sort_values("PRES")
-            below = cast[cast["TEMP"] <= 20.0]
+        for _, group in df.groupby(["LATITUDE", "LONGITUDE", "JULD"]):
+            group = group.sort_values("PRES")
+            below = group[group["TEMP"] <= 20.0]
             if not below.empty:
-                d20_values.append(float(below["PRES"].iloc[0]))
+                d20_values.append(float(cast(pd.Series, below["PRES"]).iloc[0]))
         d20_mu = float(np.mean(d20_values)) if d20_values else 60.0
         d20_sigma = float(np.std(d20_values)) if len(d20_values) > 1 else 8.0
 
@@ -191,9 +192,9 @@ class DataStore:
         points = []
         for (_, row), zi in zip(nearby.iterrows(), z):
             points.append({
-                "lat": round(float(row["LATITUDE"]), 3),
-                "lon": round(float(row["LONGITUDE"]), 3),
-                "temp": round(float(row["TEMP"]), 2),
+                "lat": round(float(cast(float, row["LATITUDE"])), 3),
+                "lon": round(float(cast(float, row["LONGITUDE"])), 3),
+                "temp": round(float(cast(float, row["TEMP"])), 2),
                 "category": categorize(zi),
             })
         return points
@@ -222,7 +223,7 @@ class DataStore:
         if len(nearby) < min_points:
             return None
         cols = ["LATITUDE", "LONGITUDE", "PRES", "TEMP", "PSAL", "JULD"]
-        profile = nearby[cols].sort_values("PRES").reset_index(drop=True)
+        profile = cast(pd.DataFrame, nearby[cols]).sort_values("PRES").reset_index(drop=True)
         profile["LATITUDE"] = lat
         profile["LONGITUDE"] = lon
         return profile
@@ -236,7 +237,9 @@ class DataStore:
                     (df["PRES"] <= 30)]
         if nearby.empty:
             return None
-        daily = nearby.groupby(nearby["JULD"].dt.date)["TEMP"].mean().reset_index()
+        juld_dates = cast(pd.Series, nearby["JULD"]).dt.date
+        daily_means = cast(pd.Series, nearby.groupby(juld_dates)["TEMP"].mean())
+        daily = daily_means.reset_index()
         daily.columns = ["DATE", "CT"]
         if len(daily) < 5:
             return None
