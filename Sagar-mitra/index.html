@@ -1194,17 +1194,17 @@
 
           <div class="telemetry-metrics-row">
             <div class="telemetry-metric">
-              <div class="telemetry-metric-label"><span>SST Anomaly</span><span>85%</span></div>
+              <div class="telemetry-metric-label"><span>SST Anomaly</span><span id="telemetrySSTLabel">--</span></div>
               <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetrySST" style="background:#38bdf8;"></div></div>
             </div>
 
             <div class="telemetry-metric">
-              <div class="telemetry-metric-label"><span>Chlorophyll Gradient</span><span>72%</span></div>
+              <div class="telemetry-metric-label"><span>Chlorophyll Gradient</span><span id="telemetryChlorophyllLabel">--</span></div>
               <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetryChlorophyll" style="background:#10b981;"></div></div>
             </div>
 
             <div class="telemetry-metric">
-              <div class="telemetry-metric-label"><span>ML Confidence Score</span><span>91%</span></div>
+              <div class="telemetry-metric-label"><span>ML Confidence Score</span><span id="telemetryMLLabel">--</span></div>
               <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetryML" style="background:#a78bfa;"></div></div>
             </div>
           </div>
@@ -1617,7 +1617,10 @@
           name: "Kochi Shoal PFZ",
           coordinates: [[10.4, 75.2], [10.4, 75.8], [9.9, 75.8], [9.9, 75.2]]
         }
-      ]
+      ],
+      // No real telemetry when the backend is unreachable -- show "N/A"
+      // rather than fabricating a number (see updateTelemetryBars below).
+      telemetry: { sst_anomaly_pct: null, chlorophyll_gradient_pct: null, ml_confidence_pct: null }
     };
 
     // -------------------------------------------------------------
@@ -1665,13 +1668,18 @@
         
         if (!res.ok) throw new Error("Backend not responding correctly");
         const backendData = await res.json();
-        
-        // Map the LangGraph backend response to match your UI's expected variables
+
+        // Map the backend response to match the UI's expected variables.
+        // vessel_coord uses the backend's RESOLVED coordinates, not the raw
+        // GPS position sent above -- if the message named a place ("PFZ
+        // near Chennai"), the backend re-centers on that place, and the map
+        // should follow it instead of staying pinned to the vessel's GPS.
         parsedData = {
-          vessel_coord: coords,
-          hazard_status: backendData.details?.compliance?.status || "SAFE", 
+          vessel_coord: backendData.coordinates || coords,
+          hazard_status: backendData.hazard_status || "SAFE",
           alerts: [backendData.advisory || "No specific advisory generated."],
-          pfz_location: backendData.details?.fishing?.zones || []
+          pfz_location: backendData.pfz_location || [],
+          telemetry: backendData.telemetry || null,
         };
       } catch (err) {
         console.error("API Connection Error:", err);
@@ -1686,6 +1694,7 @@
       plotRoute(parsedData.vessel_coord, parsedData.pfz_location);
       appendAdvisoryCard(parsedData);
       setLastKnownState(parsedData.vessel_coord, parsedData.hazard_status);
+      updateTelemetryBars(parsedData.telemetry);
     }
 
     // -------------------------------------------------------------
@@ -1706,13 +1715,27 @@
     }
 
     // -------------------------------------------------------------
-    // 12. PREDICTION TELEMETRY (MOCK VALUES)
+    // 12. PREDICTION TELEMETRY (REAL VALUES FROM /api/orchestrate)
     // -------------------------------------------------------------
-    function seedTelemetryBars() {
-      const bars = { telemetrySST: 85, telemetryChlorophyll: 72, telemetryML: 91 };
-      Object.entries(bars).forEach(([id, pct]) => {
-        const el = document.getElementById(id);
-        if (el) requestAnimationFrame(() => { el.style.width = `${pct}%`; });
+    // telemetry = { sst_anomaly_pct, chlorophyll_gradient_pct, ml_confidence_pct },
+    // each either a real 0-100 number computed by the backend (Z-Test
+    // confidence for the first two, the trained PFZ classifier's own
+    // predict_proba for the third) or null when that signal isn't
+    // available yet (e.g. the ML model hasn't been trained -- see
+    // backend/scripts/train_pfz_model.py) -- shown honestly as "N/A"
+    // rather than a fabricated placeholder number.
+    function updateTelemetryBars(telemetry) {
+      const metrics = {
+        telemetrySST: { pct: telemetry?.sst_anomaly_pct, labelId: "telemetrySSTLabel" },
+        telemetryChlorophyll: { pct: telemetry?.chlorophyll_gradient_pct, labelId: "telemetryChlorophyllLabel" },
+        telemetryML: { pct: telemetry?.ml_confidence_pct, labelId: "telemetryMLLabel" },
+      };
+      Object.entries(metrics).forEach(([barId, { pct, labelId }]) => {
+        const bar = document.getElementById(barId);
+        const label = document.getElementById(labelId);
+        const hasValue = typeof pct === "number" && !Number.isNaN(pct);
+        if (bar) requestAnimationFrame(() => { bar.style.width = `${hasValue ? pct : 0}%`; });
+        if (label) label.textContent = hasValue ? `${pct}%` : "N/A";
       });
     }
 
@@ -1721,7 +1744,7 @@
     plotVesselMarker(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord[0], MOCK_ORCHESTRATOR_RESPONSE.vessel_coord[1]);
     plotPFZZones(MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
     plotRoute(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord, MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
-    seedTelemetryBars();
+    updateTelemetryBars(MOCK_ORCHESTRATOR_RESPONSE.telemetry);
 
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
