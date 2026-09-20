@@ -20,7 +20,6 @@ from app.session_store import store as session_store
 from app.data import store
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
 from app.advisory import _is_quota_error, _is_permission_denied_error
-from app.route_tool import compute_safe_route
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -63,11 +62,6 @@ class OrchestrateRequest(BaseModel):
     user_message: str
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
     session_id: str | None = None  # carried across turns for conversation memory
-
-
-class SafeRouteRequest(BaseModel):
-    start: list[float]  # [lat, lon] vessel position
-    end: list[float]    # [lat, lon] destination (e.g. a PFZ)
 
 
 # --- Dashboard signal derivation ------------------------------------------
@@ -327,30 +321,6 @@ def run_orchestration(request: OrchestrateRequest):
             if (day_offset > 0 or target_hour is not None) else None
         ),
     }
-
-
-# --- Feature 2: Weather-Aware Safe Route Optimization --------------------
-@app.post("/api/route/safe")
-def safe_route(request: SafeRouteRequest):
-    """
-    Computes an A*-based safe trajectory from `start` to `end`, treating
-    rough seas (wave height > 2.5m), severe weather zones, and restricted
-    EEZ/MPA boundaries as impassable obstacles. Returns the path plus
-    estimated trip duration and fuel-use metrics.
-    """
-    if len(request.start) != 2 or len(request.end) != 2:
-        raise HTTPException(status_code=422, detail="start and end must each be [lat, lon].")
-
-    try:
-        result = compute_safe_route(tuple(request.start), tuple(request.end))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Route computation failed: {e}")
-
-    if not result.get("success"):
-        raise HTTPException(status_code=422, detail=result.get("message", "No safe route found."))
-
-    return result
 
 
 # --- Feature 1: Regional Language Voice In/Out ---------------------------
