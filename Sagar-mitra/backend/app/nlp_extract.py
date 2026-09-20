@@ -12,7 +12,7 @@ from datetime import date
 from typing import Optional, Tuple
 
 from google.genai import types
-from app.advisory import generate_content
+from app.advisory import generate_content, LITE_MODEL
 
 EXTRACTION_SYSTEM_PROMPT = """
 You are the input-parsing layer for Sagar Mitra, an ocean intelligence system
@@ -43,10 +43,15 @@ Today's date is {today}.
 """
 
 
-def extract_query_parameters(user_message: str, model: str = "gemini-3.6-flash") -> dict:
+def extract_query_parameters(user_message: str, model: str = LITE_MODEL) -> dict:
     """
     Phase 1 NLP: Converts a free-text user query into structured parameters
     for the Statistical Anomaly Engine.
+
+    Runs on the lite model (see advisory.LITE_MODEL) -- structured field
+    extraction is a classification-shaped task, and keeping it off the
+    synthesizer's model means a burst of location lookups can't eat into
+    the quota the final localized advisory needs.
     """
     system_instruction = EXTRACTION_SYSTEM_PROMPT.replace("{today}", date.today().isoformat())
 
