@@ -86,6 +86,15 @@ def _is_quota_error(e: Exception) -> bool:
     ])
 
 
+def _is_permission_denied_error(e: Exception) -> bool:
+    """True for 403 PERMISSION_DENIED errors from the Gemini API (e.g. the
+    key lacks access to a model/feature, billing not enabled). Distinct from
+    _is_quota_error -- rotating keys won't fix this, so callers should show a
+    plain status message instead of retrying or surfacing the raw error."""
+    msg = str(e).lower()
+    return "403" in msg or "permission_denied" in msg or "permission denied" in msg
+
+
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
