@@ -171,3 +171,54 @@ def extract_coordinates_from_message(user_message: str) -> Optional[Tuple[float,
             pass  # best-effort only -- fall back to the GPS coordinate on any failure
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Day/time-of-day resolver for the ORCA orchestrator (/api/orchestrate)
+# ---------------------------------------------------------------------------
+# satellite_tool.py and weather_alert_tool.py previously only ever fetched
+# Open-Meteo's "current" endpoint, so "is it safe to sail tomorrow morning?"
+# was silently answered with right-now data. Regex-only (no Gemini call) so
+# it works even without an API key and never adds latency/quota cost to the
+# common "today" case -- it just returns (0, None), which both tools treat
+# identically to their pre-existing "current conditions" behavior.
+
+_DAY_OFFSET_PATTERNS: Tuple[Tuple[re.Pattern, int], ...] = (
+    (re.compile(r"\bday after tomorrow\b", re.IGNORECASE), 2),
+    (re.compile(r"\btomorrow\b", re.IGNORECASE), 1),
+    (re.compile(r"\b(today|right now|currently|at the moment)\b", re.IGNORECASE), 0),
+)
+
+_TIME_OF_DAY_HOURS: Tuple[Tuple[re.Pattern, int], ...] = (
+    (re.compile(r"\bmorning\b", re.IGNORECASE), 8),
+    (re.compile(r"\bafternoon\b", re.IGNORECASE), 14),
+    (re.compile(r"\b(evening|dusk)\b", re.IGNORECASE), 18),
+    (re.compile(r"\b(night|tonight)\b", re.IGNORECASE), 22),
+)
+
+
+def extract_target_datetime_from_message(message: str) -> Tuple[int, Optional[int]]:
+    """
+    Returns (day_offset, hour_24):
+      - day_offset: 0 = today, 1 = tomorrow, 2 = day after tomorrow.
+      - hour_24: the mentioned time of day (8/14/18/22), or None if the
+        message named no time of day.
+
+    (0, None) means "the message named no future date or time of day" --
+    callers should treat that exactly like their old "current conditions"
+    behavior. Any other result means the tools should fetch a genuine
+    forecast for that specific day/hour instead.
+    """
+    day_offset = 0
+    for pattern, offset in _DAY_OFFSET_PATTERNS:
+        if pattern.search(message or ""):
+            day_offset = offset
+            break
+
+    hour = None
+    for pattern, h in _TIME_OF_DAY_HOURS:
+        if pattern.search(message or ""):
+            hour = h
+            break
+
+    return day_offset, hour

@@ -36,7 +36,7 @@ from google.genai import types
 from app.advisory import generate_content, LITE_MODEL
 from app.llm_cache import TTLCache, normalize_key
 
-VALID_AGENTS = ("navigation", "fishing", "compliance", "historical", "hazard", "analytics")
+VALID_AGENTS = ("navigation", "fishing", "compliance", "historical", "hazard", "analytics", "regional")
 
 _cache = TTLCache(ttl_seconds=300)  # short TTL -- routing decisions go stale fast in a live convo
 
@@ -50,7 +50,7 @@ user's language/persona/intent. Respond with ONLY valid JSON, no markdown,
 matching exactly this schema:
 
 {
-  "agents": [<subset of "navigation","fishing","compliance","historical","hazard","analytics", at least one>],
+  "agents": [<subset of "navigation","fishing","compliance","historical","hazard","analytics","regional", at least one>],
   "language": "<name of the language the user wrote in, e.g. English, Hindi, Marathi>",
   "persona": "<one of: Fisherman, Student, Researcher, General Public>",
   "query_intent": "<short phrase describing what the user wants>"
@@ -58,12 +58,15 @@ matching exactly this schema:
 
 Agent responsibilities:
 - navigation: live wave height / sea temperature / tide, safety-to-sail check
-- fishing: nearest Potential Fishing Zone + chlorophyll concentration
+- fishing: nearest Potential Fishing Zone + chlorophyll concentration (for a SINGLE location)
 - compliance: EEZ boundary / Marine Protected Area legal checks
 - historical: past trends, historical extremes, "why did X decline", graphs/charts/pie charts
 - hazard: lightning / thunderstorm / cyclone risk
 - analytics: deeper statistical anomaly analysis (marine heatwave, salinity anomaly,
   unusual conditions) -- pick this for "why", "unusual", "anomaly", "explain" style questions
+- regional: compares MULTIPLE fishing zones/regions against each other by chlorophyll and
+  SST -- pick this for "which regions/areas/zones show high chlorophyll and favorable SST",
+  "best zones today", "compare fishing zones" style questions (plural regions, not one spot)
 
 If the latest message is a REFERENTIAL follow-up ("those same conditions",
 "what about tomorrow instead", "and there?") rather than a fresh, self-
@@ -99,6 +102,10 @@ def _keyword_fallback(message: str, last_agents: Optional[List[str]] = None) -> 
         agents.append("historical")
     if any(k in text for k in ("why", "decline", "anomaly", "unusual", "heatwave")):
         agents.append("analytics")
+    if any(k in text for k in ("which regions", "which areas", "which zones", "which fishing zones",
+                                "compare zones", "compare regions", "best zones", "best regions",
+                                "across the coast", "multiple zones", "several zones")):
+        agents.append("regional")
     if not agents:
         # No keyword matched -- most likely a referential follow-up
         # ("those same conditions", "and what about X instead"). Keep
