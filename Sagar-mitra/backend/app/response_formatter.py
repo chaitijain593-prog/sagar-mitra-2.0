@@ -26,16 +26,19 @@ AGENT_DISPLAY_NAMES = {
         "navigation": "Navigation & Weather", "fishing": "Fishing Zones",
         "compliance": "Legal & Boundary", "historical": "Historical Trends",
         "hazard": "Storm & Lightning Hazards", "analytics": "Ocean Analytics",
+        "regional": "Regional Comparison",
     },
     "Hindi": {
         "navigation": "नौवहन और मौसम", "fishing": "मछली पकड़ने के क्षेत्र",
         "compliance": "कानूनी और सीमा", "historical": "ऐतिहासिक रुझान",
         "hazard": "तूफान और बिजली का खतरा", "analytics": "समुद्री विश्लेषण",
+        "regional": "क्षेत्रीय तुलना",
     },
     "Marathi": {
         "navigation": "नौकानयन आणि हवामान", "fishing": "मासेमारी क्षेत्र",
         "compliance": "कायदेशीर आणि सीमा", "historical": "ऐतिहासिक कल",
         "hazard": "वादळ आणि वीज धोका", "analytics": "सागरी विश्लेषण",
+        "regional": "प्रादेशिक तुलना",
     },
 }
 

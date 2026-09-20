@@ -6,6 +6,7 @@ from app.boundary_toool import check_maritime_boundary
 from app.historical import sagar_mitra_historical_query
 from app.weather_alert_tool import get_weather_hazard_alerts
 from app.statistical_engine import ArgoStatisticalAnomalyEngine
+from app.regional_scan import scan_favorable_regions, format_regional_scan
 from app.data import store as data_store
 from app.state import AgentState
 
@@ -18,7 +19,11 @@ def check_marine_hazards(lat: float, lon: float) -> str:
 def navigation_node(state: AgentState) -> dict:
     coordinates = state.get("coordinates", [18.9, 72.8])
     lat, lon = coordinates[0], coordinates[1]
-    result = check_marine_hazards.invoke({"lat": lat, "lon": lon})
+    # day_offset/target_hour let "is it safe tomorrow morning?" fetch a real
+    # forecast instead of silently answering with right-now conditions --
+    # see satellite_tool.get_live_ocean_conditions.
+    result = get_live_ocean_conditions(lat, lon, day_offset=state.get("day_offset", 0),
+                                        target_hour=state.get("target_hour"))
     return {
         "hazard_alerts": [result],
         "final_output": f"Navigation Report: {result}"
@@ -79,7 +84,8 @@ def historical_node(state: AgentState) -> dict:
 def hazard_node(state: AgentState) -> dict:
     coordinates = state.get("coordinates", [18.9, 72.8])
     lat, lon = coordinates[0], coordinates[1]
-    result = get_weather_hazard_alerts(lat, lon)
+    result = get_weather_hazard_alerts(lat, lon, day_offset=state.get("day_offset", 0),
+                                        target_hour=state.get("target_hour"))
     alerts = [result["summary"]] if (result["lightning_alert"] or result["cyclone_alert"]) else []
     return {
         "final_output": f"Hazard Alert: {result['lightning_detail']} {result['cyclone_detail']}",
@@ -114,3 +120,11 @@ def analytics_node(state: AgentState) -> dict:
     lm = result.get("layer_metrics", {})
     evidence = f"Mixed Layer Depth {lm.get('MLD')}m, Isothermal Layer Depth {lm.get('ILD')}m, Barrier Layer {lm.get('BLT')}m"
     return {"final_output": f"Ocean Analytics: {summary} ({evidence})"}
+
+
+# 7. Regional Worker (Powered by regional_scan.py -- ranks today's real PFZ
+# zones by chlorophyll/SST/ML-confidence, for "which regions look
+# favorable" style questions the single-point tools above can't answer.)
+def regional_node(state: AgentState) -> dict:
+    results = scan_favorable_regions(top_n=5)
+    return {"final_output": format_regional_scan(results)}
