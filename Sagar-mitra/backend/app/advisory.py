@@ -28,6 +28,8 @@ from typing import Dict, Any, Literal
 from google import genai
 from google.genai import types
 
+from app.error_utils import is_quota_or_unavailable_error
+
 
 # ---------------------------------------------------------------------------
 # 1. API CLIENT SETUP
@@ -102,6 +104,49 @@ def _get_client() -> genai.Client:
     return _client
 
 
+def require_gemini_key() -> None:
+    """
+    Strict startup check -- called from app/graph.py's create_orca_graph()
+    (which app/main.py runs at import time), so a missing key fails the
+    server's own startup with clear terminal instructions instead of
+    starting normally and letting every request silently degrade to the
+    raw-data fallback formatter ("ORCA's AI summarizer is temporarily
+    busy") with no visible signal to whoever's running it.
+    """
+    if _KEYS:
+        return
+    print("=" * 72)
+    print("ORCA STARTUP ERROR: No Gemini API key configured.")
+    print("=" * 72)
+    print("ORCA needs a Gemini API key to generate localized, persona-aware")
+    print("advisories. Without one, every request will silently fall back to")
+    print("the raw-data formatter (\"ORCA's AI summarizer is temporarily busy\").")
+    print()
+    print("To fix this:")
+    print("  1. Copy backend/.env.example to backend/.env")
+    print("  2. Get a free key at https://aistudio.google.com/apikey")
+    print("  3. Add it to backend/.env as GEMINI_API_KEY=<your key>")
+    print("     (or GEMINI_API_KEYS=key1,key2,... for automatic quota rotation)")
+    print("  4. Restart the server: uvicorn app.main:app --reload")
+    print("=" * 72)
+    raise SystemExit(1)
+
+
+# ---------------------------------------------------------------------------
+# 1c. MODEL TIERING -- keep the synthesizer's quota free of classification traffic
+# ---------------------------------------------------------------------------
+# Gemini's free-tier quota is scoped PER PROJECT PER MODEL (confirmed live:
+# a 429 on gemini-3.6-flash did not block a call to gemini-flash-lite-latest
+# in the same project/key). Mechanical, structured-output tasks -- picking
+# agents, picking a data-lookup tool, extracting a lat/lon -- don't need the
+# strongest model and previously competed with the user-facing synthesis
+# call for the SAME model's daily quota. Routing them to a separate lite
+# model gives the final localized/persona-aware advisory its own quota pool,
+# so a burst of routing calls can no longer starve the one call that
+# actually has to succeed in the user's language.
+LITE_MODEL = "gemini-flash-lite-latest"
+
+
 def generate_content(model: str, contents, config=None):
     """
     Drop-in replacement for client.models.generate_content(...) that
@@ -121,6 +166,30 @@ def generate_content(model: str, contents, config=None):
                 continue
             raise
     raise RuntimeError(f"All Gemini API keys exhausted/failed. Last error: {last_err}")
+
+
+def generate_content_with_fallback(primary_model: str, contents, config=None,
+                                    fallback_model: str = LITE_MODEL):
+    """
+    Tries `primary_model` first; if it fails with a quota (429) OR
+    availability (503 "high demand") error, retries ONCE on `fallback_model`
+    -- a separate quota pool, see LITE_MODEL -- before giving up.
+
+    _is_quota_error() (used for key rotation, above) only recognizes 429s,
+    since rotating API KEYS can't fix a 503 -- that's a whole-model outage,
+    not a per-key limit. Rotating MODEL can, which is what this adds: the
+    user-facing synthesis calls (synthesize_advisory, format_compliance_
+    advisory) get a real second chance at producing a localized answer
+    instead of immediately dropping to the raw-text fallback the moment the
+    strong model has a bad moment.
+    """
+    try:
+        return generate_content(model=primary_model, contents=contents, config=config)
+    except Exception as e:
+        if is_quota_or_unavailable_error(e) and primary_model != fallback_model:
+            print(f"[advisory] {primary_model} unavailable ({e}); retrying on {fallback_model}")
+            return generate_content(model=fallback_model, contents=contents, config=config)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +385,54 @@ def generate_sagar_mitra_advisory(
     return response.text or ""
 
 
+def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: str = "English",
+                         user_message: str = "", history_text: str = "",
+                         model: str = "gemini-3.6-flash") -> str:
+    """
+    Combines the raw findings from one or more ORCA specialist agents
+    (already live, real data -- wave height, PFZ location, boundary status,
+    historical trends, hazard alerts, statistical anomalies) into ONE
+    coherent, persona/language-aware advisory.
+
+    Unlike plain_gemini_answer (which assumes no real data was found and
+    must hedge accordingly), this assumes real data WAS gathered by the
+    dispatch step and must be reflected honestly, not hedged as "general
+    guidance" or re-derived from the model's own background knowledge.
+    """
+    persona_block = PERSONA_SYSTEM_PROMPTS.get(persona, PERSONA_SYSTEM_PROMPTS["Fisherman"])
+    system_instruction = (
+        persona_block.strip() + "\n\n"
+        f"LANGUAGE REQUIREMENT: Write your entire response natively and fluently in {language}. "
+        "Do not mix in English unless that language commonly borrows a term for something.\n\n"
+        "GROUNDING: The data below was just gathered live by ORCA's specialist agents for this "
+        "exact query. Base your answer on it -- never claim you lack real-time data, and never "
+        "invent a number or fact that isn't in it. If a section reports an error or missing "
+        "data, say so honestly rather than filling the gap yourself.\n\n"
+        "TEMPORAL CONSISTENCY: If the data below mixes a FUTURE forecast (e.g. wave/weather "
+        "conditions for 'tomorrow') with a section explicitly marked as TODAY's CURRENT/LIVE "
+        "reading (e.g. a PFZ/chlorophyll note saying so), you MUST preserve that distinction "
+        "clearly in your answer -- state plainly which figures are the future forecast and "
+        "which are today's live reading. Never imply the current/live figures are themselves "
+        "a forecast for that future time.\n\n"
+        "FORMATTING: Plain text only, no markdown (no **bold**, no # headers, no backticks), "
+        "no LaTeX ($...$)."
+    )
+    history_block = f"Conversation so far:\n{history_text}\n\n" if history_text else ""
+    user_prompt = (
+        f"{history_block}The user just asked: \"{user_message}\"\n\n"
+        f"Raw data gathered by ORCA's specialist agents:\n{raw_report}\n\n"
+        "Answer the user's actual question directly first, then mention any other relevant "
+        "findings from the data above."
+    )
+    response = generate_content_with_fallback(
+        primary_model=model, contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction, temperature=0.4, max_output_tokens=2048,
+        ),
+    )
+    return response.text or raw_report
+
+
 def plain_gemini_answer(user_message: str, persona: str = "General Public",
                          language: str = "English", model: str = "gemini-3.6-flash") -> str:
     """
@@ -378,8 +495,8 @@ def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
         "FORMATTING: Plain text only, no markdown, no LaTeX. Lead with the "
         "compliance status, then any necessary safety/legal action."
     )
-    response = generate_content(
-        model=model,
+    response = generate_content_with_fallback(
+        primary_model=model,
         contents=f"Compliance Report:\n{raw_report}",
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
