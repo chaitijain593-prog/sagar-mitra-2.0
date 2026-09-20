@@ -2,6 +2,7 @@ import os
 import re
 import traceback
 import uuid
+from datetime import date, timedelta
 from dotenv import load_dotenv
 load_dotenv()  # reads .env in the working directory, if present
 
@@ -14,7 +15,7 @@ from app.boundary_toool import check_maritime_boundary
 from app.pfz_tool import get_nearest_pfz
 from app.satellite_tool import get_live_ocean_conditions
 from app.chlorophyll_tool import get_chlorophyll_data
-from app.nlp_extract import extract_coordinates_from_message
+from app.nlp_extract import extract_coordinates_from_message, extract_target_datetime_from_message
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
 from app.weather_alert_tool import get_weather_hazard_alerts
@@ -181,11 +182,20 @@ def run_orchestration(request: OrchestrateRequest):
     else:
         coordinates = request.coordinates
 
+    # "Is it safe tomorrow morning?" -- regex-only, no LLM call, so it never
+    # adds latency/quota cost and still works with no Gemini key configured.
+    # (0, None) means no future date/time was mentioned, in which case every
+    # downstream tool call below behaves exactly as it did before this was
+    # added (fetches "current" conditions).
+    day_offset, target_hour = extract_target_datetime_from_message(request.user_message)
+
     # Package incoming request into the AgentState format
     initial_state: AgentState = {
         "user_message": request.user_message,
         "coordinates": coordinates,
         "session_id": session_id,
+        "day_offset": day_offset,
+        "target_hour": target_hour,
         "history": history,
         "last_agents": last_agents,
         "next_steps": [],
@@ -207,17 +217,21 @@ def run_orchestration(request: OrchestrateRequest):
 
     lat, lon = coordinates[0], coordinates[1]
     boundary_report = check_maritime_boundary(lat, lon)
-    ocean_report = get_live_ocean_conditions(lat, lon)
+    # PFZ/chlorophyll have no free forecast product to fall back to (INCOIS's
+    # PFZ advisory and NOAA's chlorophyll composite are both "today only"),
+    # so those two stay as-is -- only wave/weather conditions and hazard
+    # alerts can honestly answer a future-dated question.
+    ocean_report = get_live_ocean_conditions(lat, lon, day_offset=day_offset, target_hour=target_hour)
     pfz_report = get_nearest_pfz(lat, lon)
     chlorophyll_report = get_chlorophyll_data(lat, lon)
-    hazard_report = get_weather_hazard_alerts(lat, lon)
+    hazard_report = get_weather_hazard_alerts(lat, lon, day_offset=day_offset, target_hour=target_hour)
 
     pfz_zones = _derive_pfz_zones(pfz_report)
     route = None
     if pfz_zones:
         target = _zone_centroid(pfz_zones[0])
         try:
-            route = plan_safe_route((lat, lon), (target[0], target[1]))
+            route = plan_safe_route((lat, lon), (target[0], target[1]), day_offset=day_offset, target_hour=target_hour)
         except Exception as e:
             traceback.print_exc()
             route = {
@@ -256,4 +270,12 @@ def run_orchestration(request: OrchestrateRequest):
         "cyclone_alert": hazard_report["cyclone_alert"],
         "hazard_summary": hazard_report["summary"],
         "route": route,
+        # Tells the frontend/user which date+time the wave/weather/hazard
+        # fields above actually describe -- None means "current conditions"
+        # (no future date/time was mentioned in the query).
+        "forecast_for": (
+            f"{(date.today() + timedelta(days=max(day_offset, 0))).isoformat()} "
+            f"{(target_hour if target_hour is not None else 8):02d}:00"
+            if (day_offset > 0 or target_hour is not None) else None
+        ),
     }

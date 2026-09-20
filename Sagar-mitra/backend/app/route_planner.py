@@ -40,8 +40,9 @@ def _crosses_mpa(points: List[Point]) -> bool:
     return any(line.intersects(geom) for geom in mpa_geoms)
 
 
-def _sample_wave_height(lat: float, lon: float) -> Optional[float]:
-    report = get_live_ocean_conditions(lat, lon)
+def _sample_wave_height(lat: float, lon: float, day_offset: int = 0,
+                         target_hour: Optional[int] = None) -> Optional[float]:
+    report = get_live_ocean_conditions(lat, lon, day_offset=day_offset, target_hour=target_hour)
     match = _WAVE_RE.search(report)
     return float(match.group(1)) if match else None
 
@@ -62,16 +63,19 @@ def _offset_midpoint(a: Point, b: Point, offset_deg: float, side: int) -> Point:
     return (mid[0] + unit[0] * offset_deg * side, mid[1] + unit[1] * offset_deg * side)
 
 
-def _score_candidate(points: List[Point]) -> Tuple[float, bool, Optional[float]]:
+def _score_candidate(points: List[Point], day_offset: int = 0,
+                      target_hour: Optional[int] = None) -> Tuple[float, bool, Optional[float]]:
     """Lower is better. Returns (score, crosses_mpa, max_wave_sampled)."""
     crosses = _crosses_mpa(points)
-    waves = [w for w in (_sample_wave_height(lat, lon) for lat, lon in points) if w is not None]
+    waves = [w for w in (_sample_wave_height(lat, lon, day_offset, target_hour) for lat, lon in points)
+             if w is not None]
     max_wave = max(waves) if waves else None
     score = (1000.0 if crosses else 0.0) + (max_wave or 0.0)
     return score, crosses, max_wave
 
 
-def plan_safe_route(vessel: Point, target: Point) -> dict:
+def plan_safe_route(vessel: Point, target: Point, day_offset: int = 0,
+                     target_hour: Optional[int] = None) -> dict:
     """
     Returns:
         {
@@ -85,12 +89,17 @@ def plan_safe_route(vessel: Point, target: Point) -> dict:
     `samples` exposes the actual live-sampled points/values behind the
     decision (not just the verdict), so a "Direct" result is visibly backed
     by real numbers rather than looking like a hardcoded default.
+
+    day_offset/target_hour let the wave-hazard check apply to a FUTURE time
+    ("tomorrow morning") instead of only ever checking sea state right now
+    -- see satellite_tool.get_live_ocean_conditions.
     """
     direct = [vessel, target]
     direct_crosses = _crosses_mpa(direct)
     direct_mid = _midpoint(vessel, target)
     direct_points = [vessel, direct_mid, target]  # sample start/mid/end for better coverage
-    direct_samples = [{"lat": p[0], "lon": p[1], "wave_m": _sample_wave_height(*p)} for p in direct_points]
+    direct_samples = [{"lat": p[0], "lon": p[1], "wave_m": _sample_wave_height(*p, day_offset, target_hour)}
+                       for p in direct_points]
     direct_max_wave = max((s["wave_m"] for s in direct_samples if s["wave_m"] is not None), default=None)
     needs_detour = direct_crosses or (direct_max_wave is not None and direct_max_wave >= WAVE_HAZARD_THRESHOLD_M)
 
@@ -107,7 +116,7 @@ def plan_safe_route(vessel: Point, target: Point) -> dict:
     for side in (1, -1):
         detour_point = _offset_midpoint(vessel, target, offset_deg=0.6, side=side)
         path = [vessel, detour_point, target]
-        score, crosses, max_wave = _score_candidate(path)
+        score, crosses, max_wave = _score_candidate(path, day_offset, target_hour)
         candidates.append((score, path, crosses, max_wave))
 
     candidates.sort(key=lambda c: c[0])

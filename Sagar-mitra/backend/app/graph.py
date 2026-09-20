@@ -3,7 +3,7 @@ from langgraph.graph import StateGraph, END
 # Import the real worker nodes -- one function per specialized agent domain
 from app.sub_agents import (
     navigation_node, fishing_node, compliance_node,
-    historical_node, hazard_node, analytics_node,
+    historical_node, hazard_node, analytics_node, regional_node,
 )
 
 # Gemini formatters that keep persona/language/grounding rules
@@ -30,6 +30,7 @@ AGENT_FUNCS = {
     "historical": historical_node,
     "hazard": hazard_node,
     "analytics": analytics_node,
+    "regional": regional_node,
 }
 
 

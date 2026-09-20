@@ -17,13 +17,50 @@ output rather than implying an official warning it can't back up (matching
 the honesty pattern the rest of this codebase already uses in
 boundary_toool.py and pfz_ml.py).
 """
+from datetime import date, timedelta
+from typing import Optional
+
 import requests
 
 _THUNDERSTORM_CODES = {95, 96, 99}
 CYCLONE_WIND_THRESHOLD_KMH = 62.0  # gale force (Beaufort 8+)
 
 
-def get_weather_hazard_alerts(lat: float, lon: float) -> dict:
+def _build_alert_result(code, wind, gusts, label_prefix: str = "") -> dict:
+    """Shared logic: turns a (weather_code, wind_speed, wind_gusts) reading
+    into the alert dict, whether that reading came from the "current"
+    endpoint or a specific hour of the "hourly" forecast array."""
+    lightning = code in _THUNDERSTORM_CODES
+    candidates = [v for v in (wind, gusts) if v is not None]
+    max_wind = max(candidates) if candidates else None
+    cyclone = max_wind is not None and max_wind >= CYCLONE_WIND_THRESHOLD_KMH
+
+    lightning_detail = (
+        f"{label_prefix}Thunderstorm activity detected (WMO code {code}) -- lightning risk."
+        if lightning else f"{label_prefix}No thunderstorm activity detected."
+    )
+    cyclone_detail = (
+        f"{label_prefix}[Proxy] Sustained/gust wind speed {max_wind:.0f} km/h exceeds gale force -- "
+        f"possible cyclonic conditions. This is a wind-speed heuristic, not an official "
+        f"IMD/INCOIS cyclone bulletin."
+        if cyclone else f"{label_prefix}No gale-force winds detected."
+    )
+    parts = []
+    if lightning:
+        parts.append("LIGHTNING RISK")
+    if cyclone:
+        parts.append("CYCLONE WATCH (wind proxy)")
+    summary = " | ".join(parts) if parts else "No lightning or cyclone hazard detected."
+
+    return {
+        "lightning_alert": lightning, "lightning_detail": lightning_detail,
+        "cyclone_alert": cyclone, "cyclone_detail": cyclone_detail,
+        "summary": summary,
+    }
+
+
+def get_weather_hazard_alerts(lat: float, lon: float, day_offset: int = 0,
+                               target_hour: Optional[int] = None) -> dict:
     """
     Returns:
         {
@@ -31,7 +68,19 @@ def get_weather_hazard_alerts(lat: float, lon: float) -> dict:
           "cyclone_alert": bool, "cyclone_detail": str,
           "summary": str,
         }
+
+    day_offset=0 and target_hour=None (the default, and what every existing
+    caller gets) checks "current" conditions -- unchanged from before.
+    Passing a day_offset > 0 or an explicit target_hour instead checks the
+    hourly FORECAST for that day/time, so "any cyclone alerts tomorrow
+    morning?" is answered about tomorrow, not right now.
     """
+    if day_offset <= 0 and target_hour is None:
+        return _get_current_hazard_alerts(lat, lon)
+    return _get_forecast_hazard_alerts(lat, lon, max(day_offset, 0), target_hour if target_hour is not None else 8)
+
+
+def _get_current_hazard_alerts(lat: float, lon: float) -> dict:
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": lat, "longitude": lon,
@@ -42,37 +91,46 @@ def get_weather_hazard_alerts(lat: float, lon: float) -> dict:
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
         current = response.json().get("current", {})
-        code = current.get("weather_code")
-        wind = current.get("wind_speed_10m")
-        gusts = current.get("wind_gusts_10m")
-
-        lightning = code in _THUNDERSTORM_CODES
-        candidates = [v for v in (wind, gusts) if v is not None]
-        max_wind = max(candidates) if candidates else None
-        cyclone = max_wind is not None and max_wind >= CYCLONE_WIND_THRESHOLD_KMH
-
-        lightning_detail = (
-            f"Thunderstorm activity detected (WMO code {code}) -- lightning risk."
-            if lightning else "No thunderstorm activity detected."
+        return _build_alert_result(
+            current.get("weather_code"), current.get("wind_speed_10m"), current.get("wind_gusts_10m"),
         )
-        cyclone_detail = (
-            f"[Proxy] Sustained/gust wind speed {max_wind:.0f} km/h exceeds gale force -- "
-            f"possible cyclonic conditions. This is a wind-speed heuristic, not an official "
-            f"IMD/INCOIS cyclone bulletin."
-            if cyclone else "No gale-force winds detected."
-        )
-        parts = []
-        if lightning:
-            parts.append("LIGHTNING RISK")
-        if cyclone:
-            parts.append("CYCLONE WATCH (wind proxy)")
-        summary = " | ".join(parts) if parts else "No lightning or cyclone hazard detected."
-
+    except requests.exceptions.RequestException as e:
         return {
-            "lightning_alert": lightning, "lightning_detail": lightning_detail,
-            "cyclone_alert": cyclone, "cyclone_detail": cyclone_detail,
-            "summary": summary,
+            "lightning_alert": False, "lightning_detail": f"Network error: {e}",
+            "cyclone_alert": False, "cyclone_detail": f"Network error: {e}",
+            "summary": "Hazard data unavailable (network error).",
         }
+
+
+def _get_forecast_hazard_alerts(lat: float, lon: float, day_offset: int, hour: int) -> dict:
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": lat, "longitude": lon,
+        "hourly": "weather_code,wind_speed_10m,wind_gusts_10m",
+        "timezone": "auto",
+        "forecast_days": min(day_offset + 1, 16),
+    }
+    target_date = (date.today() + timedelta(days=day_offset)).isoformat()
+    label_prefix = f"[Forecast for {target_date} {hour:02d}:00] "
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        hourly = response.json().get("hourly", {})
+        times = hourly.get("time", [])
+        target_str = f"{target_date}T{hour:02d}:00"
+        if target_str not in times:
+            return {
+                "lightning_alert": False, "lightning_detail": f"No forecast data available for {target_date}.",
+                "cyclone_alert": False, "cyclone_detail": f"No forecast data available for {target_date}.",
+                "summary": "Hazard forecast unavailable for that date.",
+            }
+        idx = times.index(target_str)
+        return _build_alert_result(
+            hourly.get("weather_code", [])[idx],
+            hourly.get("wind_speed_10m", [])[idx],
+            hourly.get("wind_gusts_10m", [])[idx],
+            label_prefix=label_prefix,
+        )
     except requests.exceptions.RequestException as e:
         return {
             "lightning_alert": False, "lightning_detail": f"Network error: {e}",
@@ -83,3 +141,4 @@ def get_weather_hazard_alerts(lat: float, lon: float) -> dict:
 
 if __name__ == "__main__":
     print(get_weather_hazard_alerts(18.9, 72.8))
+    print(get_weather_hazard_alerts(18.9, 72.8, day_offset=1, target_hour=8))
