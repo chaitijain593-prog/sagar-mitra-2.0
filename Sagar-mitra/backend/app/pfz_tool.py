@@ -39,6 +39,52 @@ def _query_local_csv(user_lat: float, user_lon: float) -> str:
                 f"Distance: {round(min_dist, 2)} km away.")
     return "No records found in local PFZ dataset."
 
+def get_all_pfz_zones() -> list:
+    """
+    Returns every zone in today's live INCOIS PFZ feed (or the local CSV
+    archive if the live feed is unavailable), as
+    [{"name": str, "lat": float, "lon": float}, ...].
+
+    get_nearest_pfz() above only ever keeps the single closest zone and
+    discards the rest -- fine for "where's the nearest PFZ to me", but it
+    means the system has never been able to answer "which REGIONS look
+    favorable" (a named example query in the brief). This exposes the full
+    list so regional_scan.py can compare/rank them instead of just picking
+    the closest one.
+    """
+    wfs_url = "https://incois.gov.in/geoserver/wfs?request=GetFeature&service=WFS&version=1.1.0&typeName=incois:pfz_today&outputFormat=application/json"
+    zones = []
+    try:
+        response = requests.get(wfs_url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        for feature in data.get('features', []):
+            geometry = feature.get('geometry')
+            properties = feature.get('properties', {})
+            if geometry and geometry.get('coordinates'):
+                pt_lon, pt_lat = geometry['coordinates'][0], geometry['coordinates'][1]
+                landing = properties.get('LandingCenter', properties.get('landing_center', 'Coast'))
+                zones.append({"name": str(landing), "lat": float(pt_lat), "lon": float(pt_lon)})
+        if zones:
+            return zones
+    except Exception:
+        pass
+
+    # Fallback: local CSV archive (same source get_nearest_pfz falls back to)
+    base_dir = os.path.dirname(__file__)
+    csv_path = os.path.join(base_dir, '..', 'data', 'pfz_today.csv')
+    if not os.path.exists(csv_path):
+        return zones
+    df = pd.read_csv(csv_path)
+    for _, row in df.iterrows():
+        zones.append({
+            "name": str(row.get('Landing Center', 'Coast')),
+            "lat": float(cast(float, row['Latitude'])),
+            "lon": float(cast(float, row['Longitude'])),
+        })
+    return zones
+
+
 def get_nearest_pfz(user_lat: float, user_lon: float) -> str:
     """Primary tool: attempts live WebGIS via requests/json, falls back to local CSV on failure."""
     wfs_url = "https://incois.gov.in/geoserver/wfs?request=GetFeature&service=WFS&version=1.1.0&typeName=incois:pfz_today&outputFormat=application/json"

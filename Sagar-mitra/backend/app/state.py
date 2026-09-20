@@ -1,10 +1,12 @@
-from typing import TypedDict, List, Dict
+from typing import TypedDict, List, Dict, Optional
 
 
 class AgentState(TypedDict):
     user_message: str
     coordinates: List[float]  # e.g., [18.9, 72.8] for Mumbai
     session_id: str
+    day_offset: int  # 0 = today, 1 = tomorrow, 2 = day after tomorrow
+    target_hour: Optional[int]  # hour-of-day (24h) mentioned, e.g. 8 for "morning"
     history: List[dict]  # [{"role": "user"|"assistant", "text": str}, ...], oldest first
     last_agents: List[str]  # agents selected on the PREVIOUS turn of this session (fallback hint)
     next_steps: List[str]  # agents selected by the planner, e.g. ["navigation", "fishing"]
