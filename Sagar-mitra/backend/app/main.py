@@ -1,6 +1,7 @@
 import os
 import re
 import traceback
+import uuid
 from dotenv import load_dotenv
 load_dotenv()  # reads .env in the working directory, if present
 
@@ -16,9 +17,12 @@ from app.chlorophyll_tool import get_chlorophyll_data
 from app.nlp_extract import extract_coordinates_from_message
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
+from app.weather_alert_tool import get_weather_hazard_alerts
+from app.route_planner import plan_safe_route
+from app.session_store import store as session_store
 from app.data import store
 
-app = FastAPI(title="ORCA Backend API", version="0.1.0")
+app = FastAPI(title="ORCA Backend API", version="0.2.0")
 
 # --- CORS ---------------------------------------------------------------
 # Wide open for the hackathon so the frontend can connect freely
@@ -37,24 +41,28 @@ orca_graph = create_orca_graph()
 class OrchestrateRequest(BaseModel):
     user_message: str
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
+    session_id: str | None = None  # carried across turns for conversation memory
 
 
 # --- Dashboard signal derivation ------------------------------------------
-# These two checks are cheap and deterministic, so we run them for EVERY
-# request regardless of which single agent (navigation/fishing/compliance)
-# the LangGraph supervisor routed the user's actual question to. Otherwise
-# the hazard banner and PFZ map would only ever update when the user's
-# wording happened to match the branch that computes that particular field,
-# and would silently show a stale/default value the rest of the time.
+# These checks are cheap and deterministic, so we run them for EVERY
+# request regardless of which agent(s) the planner selected for the user's
+# actual question. Otherwise the hazard banner, PFZ map, and route would
+# only ever update when the planner happened to pick that domain, and would
+# silently show a stale/default value the rest of the time.
 _PFZ_COORD_RE = re.compile(r"Coordinates:\s*\[\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\]")
 _PFZ_ZONE_HALF_WIDTH_DEG = 0.08  # ~9 km box drawn around the nearest known PFZ point
 
 
-def _derive_hazard_status(boundary_report: str, ocean_report: str) -> str:
+def _derive_hazard_status(boundary_report: str, ocean_report: str, hazard_report: dict) -> str:
     if boundary_report.startswith("ALERT"):
         return "HAZARDOUS"
     if "HAZARDOUS" in ocean_report.upper():
         return "HAZARDOUS"
+    if hazard_report.get("cyclone_alert"):
+        return "HAZARDOUS"
+    if hazard_report.get("lightning_alert"):
+        return "CAUTION"
     if boundary_report.startswith("UNVERIFIED"):
         return "CAUTION"
     return "SAFE"
@@ -73,6 +81,13 @@ def _derive_pfz_zones(pfz_report: str) -> list[dict]:
             [lat - d, lon + d], [lat - d, lon - d],
         ],
     }]
+
+
+def _zone_centroid(zone: dict) -> list[float]:
+    coords = zone["coordinates"]
+    lat = sum(c[0] for c in coords) / len(coords)
+    lon = sum(c[1] for c in coords) / len(coords)
+    return [lat, lon]
 
 
 # --- Prediction Telemetry (real values, not the old hardcoded 85/72/91) ---
@@ -141,26 +156,50 @@ def health():
 
 @app.post("/api/orchestrate")
 def run_orchestration(request: OrchestrateRequest):
+    # Conversation memory: a session_id lets a follow-up ("and what about
+    # tomorrow?") be answered with the last few turns as context. The
+    # frontend persists this in localStorage; if none is supplied (first
+    # visit, or a direct API caller), a fresh one is minted and returned so
+    # the caller can carry it forward.
+    session_id = request.session_id or str(uuid.uuid4())
+    history = session_store.get_history(session_id)
+    last_context = session_store.get_last_context(session_id)
+    last_agents = last_context["agents"] if last_context else []
+
     # Coordinate resolution: a place named IN THE MESSAGE ("fishing zones
     # near Chennai") always takes priority over the vessel's own reported
-    # GPS position. The GPS coordinate is only used when the message itself
-    # is asking about "here" / "my current location", or names no place at
-    # all -- see extract_coordinates_from_message()'s docstring.
+    # GPS position. When the message names no place of its own -- e.g. a
+    # referential follow-up like "and what about tomorrow morning instead?"
+    # -- fall back to the SAME location this session was just discussing
+    # (not the vessel's raw GPS default), so follow-ups stay on-topic. Only
+    # a brand-new session with no prior turn falls back to the vessel's GPS.
     extracted = extract_coordinates_from_message(request.user_message)
-    coordinates = list(extracted) if extracted else request.coordinates
+    if extracted:
+        coordinates = list(extracted)
+    elif last_context:
+        coordinates = last_context["coordinates"]
+    else:
+        coordinates = request.coordinates
 
     # Package incoming request into the AgentState format
     initial_state: AgentState = {
         "user_message": request.user_message,
         "coordinates": coordinates,
-        "next_step": "",
+        "session_id": session_id,
+        "history": history,
+        "last_agents": last_agents,
+        "next_steps": [],
+        "agent_reports": {},
         "hazard_alerts": [],
+        "language": "English",
+        "persona": "Fisherman",
+        "query_intent": "",
         "final_output": "",
-        "final_advisory": ""
+        "final_advisory": "",
     }
 
     try:
-        # Run the compiled graph workflow
+        # Run the compiled graph workflow (planner -> dispatch -> synthesizer)
         result = orca_graph.invoke(initial_state)
     except Exception as e:
         traceback.print_exc()
@@ -171,14 +210,50 @@ def run_orchestration(request: OrchestrateRequest):
     ocean_report = get_live_ocean_conditions(lat, lon)
     pfz_report = get_nearest_pfz(lat, lon)
     chlorophyll_report = get_chlorophyll_data(lat, lon)
+    hazard_report = get_weather_hazard_alerts(lat, lon)
+
+    pfz_zones = _derive_pfz_zones(pfz_report)
+    route = None
+    if pfz_zones:
+        target = _zone_centroid(pfz_zones[0])
+        try:
+            route = plan_safe_route((lat, lon), (target[0], target[1]))
+        except Exception as e:
+            traceback.print_exc()
+            route = {
+                "waypoints": [[lat, lon], target],
+                "hazard_avoided": False,
+                "max_wave_m": None,
+                "note": f"Route planning error, showing a direct line: {e}",
+            }
+
+    final_advisory = result.get("final_advisory", "Advisory generated successfully.")
+
+    # Persist this turn so the next request on the same session_id has
+    # context for follow-up questions -- both the dialogue text AND the
+    # resolved location/topic, so a referential follow-up with no place
+    # name or domain keyword of its own still knows what "those conditions"
+    # and "there" refer to.
+    session_store.append_turn(session_id, "user", request.user_message)
+    session_store.append_turn(session_id, "assistant", final_advisory)
+    session_store.set_last_context(session_id, coordinates, result.get("next_steps", []))
 
     # Return the final synthesized response as JSON to the frontend
     return {
         "status": "success",
+        "session_id": session_id,
         "user_message": request.user_message,
         "coordinates": coordinates,
-        "advisory": result.get("final_advisory", "Advisory generated successfully."),
-        "hazard_status": _derive_hazard_status(boundary_report, ocean_report),
-        "pfz_location": _derive_pfz_zones(pfz_report),
+        "advisory": final_advisory,
+        "agents_invoked": result.get("next_steps", []),
+        "query_intent": result.get("query_intent", ""),
+        "language": result.get("language", "English"),
+        "persona": result.get("persona", "Fisherman"),
+        "hazard_status": _derive_hazard_status(boundary_report, ocean_report, hazard_report),
+        "pfz_location": pfz_zones,
         "telemetry": _build_telemetry(lat, lon, ocean_report, chlorophyll_report),
+        "lightning_alert": hazard_report["lightning_alert"],
+        "cyclone_alert": hazard_report["cyclone_alert"],
+        "hazard_summary": hazard_report["summary"],
+        "route": route,
     }

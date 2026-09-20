@@ -1,0 +1,9 @@
+=== safe_error_text (Marathi) ===
+ORCA ची AI सेवा सध्या जास्त मागणीमुळे व्यस्त आहे. खाली ORCA च्या सेन्सर्सनी गोळा केलेला थेट डेटा दाखवला आहे.
+
+=== format_fallback_advisory (Marathi, multi-agent) ===
+ORCA ची AI सेवा सध्या जास्त मागणीमुळे व्यस्त आहे. खाली ORCA च्या सेन्सर्सनी गोळा केलेला थेट डेटा दाखवला आहे.
+
+• नौकानयन आणि हवामान: Live conditions at [18.9, 72.8]: Wave Height: 0.94m, Water Temp: 29.9C. Status: Safe for navigation.
+• मासेमारी क्षेत्र: Nearest PFZ is near Sassoon Dock. Distance: 15.45 km away.
+• कायदेशीर आणि सीमा: [18.9, 72.8] is confirmed within Indian waters.

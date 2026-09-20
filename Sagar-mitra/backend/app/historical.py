@@ -21,7 +21,8 @@ from google.genai import types
 from google.genai.types import FunctionDeclaration
 
 from app.data import store
-from app.advisory import generate_content
+from app.advisory import generate_content, LITE_MODEL
+from app.llm_cache import TTLCache, normalize_key
 
 PLOTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "plots")
 os.makedirs(PLOTS_DIR, exist_ok=True)
@@ -203,19 +204,70 @@ _FUNCTION_MAP = {
 }
 
 
+_historical_cache = TTLCache(ttl_seconds=3600)  # historical archive data doesn't change minute to minute
+
+
 def sagar_mitra_historical_query(user_message: str, persona: str = "Researcher",
-                                  language: str = "English", model: str = "gemini-3.6-flash") -> dict:
+                                  language: str = "English", model: str = LITE_MODEL) -> dict:
     """
     Answers historical/trend questions using function calling against the
     real dataset. Returns a dict: {reply, mode, plot_url (if a graph was made)}.
+
+    Cached by (message, persona, language): identical/near-identical
+    questions against data that hasn't changed are served from cache
+    instead of spending another call. Only ONE Gemini call per question now
+    (tool selection, on the lite model -- see advisory.LITE_MODEL): the
+    numeric result is formatted into plain text in Python rather than with a
+    second "phrase this nicely" call, since app/graph.py's top-level
+    synthesizer already does that localization/persona pass once for the
+    whole combined response -- a dedicated phrasing call here would just be
+    translating the same numbers twice, in two separate model calls.
     """
+    cache_key = normalize_key(user_message, persona, language)
+    cached = _historical_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    result = _run_historical_query(user_message, model)
+    if result.get("reply"):  # never cache an empty/failed result
+        _historical_cache.set(cache_key, result)
+    return result
+
+
+def _format_tool_result(fn_name: str, fn_args: dict, result: dict) -> str:
+    """Plain-Python (no LLM call) formatting of a tool's raw numeric result
+    into a sentence the top-level synthesizer can localize/phrase later."""
+    if "error" in result:
+        return result["error"]
+
+    if fn_name == "query_historical_extreme":
+        mode = fn_args.get("mode", "value")
+        parameter = fn_args.get("parameter", "value")
+        return (f"Historical {mode} {parameter}: {result.get('value')}, recorded on "
+                f"{result.get('date')} near ({result.get('lat')}, {result.get('lon')}).")
+
+    if fn_name == "get_yearly_trend":
+        parameter = fn_args.get("parameter", "value")
+        pairs = ", ".join(f"{y}: {v}" for y, v in zip(result.get("years", []), result.get("values", [])))
+        return f"Yearly {parameter} averages -- {pairs}." if pairs else f"No yearly {parameter} data found for this region."
+
+    if fn_name == "plot_yearly_trend":
+        parameter = fn_args.get("parameter", "value")
+        return f"Generated a {parameter} trend chart over the available years: {result.get('url')}"
+
+    if fn_name == "plot_category_distribution":
+        breakdown = ", ".join(f"{k}: {v}" for k, v in result.get("counts", {}).items())
+        return f"Generated a condition-distribution chart ({breakdown}): {result.get('url')}"
+
+    return str(result)
+
+
+def _run_historical_query(user_message: str, model: str) -> dict:
     tool = types.Tool(function_declarations=cast(list[FunctionDeclaration], TOOLS))
     config = types.GenerateContentConfig(
         tools=[tool],
         system_instruction=(
-            f"You are Sagar Mitra, answering a {persona}'s historical ocean-data question "
-            f"in {language}. Use the available tools to fetch real data before answering. "
-            "Never guess numbers - always call a tool first."
+            "You are ORCA's historical ocean-data tool selector. Call the ONE tool that "
+            "best answers the user's question. Never guess numbers - always call a tool first."
         ),
     )
 
@@ -234,25 +286,8 @@ def sagar_mitra_historical_query(user_message: str, persona: str = "Researcher",
         fn_args = dict(part.function_call.args or {})
         result = _FUNCTION_MAP[fn_name](**fn_args)
 
-        # plot_yearly_trend returns a dict with file_path/url; other tools
-        # return plain dicts already JSON-safe for the follow-up call.
-        tool_result_for_model = result
-        if fn_name in ("plot_yearly_trend", "plot_category_distribution"):
-            tool_result_for_model = {"status": "graph generated", "url": result["url"]}
-
-        follow_up = generate_content(
-            model=model,
-            contents=[
-                {"role": "user", "parts": [{"text": user_message}]},
-                call_content,
-                {"role": "user", "parts": [{"function_response": {
-                    "name": fn_name, "response": {"result": tool_result_for_model}}}]},
-            ],
-            config=config,
-        )
-
-        answer = follow_up.text
-        plot_url = result["url"] if fn_name in ("plot_yearly_trend", "plot_category_distribution") else None
-        return {"reply": answer, "mode": "historical", "plot_url": plot_url}
+        reply = _format_tool_result(fn_name, fn_args, result)
+        plot_url = result.get("url") if fn_name in ("plot_yearly_trend", "plot_category_distribution") else None
+        return {"reply": reply, "mode": "historical", "plot_url": plot_url}
 
     return {"reply": response.text or "", "mode": "historical", "plot_url": None}
