@@ -5,3 +5,4 @@ static/plots/*.png
 *.zip
 *.tar.gz
 *_temp/
+*.log
