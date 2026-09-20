@@ -12,6 +12,15 @@ class AgentState(TypedDict):
     next_steps: List[str]  # agents selected by the planner, e.g. ["navigation", "fishing"]
     agent_reports: Dict[str, str]  # agent name -> that agent's raw finding
     hazard_alerts: List[str]
+    # Boundary/ocean/PFZ/chlorophyll/hazard signals fetched ONCE per request
+    # (concurrently, in dispatch_node) and reused by both the matching chat
+    # agents (navigation/fishing/compliance/hazard) AND main.py's dashboard
+    # telemetry/route/PFZ-map derivation -- see graph.py's
+    # _fetch_common_signals. Keys: boundary_report, ocean_report, pfz_report,
+    # chlorophyll_report, hazard_report.
+    common_signals: Dict[str, object]
+    plot_url: Optional[str]  # historical chart image URL, if the historical agent generated one
+    regional_zones: List[dict]  # ranked zones from the regional agent, for map markers
     language: str
     persona: str
     query_intent: str

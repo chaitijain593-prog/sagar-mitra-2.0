@@ -8,17 +8,13 @@ load_dotenv()  # reads .env in the working directory, if present
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from app.graph import create_orca_graph
 from app.state import AgentState
-from app.boundary_toool import check_maritime_boundary
-from app.pfz_tool import get_nearest_pfz
-from app.satellite_tool import get_live_ocean_conditions
-from app.chlorophyll_tool import get_chlorophyll_data
 from app.nlp_extract import extract_coordinates_from_message, extract_target_datetime_from_message
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
-from app.weather_alert_tool import get_weather_hazard_alerts
 from app.route_planner import plan_safe_route
 from app.session_store import store as session_store
 from app.data import store
@@ -35,7 +31,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Compile the LangGraph orchestrator on startup
+# Serves the historical-chart PNGs app/historical.py saves under
+# backend/static/plots -- the plot_url returned to the frontend (see
+# run_orchestration below) points at this mount, e.g.
+# http://127.0.0.1:8000/static/plots/TEMP_trend_xxxx.png.
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+# Compile the LangGraph orchestrator on startup. create_orca_graph() itself
+# enforces the strict Gemini-key startup check (see app/advisory.py's
+# require_gemini_key) -- a missing/invalid key fails startup here with
+# clear terminal instructions instead of starting a server that silently
+# degrades every request.
 orca_graph = create_orca_graph()
 
 # --- Request Model ------------------------------------------------------
@@ -201,6 +208,9 @@ def run_orchestration(request: OrchestrateRequest):
         "next_steps": [],
         "agent_reports": {},
         "hazard_alerts": [],
+        "common_signals": {},
+        "plot_url": None,
+        "regional_zones": [],
         "language": "English",
         "persona": "Fisherman",
         "query_intent": "",
@@ -216,15 +226,27 @@ def run_orchestration(request: OrchestrateRequest):
         raise HTTPException(status_code=500, detail=f"Internal error during orchestration: {e}")
 
     lat, lon = coordinates[0], coordinates[1]
-    boundary_report = check_maritime_boundary(lat, lon)
+    # The graph's dispatch_node already fetched boundary/ocean/PFZ/
+    # chlorophyll/hazard data ONCE, concurrently, for this exact coordinate
+    # (see graph.py's _fetch_common_signals) -- reuse that result instead of
+    # making the same five live calls again here. This used to be the #1
+    # source of the ~23s-per-query latency: every request paid for these
+    # signals TWICE, once inside whichever chat agents the planner picked,
+    # and once more here unconditionally.
+    common = result.get("common_signals") or {}
+    boundary_report = common.get("boundary_report", "")
     # PFZ/chlorophyll have no free forecast product to fall back to (INCOIS's
     # PFZ advisory and NOAA's chlorophyll composite are both "today only"),
     # so those two stay as-is -- only wave/weather conditions and hazard
     # alerts can honestly answer a future-dated question.
-    ocean_report = get_live_ocean_conditions(lat, lon, day_offset=day_offset, target_hour=target_hour)
-    pfz_report = get_nearest_pfz(lat, lon)
-    chlorophyll_report = get_chlorophyll_data(lat, lon)
-    hazard_report = get_weather_hazard_alerts(lat, lon, day_offset=day_offset, target_hour=target_hour)
+    ocean_report = common.get("ocean_report", "")
+    pfz_report = common.get("pfz_report", "")
+    chlorophyll_report = common.get("chlorophyll_report", "")
+    hazard_report = common.get("hazard_report") or {
+        "lightning_alert": False, "lightning_detail": "Hazard data unavailable.",
+        "cyclone_alert": False, "cyclone_detail": "Hazard data unavailable.",
+        "summary": "Hazard data unavailable.",
+    }
 
     pfz_zones = _derive_pfz_zones(pfz_report)
     route = None
@@ -270,6 +292,13 @@ def run_orchestration(request: OrchestrateRequest):
         "cyclone_alert": hazard_report["cyclone_alert"],
         "hazard_summary": hazard_report["summary"],
         "route": route,
+        # Structured fields for the frontend to render directly (see
+        # index.html's appendAdvisoryCard/plotRegionalZones) instead of only
+        # ever being embedded as prose inside `advisory`, where a Gemini
+        # synthesis pass could paraphrase away a raw URL or drop the zone
+        # list entirely.
+        "plot_url": result.get("plot_url"),
+        "regional_zones": result.get("regional_zones", []),
         # Tells the frontend/user which date+time the wave/weather/hazard
         # fields above actually describe -- None means "current conditions"
         # (no future date/time was mentioned in the query).
