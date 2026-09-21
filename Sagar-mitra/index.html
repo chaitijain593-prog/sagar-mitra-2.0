@@ -566,6 +566,21 @@
       box-shadow: 0 0 16px #10b981;
     }
 
+    .regional-marker {
+      width: 24px;
+      height: 24px;
+      background: rgba(250, 204, 21, 0.35);
+      border: 2px solid #facc15;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 14px #facc15;
+      color: #ffffff;
+      font-size: 0.75rem;
+      font-weight: 800;
+    }
+
     .vessel-marker {
       font-size: 24px;
       line-height: 1;
@@ -722,6 +737,15 @@
       border-radius: 4px;
       font-size: 0.85rem;
       color: var(--text-main);
+    }
+
+    .advisory-card .advisory-chart-img {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      border-radius: 8px;
+      margin-top: 8px;
+      border: 1px solid rgba(56, 189, 248, 0.35);
     }
 
     /* 5d. Vessel Safety Buffer (pulsating 5 NM ring) */
@@ -1483,6 +1507,34 @@
       });
     }
 
+    // --- 6c2. Regional Scan Rankings (backend/app/regional_scan.py) ---
+    // Plots the ranked "which zones look favorable" results as numbered map
+    // markers, instead of leaving them as text-only lines inside the chat
+    // advisory (the only way to see them previously).
+    let regionalMarkers = [];
+    function plotRegionalZones(zones) {
+      regionalMarkers.forEach(m => map.removeLayer(m));
+      regionalMarkers = [];
+      (zones || []).forEach((z, i) => {
+        const icon = L.divIcon({
+          className: "",
+          html: `<div class="regional-marker">${i + 1}</div>`,
+          iconSize: [24, 24],
+        });
+        const confText = z.ml_confidence_pct != null
+          ? `${z.ml_confidence_pct}% ML confidence`
+          : "ML confidence unavailable";
+        const marker = L.marker([z.lat, z.lon], { icon })
+          .addTo(map)
+          .bindPopup(
+            `<b>#${i + 1} ${z.name || "Unnamed Zone"}</b><br>` +
+            `Chlorophyll-a: ${z.chlorophyll_mgm3} mg/m&sup3;<br>` +
+            `SST: ${z.sst_c}&deg;C<br>${confText}`
+          );
+        regionalMarkers.push(marker);
+      });
+    }
+
     // --- 6d. Tactical Route to Nearest PFZ ---
     let routeLine = null;
 
@@ -1609,11 +1661,20 @@
         .map(a => `<span class="advisory-alert">⚠ ${a}</span>`)
         .join("");
 
+      // Historical charts (app/historical.py's trend/pie-chart plots) are
+      // returned as a first-class plot_url field (see main.py's
+      // /api/orchestrate response) instead of only ever appearing as a raw
+      // URL buried inside the advisory prose -- render it directly here.
+      const plotHtml = data.plot_url
+        ? `<div class="advisory-row"><img src="${data.plot_url}" alt="Historical chart" class="advisory-chart-img" loading="lazy" /></div>`
+        : "";
+
       card.innerHTML = `
         <h4>🧭 Maritime Advisory</h4>
         <div class="advisory-row"><b>Status:</b> ${(data.hazard_status || "SAFE").toUpperCase()}</div>
         <div class="advisory-row"><b>Vessel Position:</b> ${data.vessel_coord ? data.vessel_coord.join(", ") : "Unknown"}</div>
         ${alertsHtml || '<div class="advisory-row">No active alerts.</div>'}
+        ${plotHtml}
       `;
 
       feed.appendChild(card);
@@ -1737,17 +1798,23 @@
           pfz_location: backendData.pfz_location || [],
           telemetry: backendData.telemetry || null,
           route: backendData.route || null,
+          // Historical chart image + regional-scan ranked zones, surfaced
+          // by the backend as first-class fields (see main.py) instead of
+          // only ever living inside the advisory's free text.
+          plot_url: backendData.plot_url || null,
+          regional_zones: backendData.regional_zones || [],
         };
       } catch (err) {
         console.error("API Connection Error:", err);
         // Fall back to the mock payload if the backend is off
-        parsedData = { ...MOCK_ORCHESTRATOR_RESPONSE, vessel_coord: coords, route: null };
+        parsedData = { ...MOCK_ORCHESTRATOR_RESPONSE, vessel_coord: coords, route: null, plot_url: null, regional_zones: [] };
       }
 
       loader.style.display = "none";
       updateHazardBanner(parsedData.hazard_status);
       plotVesselMarker(parsedData.vessel_coord[0], parsedData.vessel_coord[1]);
       plotPFZZones(parsedData.pfz_location);
+      plotRegionalZones(parsedData.regional_zones);
       plotRoute(parsedData.vessel_coord, parsedData.pfz_location, parsedData.route);
       appendAdvisoryCard(parsedData);
       setLastKnownState(parsedData.vessel_coord, parsedData.hazard_status);
