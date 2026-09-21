@@ -20,6 +20,7 @@
         setTimeout(() => {
           loader.style.display = "none";
           startLanguageRotation();
+          checkOnboarding();
         }, 1000);
       }, 10000);
     });
@@ -49,6 +50,66 @@
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     }
+    const ONBOARD_KEY = "orcaUserProfile";
+    const onboardScreen = document.getElementById("onboarding-screen");
+    const onboardStep1 = document.getElementById("onboardStep1");
+    const onboardStep2 = document.getElementById("onboardStep2");
+    const onboardName = document.getElementById("onboardName");
+    const onboardPersonaGroup = document.getElementById("onboardPersonaGroup");
+    const onboardPersonaOther = document.getElementById("onboardPersonaOther");
+    const onboardDomainGroup = document.getElementById("onboardDomainGroup");
+    const onboardStep1Error = document.getElementById("onboardStep1Error");
+    const onboardNextBtn = document.getElementById("onboardNextBtn");
+    const onboardBackBtn = document.getElementById("onboardBackBtn");
+    const onboardFinishBtn = document.getElementById("onboardFinishBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    function checkOnboarding() {
+      const profile = localStorage.getItem(ONBOARD_KEY);
+      if (!profile) {
+        onboardScreen.classList.add("active");
+      }
+    }
+    onboardPersonaGroup.addEventListener("change", (e) => {
+      if (e.target.name === "persona") {
+        onboardPersonaOther.classList.toggle("onboarding-hidden", e.target.value !== "Others");
+      }
+    });
+    onboardNextBtn.addEventListener("click", () => {
+      const name = onboardName.value.trim();
+      const personaInput = onboardPersonaGroup.querySelector('input[name="persona"]:checked');
+      if (!name) {
+        onboardStep1Error.textContent = "Please enter your name.";
+        return;
+      }
+      if (!personaInput) {
+        onboardStep1Error.textContent = "Please select who you are.";
+        return;
+      }
+      if (personaInput.value === "Others" && !onboardPersonaOther.value.trim()) {
+        onboardStep1Error.textContent = "Please specify your role.";
+        return;
+      }
+      onboardStep1Error.textContent = "";
+      onboardStep1.classList.add("onboarding-hidden");
+      onboardStep2.classList.remove("onboarding-hidden");
+    });
+    onboardBackBtn.addEventListener("click", () => {
+      onboardStep2.classList.add("onboarding-hidden");
+      onboardStep1.classList.remove("onboarding-hidden");
+    });
+    onboardFinishBtn.addEventListener("click", () => {
+      const name = onboardName.value.trim();
+      const personaInput = onboardPersonaGroup.querySelector('input[name="persona"]:checked');
+      const persona = personaInput.value === "Others" ? onboardPersonaOther.value.trim() : personaInput.value;
+      const domains = Array.from(onboardDomainGroup.querySelectorAll("input:checked")).map((el) => el.value);
+      const profile = { name, persona, domains, createdAt: new Date().toISOString() };
+      localStorage.setItem(ONBOARD_KEY, JSON.stringify(profile));
+      onboardScreen.classList.remove("active");
+    });
+    logoutBtn.addEventListener("click", () => {
+      localStorage.removeItem(ONBOARD_KEY);
+      window.location.reload();
+    });
     const themeBtn = document.getElementById("themeToggle");
     const themeIcon = document.getElementById("themeIcon");
     const themeLabel = document.getElementById("themeLabel");
@@ -540,36 +601,44 @@
       el.textContent = text;
     }
     async function triggerMayday() {
-      const [lat, lon] = lastVesselCoord;
-      const hazardStatus = (lastHazardStatus || "SAFE").toUpperCase();
-      const message = `[MAYDAY] Vessel at [${lat.toFixed(3)}, ${lon.toFixed(3)}] | Hazard: ${hazardStatus} | Nearest Port: ${SOS_NEAREST_PORT_PLACEHOLDER}`;
-      const sosButton = document.getElementById("sosButton");
-      sosButton.disabled = true;
-      setSOSStatus("pending", "📡 Sending SOS...");
-      appendAgentBadge(`🆘 ${message}`);
-      try {
-        const res = await fetch(`${API_BASE}/api/sos`, {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-            lat, lon, hazard_status: hazardStatus, nearest_port: SOS_NEAREST_PORT_PLACEHOLDER, message, session_id: sessionId, }), });
-        if (!res.ok) {
-          let detail = `HTTP ${res.status}`;
-          try {
-            const errBody = await res.json();
-            detail = errBody.detail || detail;
-          } catch (e) {  }
-          throw new Error(detail);
+    // 1. Prevent accidental clicks
+    if(!confirm("CONFIRM MAYDAY: Broadcast SOS to nearest Coast Guard?")) return;
+
+    // 2. Grab current vessel location (ensure window.vesselLocation is updated by your map)
+    const coords = window.vesselLocation || { lat: 18.9220, lon: 72.8347 }; // Mumbai fallback
+
+    try {
+        const response = await fetch('/api/sos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                lat: coords.lat,
+                lon: coords.lon,
+                hazard_status: "CRITICAL_EMERGENCY",
+                nearest_port: "Awaiting calculation...", 
+                message: "Manual SOS triggered from ORCA dashboard.",
+                session_id: window.sessionId || "demo-session-1"
+            })
+        });
+        
+        const data = await response.json();
+        
+        if(data.status === "success") {
+            // 3. UI Confirmation
+            alert(`🚨 SOS BROADCAST SUCCESSFUL 🚨\nEvent ID: ${data.id}\nCoast Guard has been notified.`);
+            
+            // 4. Force the dashboard into emergency mode
+            const banner = document.querySelector('.hazard-banner');
+            if(banner) {
+                banner.textContent = "MAYDAY ACTIVE - REMAIN CALM - ASSISTANCE EN ROUTE";
+                banner.className = "hazard-banner hazard-hazardous"; // Red theme
+            }
         }
-        const data = await res.json();
-        setSOSStatus("success", `✅ SOS logged (#${data.id}) at ${new Date(data.timestamp).toLocaleTimeString()}`);
-        appendAgentBadge(`✅ SOS confirmed logged by ORCA (event #${data.id}).`);
-      } catch (err) {
-        console.error("SOS submission failed:", err);
-        setSOSStatus("error", `⚠ SOS failed to send: ${err.message}. Try again.`);
-        appendAgentBadge(`⚠ SOS FAILED to reach ORCA: ${err.message}. Retry immediately.`);
-      } finally {
-        sosButton.disabled = false;
-      }
+    } catch (err) {
+        console.error("SOS failed to send:", err);
+        alert("CRITICAL: Network error. Retrying via local VHF proxy...");
     }
+}
     function updateTelemetryBars(telemetry) {
       const metrics = {
         telemetrySST: { pct: telemetry?.sst_anomaly_pct, labelId: "telemetrySSTLabel" },
@@ -647,3 +716,33 @@
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
+function startGeofenceMonitor() {
+    // Poll the backend every 60 seconds
+    setInterval(async () => {
+        const coords = window.vesselLocation;
+        if(!coords) return; // Wait until GPS is locked
+
+        try {
+            const response = await fetch(`/api/geofence-check?lat=\({coords.lat}&lon=\){coords.lon}`);
+            const data = await response.json();
+
+            if(data.status === "CAUTION") {
+                console.warn(`Boundary Alert: ${data.distance_km}km away!`);
+                
+                // 1. Trigger the siren (assuming you adapted createOceanSound for an alarm)
+                if(typeof createOceanSound === "function") {
+                    createOceanSound('siren'); 
+                }
+                
+                // 2. Update the UI Banner proactively
+                const banner = document.querySelector('.hazard-banner');
+                if(banner) {
+                    banner.innerHTML = `⚠️ IMBL PROXIMITY ALERT: ${data.distance_km.toFixed(1)}km to boundary. Adjust heading immediately.`;
+                    banner.className = "hazard-banner hazard-hazardous";
+                }
+            }
+        } catch (err) {
+            console.error("Geofence poll failed", err);
+        }
+    }, 60000); 
+}

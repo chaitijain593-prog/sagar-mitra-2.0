@@ -141,10 +141,16 @@ def _compute_shap_attributions(model, features: pd.DataFrame, class_index: int) 
         if hasattr(base_value, "__len__"):
             base_value = base_value[class_index]
 
+        all_attributions = {
+            col: round(float(val), 4) for col, val in zip(features.columns, sample_shap)
+        }
+        # Top 3 by absolute magnitude -- the strongest drivers of THIS
+        # prediction, not every feature (dashboard-facing summary).
+        top3 = dict(sorted(all_attributions.items(), key=lambda kv: abs(kv[1]), reverse=True)[:3])
+
         return {
-            "feature_attributions": {
-                col: round(float(val), 4) for col, val in zip(features.columns, sample_shap)
-            },
+            "shap_attributions": top3,
+            "feature_attributions": all_attributions,
             "base_value": round(float(base_value), 4),
         }
     except Exception as e:

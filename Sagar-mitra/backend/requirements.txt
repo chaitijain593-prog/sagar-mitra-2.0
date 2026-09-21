@@ -17,3 +17,4 @@ langgraph>=0.2
 langchain-core>=0.3
 reportlab>=4.2
 shap>=0.44
+feedparser>=6.0

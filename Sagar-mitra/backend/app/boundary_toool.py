@@ -149,6 +149,26 @@ def distance_to_nearest_boundary_km(lat: float, lon: float) -> dict:
     }
 
 
+DEG_TO_KM = 111.0  # approx km per decimal degree, used only for the quick geofence check below
+
+
+def distance_to_boundary_km(lat: float, lon: float) -> Optional[float]:
+    """
+    Quick geofence distance check (Task 3 / GET /api/geofence-check):
+    plain shapely `.distance()` (decimal degrees) against the loaded EEZ
+    MultiPolygons, scaled by DEG_TO_KM. Approximate by design -- unlike
+    distance_to_nearest_boundary_km's haversine-based figure above, this
+    doesn't correct for longitude convergence at latitude, so it's meant
+    for a coarse "close to the line" caution flag, not a precise reading.
+    Returns None if no EEZ boundary data is loaded.
+    """
+    if not eez_geoms:
+        return None
+    pt = Point(lon, lat)
+    best = min(geom.boundary.distance(pt) for geom in eez_geoms)
+    return round(best * DEG_TO_KM, 3)
+
+
 if __name__ == "__main__":
     # Test coordinate off Mumbai coast
     print(check_maritime_boundary(18.9, 72.8))

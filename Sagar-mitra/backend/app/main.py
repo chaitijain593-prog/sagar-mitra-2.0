@@ -16,13 +16,14 @@ from app.nlp_extract import extract_coordinates_from_message, extract_target_dat
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
 from app.route_planner import plan_safe_route
-from app.session_store import store as session_store
+from app.db_store import store as session_store
 from app.data import store
 from app import db
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
 from app.advisory import _is_quota_error, _is_permission_denied_error
 from app.boundary_toool import distance_to_nearest_boundary_km
 from app.dispatch import generate_morning_dispatch
+from app.news_feed import get_oceanography_news
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -283,6 +284,15 @@ def report_sos(request: SOSRequest):
         "timestamp": timestamp,
         "coordinates": [request.lat, request.lon],
     }
+
+
+@app.get("/api/news")
+def get_news():
+    """
+    Task 3: top 5 ScienceDaily Oceanography RSS headlines, 1-hour cached
+    (see app/news_feed.py).
+    """
+    return {"articles": get_oceanography_news(limit=5)}
 
 
 @app.post("/api/orchestrate")
