@@ -19,11 +19,15 @@ def check_marine_hazards(lat: float, lon: float) -> str:
 def navigation_node(state: AgentState) -> dict:
     coordinates = state.get("coordinates", [18.9, 72.8])
     lat, lon = coordinates[0], coordinates[1]
-    # day_offset/target_hour let "is it safe tomorrow morning?" fetch a real
-    # forecast instead of silently answering with right-now conditions --
-    # see satellite_tool.get_live_ocean_conditions.
-    result = get_live_ocean_conditions(lat, lon, day_offset=state.get("day_offset", 0),
-                                        target_hour=state.get("target_hour"))
+    # graph.py's dispatch_node fetches this exact signal for EVERY request
+    # (the dashboard needs it regardless of which agents were selected) and
+    # threads it through state.common_signals -- reuse it instead of making
+    # a second live call for the same coordinate. Falls back to a direct
+    # fetch when called outside that flow (e.g. a standalone/test call with
+    # no common_signals present).
+    common = state.get("common_signals") or {}
+    result = common.get("ocean_report") or get_live_ocean_conditions(
+        lat, lon, day_offset=state.get("day_offset", 0), target_hour=state.get("target_hour"))
     return {
         "hazard_alerts": [result],
         "final_output": f"Navigation Report: {result}"
@@ -41,7 +45,31 @@ def check_pfz_and_chlorophyll(lat: float, lon: float) -> str:
 def fishing_node(state: AgentState) -> dict:
     coordinates = state.get("coordinates", [18.9, 72.8])
     lat, lon = coordinates[0], coordinates[1]
-    result = check_pfz_and_chlorophyll.invoke({"lat": lat, "lon": lon})
+    # Reuse the PFZ/chlorophyll reads graph.py's dispatch_node already
+    # fetched for the dashboard (see navigation_node's comment above) rather
+    # than calling the same two APIs again here.
+    common = state.get("common_signals") or {}
+    pfz_result = common.get("pfz_report") or get_nearest_pfz(lat, lon)
+    chlorophyll_result = common.get("chlorophyll_report") or get_chlorophyll_data(lat, lon)
+    result = f"{pfz_result} | {chlorophyll_result}"
+
+    # PFZ/chlorophyll have no forecast product -- they're always "today
+    # only" (see main.py). Wave/weather/hazard data CAN answer a future-
+    # dated query ("is it safe tomorrow morning?"), so without this note a
+    # synthesized advisory could silently read as if the PFZ/chlorophyll
+    # figures were forecast for that same future time too. Label them
+    # explicitly whenever the query carried a future date/time, so the
+    # synthesizer (app/advisory.py) has to preserve the distinction instead
+    # of quietly blending the two.
+    is_future_query = state.get("day_offset", 0) > 0 or state.get("target_hour") is not None
+    if is_future_query:
+        result += (
+            " [Note: the PFZ and chlorophyll readings above are TODAY's CURRENT/LIVE data, "
+            "not a forecast for the requested future date/time -- no forecast product exists "
+            "yet for these two signals. Only wave/weather/hazard data elsewhere in this "
+            "advisory reflects the requested future time.]"
+        )
+
     return {
         "final_output": f"Fishing Advisory: {result}"
     }
@@ -56,7 +84,8 @@ def check_legal_boundaries(lat: float, lon: float) -> str:
 def compliance_node(state: AgentState) -> dict:
     coordinates = state.get("coordinates", [18.9, 72.8])
     lat, lon = coordinates[0], coordinates[1]
-    result = check_legal_boundaries.invoke({"lat": lat, "lon": lon})
+    common = state.get("common_signals") or {}
+    result = common.get("boundary_report") or check_legal_boundaries.invoke({"lat": lat, "lon": lon})
     return {
         "final_output": f"Compliance Report: {result}"
     }
@@ -84,8 +113,9 @@ def historical_node(state: AgentState) -> dict:
 def hazard_node(state: AgentState) -> dict:
     coordinates = state.get("coordinates", [18.9, 72.8])
     lat, lon = coordinates[0], coordinates[1]
-    result = get_weather_hazard_alerts(lat, lon, day_offset=state.get("day_offset", 0),
-                                        target_hour=state.get("target_hour"))
+    common = state.get("common_signals") or {}
+    result = common.get("hazard_report") or get_weather_hazard_alerts(
+        lat, lon, day_offset=state.get("day_offset", 0), target_hour=state.get("target_hour"))
     alerts = [result["summary"]] if (result["lightning_alert"] or result["cyclone_alert"]) else []
     return {
         "final_output": f"Hazard Alert: {result['lightning_detail']} {result['cyclone_detail']}",
@@ -127,4 +157,8 @@ def analytics_node(state: AgentState) -> dict:
 # favorable" style questions the single-point tools above can't answer.)
 def regional_node(state: AgentState) -> dict:
     results = scan_favorable_regions(top_n=5)
-    return {"final_output": format_regional_scan(results)}
+    # `regional_zones` is surfaced as its own top-level API field (see
+    # graph.py's dispatch_node and main.py) so the frontend can plot the
+    # ranked zones as map markers directly, instead of only ever getting
+    # them as prose inside the advisory text.
+    return {"final_output": format_regional_scan(results), "regional_zones": results}

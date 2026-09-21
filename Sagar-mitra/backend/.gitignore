@@ -2,6 +2,10 @@
 __pycache__/
 *.pyc
 static/plots/*.png
+static/audio/
 *.zip
 *.tar.gz
 *_temp/
+*.log
+data/*.db
+*.parquet

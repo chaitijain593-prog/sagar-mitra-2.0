@@ -2,26 +2,34 @@ import os
 import re
 import traceback
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from dotenv import load_dotenv
 load_dotenv()  # reads .env in the working directory, if present
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from app.graph import create_orca_graph
 from app.state import AgentState
-from app.boundary_toool import check_maritime_boundary
-from app.pfz_tool import get_nearest_pfz
-from app.satellite_tool import get_live_ocean_conditions
-from app.chlorophyll_tool import get_chlorophyll_data
 from app.nlp_extract import extract_coordinates_from_message, extract_target_datetime_from_message
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
-from app.weather_alert_tool import get_weather_hazard_alerts
 from app.route_planner import plan_safe_route
 from app.session_store import store as session_store
 from app.data import store
+from app import db
+from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
+from app.advisory import _is_quota_error, _is_permission_denied_error
+from app.boundary_toool import distance_to_nearest_boundary_km
+from app.dispatch import generate_morning_dispatch
+
+
+def _orchestration_error_detail(e: Exception) -> str:
+    if _is_quota_error(e):
+        return ("The AI service has hit its API quota/rate limit right now. "
+                "Please wait a bit and try again.")
+    return f"Internal error during orchestration: {e}"
 
 app = FastAPI(title="ORCA Backend API", version="0.2.0")
 
@@ -35,10 +43,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Compile the LangGraph orchestrator on startup
+# Serves the historical-chart PNGs app/historical.py saves under
+# backend/static/plots -- the plot_url returned to the frontend (see
+# run_orchestration below) points at this mount, e.g.
+# http://127.0.0.1:8000/static/plots/TEMP_trend_xxxx.png. Also serves
+# synthesized advisory audio saved under backend/static/audio (see
+# app/voice.py's save_advisory_audio).
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+os.makedirs(_STATIC_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+# Compile the LangGraph orchestrator on startup. create_orca_graph() itself
+# enforces the strict Gemini-key startup check (see app/advisory.py's
+# require_gemini_key) -- a missing/invalid key fails startup here with
+# clear terminal instructions instead of starting a server that silently
+# degrades every request.
 orca_graph = create_orca_graph()
 
-# --- Request Model ------------------------------------------------------
+# Phase 0 #1: stand up the persistent SQLite store (app/db.py) -- loads
+# final_dataset.parquet into argo_readings (idempotent: a no-op after the
+# first run) and ensures sos_events exists for Task 2's mayday logging.
+# Additive only -- app/data.py's in-memory pandas `store` above is
+# untouched and still the source of truth for every existing caller.
+db.init_db()
+
+# --- Request Models ------------------------------------------------------
 class OrchestrateRequest(BaseModel):
     user_message: str
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
@@ -53,6 +82,35 @@ class OrchestrateRequest(BaseModel):
 # silently show a stale/default value the rest of the time.
 _PFZ_COORD_RE = re.compile(r"Coordinates:\s*\[\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\]")
 _PFZ_ZONE_HALF_WIDTH_DEG = 0.08  # ~9 km box drawn around the nearest known PFZ point
+
+# Feature 3 (Proactive IMBL/Geofence Siren): the proximity, in km, at which
+# /api/geofence-check starts warning -- matches the "5km threshold" named in
+# the ORCA brief.
+GEOFENCE_WARNING_KM = 5.0
+
+
+def _derive_geofence_alert(boundary: dict) -> tuple[str, str]:
+    """
+    Turns distance_to_nearest_boundary_km's raw proximity numbers into a
+    SAFE/CAUTION/HAZARDOUS verdict + a plain-language message -- the same
+    three-tier vocabulary _derive_hazard_status already uses for the main
+    hazard banner, so the frontend can reuse its existing hazard-banner CSS
+    classes for this too instead of inventing a fourth status vocabulary.
+    """
+    inside_eez = boundary["inside_eez"]
+    inside_mpa = boundary["inside_mpa"]
+    eez_km = boundary["eez_distance_km"]
+    mpa_km = boundary["mpa_distance_km"]
+
+    if inside_eez is False:
+        return "HAZARDOUS", "Vessel has crossed the Indian EEZ boundary into international waters."
+    if inside_mpa:
+        return "HAZARDOUS", "Vessel is inside a Marine Protected Area."
+    if eez_km is not None and inside_eez and eez_km < GEOFENCE_WARNING_KM:
+        return "CAUTION", f"Approaching the Indian EEZ boundary ({eez_km} km remaining)."
+    if mpa_km is not None and mpa_km < GEOFENCE_WARNING_KM:
+        return "CAUTION", f"Approaching a Marine Protected Area ({mpa_km} km away)."
+    return "SAFE", "No maritime boundary within the 5 km geofence threshold."
 
 
 def _derive_hazard_status(boundary_report: str, ocean_report: str, hazard_report: dict) -> str:
@@ -99,8 +157,8 @@ _pfz_validator = PFZStatisticalValidator()
 
 def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_report: str) -> dict:
     """
-    Builds the three Prediction Telemetry values from real, live-computed
-    signals instead of the frontend's old hardcoded 85%/72%/91% placeholders:
+    Builds the Prediction Telemetry values from real, live-computed signals
+    instead of the frontend's old hardcoded 85%/72%/91% placeholders:
 
       - sst_anomaly_pct: Z-Test confidence (1 - p_value) that live SST at
         this coordinate deviates from the Arabian Sea baseline.
@@ -109,6 +167,13 @@ def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_repo
       - ml_confidence_pct: the trained PFZ classifier's own predicted
         probability for this point (None if the model hasn't been trained
         yet -- see backend/scripts/train_pfz_model.py).
+      - shap_attributions: per-feature SHAP attributions explaining
+        ml_confidence_pct (Feature/Task: SHAP explainability -- see
+        pfz_ml.py's include_shap flag), None if unavailable. Only the
+        Researcher persona's advisory card renders this (see index.html's
+        appendAdvisoryCard) -- it's still computed for every request here
+        since the SST/chlorophyll/salinity signals it needs are already
+        being fetched for the other two telemetry values anyway.
     """
     sst_match = _SST_RE.search(ocean_report)
     chl_match = _CHLOROPHYLL_RE.search(chlorophyll_report)
@@ -131,13 +196,17 @@ def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_repo
         chlorophyll_gradient_pct = round((1 - chl_check["p_value"]) * 100, 1)
 
     ml_confidence_pct = None
+    shap_attributions = None
     if sst is not None and chlorophyll is not None:
-        ml_confidence_pct = predict_pfz_confidence(sst, chlorophyll, salinity, lat, lon)
+        ml_confidence_pct, shap_attributions = predict_pfz_confidence(
+            sst, chlorophyll, salinity, lat, lon, include_shap=True
+        )
 
     return {
         "sst_anomaly_pct": sst_anomaly_pct,
         "chlorophyll_gradient_pct": chlorophyll_gradient_pct,
         "ml_confidence_pct": ml_confidence_pct,
+        "shap_attributions": shap_attributions,
     }
 
 
@@ -152,6 +221,67 @@ def health():
     return {
         "status": "ok",
         "gemini_key_configured": bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEYS")),
+    }
+
+
+@app.get("/api/geofence-check")
+def geofence_check(lat: float, lon: float):
+    """
+    Feature 3 (Proactive IMBL/Geofence Siren): a lightweight, poll-friendly
+    endpoint the frontend calls on an interval (not on every chat query --
+    see /api/orchestrate for that), so a vessel drifting toward the EEZ
+    boundary or a Marine Protected Area gets a warning before it next asks
+    ORCA anything. See boundary_toool.distance_to_nearest_boundary_km for
+    the underlying proximity math and check_maritime_boundary for the
+    confirmed-breach text used elsewhere in the advisory pipeline.
+    """
+    boundary = distance_to_nearest_boundary_km(lat, lon)
+    alert_level, message = _derive_geofence_alert(boundary)
+    return {
+        "coordinates": [lat, lon],
+        **boundary,
+        "geofence_alert": alert_level,
+        "message": message,
+    }
+
+
+# --- Feature: Real SOS / Mayday logging (Phase 1 #5) ----------------------
+class SOSRequest(BaseModel):
+    lat: float
+    lon: float
+    hazard_status: str | None = None
+    nearest_port: str | None = None
+    message: str | None = None
+    session_id: str | None = None
+
+
+@app.post("/api/sos")
+def report_sos(request: SOSRequest):
+    """
+    Logs a mayday/SOS event to the persistent store (app/db.py's sos_events
+    table -- see Task 1) instead of only ever showing a local alert() in the
+    browser (see index.html's triggerMayday). Every field here mirrors what
+    triggerMayday's payload sends: the vessel's last known coordinates, the
+    last known hazard status, and the (currently hardcoded) nearest-port
+    text shown in its mayday message.
+    """
+    timestamp = datetime.now(timezone.utc).isoformat()
+    event = {
+        "timestamp": timestamp,
+        "lat": request.lat,
+        "lon": request.lon,
+        "hazard_status": request.hazard_status,
+        "nearest_port": request.nearest_port,
+        "message": request.message,
+        "session_id": request.session_id,
+        "raw_payload": request.model_dump_json(),
+    }
+    event_id = db.insert_sos_event(event)
+    return {
+        "status": "success",
+        "id": event_id,
+        "timestamp": timestamp,
+        "coordinates": [request.lat, request.lon],
     }
 
 
@@ -201,6 +331,9 @@ def run_orchestration(request: OrchestrateRequest):
         "next_steps": [],
         "agent_reports": {},
         "hazard_alerts": [],
+        "common_signals": {},
+        "plot_url": None,
+        "regional_zones": [],
         "language": "English",
         "persona": "Fisherman",
         "query_intent": "",
@@ -213,18 +346,31 @@ def run_orchestration(request: OrchestrateRequest):
         result = orca_graph.invoke(initial_state)
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal error during orchestration: {e}")
+        status_code = 429 if _is_quota_error(e) else 500
+        raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
 
     lat, lon = coordinates[0], coordinates[1]
-    boundary_report = check_maritime_boundary(lat, lon)
+    # The graph's dispatch_node already fetched boundary/ocean/PFZ/
+    # chlorophyll/hazard data ONCE, concurrently, for this exact coordinate
+    # (see graph.py's _fetch_common_signals) -- reuse that result instead of
+    # making the same five live calls again here. This used to be the #1
+    # source of the ~23s-per-query latency: every request paid for these
+    # signals TWICE, once inside whichever chat agents the planner picked,
+    # and once more here unconditionally.
+    common = result.get("common_signals") or {}
+    boundary_report = common.get("boundary_report", "")
     # PFZ/chlorophyll have no free forecast product to fall back to (INCOIS's
     # PFZ advisory and NOAA's chlorophyll composite are both "today only"),
     # so those two stay as-is -- only wave/weather conditions and hazard
     # alerts can honestly answer a future-dated question.
-    ocean_report = get_live_ocean_conditions(lat, lon, day_offset=day_offset, target_hour=target_hour)
-    pfz_report = get_nearest_pfz(lat, lon)
-    chlorophyll_report = get_chlorophyll_data(lat, lon)
-    hazard_report = get_weather_hazard_alerts(lat, lon, day_offset=day_offset, target_hour=target_hour)
+    ocean_report = common.get("ocean_report", "")
+    pfz_report = common.get("pfz_report", "")
+    chlorophyll_report = common.get("chlorophyll_report", "")
+    hazard_report = common.get("hazard_report") or {
+        "lightning_alert": False, "lightning_detail": "Hazard data unavailable.",
+        "cyclone_alert": False, "cyclone_detail": "Hazard data unavailable.",
+        "summary": "Hazard data unavailable.",
+    }
 
     pfz_zones = _derive_pfz_zones(pfz_report)
     route = None
@@ -270,6 +416,13 @@ def run_orchestration(request: OrchestrateRequest):
         "cyclone_alert": hazard_report["cyclone_alert"],
         "hazard_summary": hazard_report["summary"],
         "route": route,
+        # Structured fields for the frontend to render directly (see
+        # index.html's appendAdvisoryCard/plotRegionalZones) instead of only
+        # ever being embedded as prose inside `advisory`, where a Gemini
+        # synthesis pass could paraphrase away a raw URL or drop the zone
+        # list entirely.
+        "plot_url": result.get("plot_url"),
+        "regional_zones": result.get("regional_zones", []),
         # Tells the frontend/user which date+time the wave/weather/hazard
         # fields above actually describe -- None means "current conditions"
         # (no future date/time was mentioned in the query).
@@ -279,3 +432,135 @@ def run_orchestration(request: OrchestrateRequest):
             if (day_offset > 0 or target_hour is not None) else None
         ),
     }
+
+
+# --- Feature 1: Regional Language Voice In/Out ---------------------------
+@app.post("/api/voice/orchestrate")
+async def run_voice_orchestration(
+    audio: UploadFile = File(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+):
+    """
+    Accepts a spoken query (Marathi, Tamil, Telugu, Gujarati, Malayalam, or
+    English), transcribes + translates it via Gemini, runs the English
+    translation through the same LangGraph workflow as /api/orchestrate
+    (producing the final advisory natively in the detected language), and
+    synthesizes that advisory back into speech.
+    """
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=422, detail="No audio data received.")
+    mime_type = audio.content_type or "audio/wav"
+
+    try:
+        transcription = transcribe_and_translate(audio_bytes, mime_type)
+    except UnsupportedAudioError as e:
+        # Don't guess at what was said - tell the user plainly instead.
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        traceback.print_exc()
+        if _is_quota_error(e):
+            raise HTTPException(
+                status_code=429,
+                detail="The voice transcription service has hit its API quota/rate "
+                       "limit right now. Please wait a bit and try again.",
+            )
+        if _is_permission_denied_error(e):
+            # Don't let the raw Gemini error JSON (which can include the full
+            # error body) reach the agent stream - show a plain status instead.
+            raise HTTPException(
+                status_code=403,
+                detail="The voice transcription service isn't authorized to process "
+                       "this request right now. Please try again later or contact support.",
+            )
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+
+    initial_state: AgentState = {
+        # The native-script transcript, not the English translation -- the
+        # planner detects language/persona/intent directly from this message
+        # (it handles any language, see app/planner.py) and that detection
+        # decides what language the final advisory/TTS come back in. Feeding
+        # it the English translation would always detect "English" here.
+        "user_message": transcription["transcript"],
+        "coordinates": [latitude, longitude],
+        "session_id": "",
+        "day_offset": 0,
+        "target_hour": None,
+        "history": [],
+        "last_agents": [],
+        "next_steps": [],
+        "agent_reports": {},
+        "hazard_alerts": [],
+        "common_signals": {},
+        "plot_url": None,
+        "regional_zones": [],
+        "language": transcription["language"],
+        "persona": "Fisherman",
+        "query_intent": "",
+        "final_output": "",
+        "final_advisory": "",
+    }
+
+    try:
+        result = orca_graph.invoke(initial_state)
+    except Exception as e:
+        traceback.print_exc()
+        status_code = 429 if _is_quota_error(e) else 500
+        raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
+
+    advisory_text = result.get("final_advisory", "Advisory generated successfully.")
+
+    audio_url = None
+    try:
+        advisory_audio = synthesize_speech(advisory_text, language=transcription["language"])
+        audio_url = save_advisory_audio(advisory_audio)["url"]
+    except Exception as e:
+        # Voice output is on top of the text advisory - if TTS fails, still
+        # return the text result rather than failing the whole request.
+        print(f"[Voice] TTS failed, returning text-only advisory: {e}")
+
+    return {
+        "status": "success",
+        "transcript": transcription["transcript"],
+        "detected_language": transcription["language"],
+        "translated_query": transcription["english_text"],
+        "coordinates": [latitude, longitude],
+        "advisory_text": advisory_text,
+        "audio_url": audio_url,
+    }
+
+
+# --- Feature 4: Offline "Morning Dispatch" --------------------------------
+class DispatchRequest(BaseModel):
+    coordinates: list[float]  # e.g., [18.9, 72.8]
+    persona: str = "Fisherman"
+    language: str = "English"
+    day_offset: int = 0        # 0 = today, 1 = tomorrow, ...
+    target_hour: int | None = 8  # hour-of-day (24h) the briefing's conditions should describe
+
+
+@app.post("/api/dispatch/generate")
+def generate_dispatch(request: DispatchRequest):
+    """
+    Generates a downloadable pre-departure briefing (PDF + spoken audio) of
+    today's tides/waves, nearest PFZ, hazard alerts, boundary status, and
+    top favorable regions -- meant to be called ONCE while still online in
+    port, then read/played back later with no connectivity at sea. See
+    app/dispatch.py for the generation pipeline.
+    """
+    lat, lon = request.coordinates[0], request.coordinates[1]
+    try:
+        result = generate_morning_dispatch(
+            lat, lon,
+            persona=request.persona,
+            language=request.language,
+            day_offset=request.day_offset,
+            target_hour=request.target_hour,
+        )
+    except Exception as e:
+        traceback.print_exc()
+        status_code = 429 if _is_quota_error(e) else 500
+        raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
+
+    return {"status": "success", **result}
