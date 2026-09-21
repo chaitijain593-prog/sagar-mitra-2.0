@@ -13,6 +13,10 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <!-- Chart.js: renders the Researcher persona's SHAP explainability bar
+       chart (see appendAdvisoryCard's renderShapChart) -- no charting
+       library was already loaded, so this is a new CDN dependency. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -566,6 +570,21 @@
       box-shadow: 0 0 16px #10b981;
     }
 
+    .regional-marker {
+      width: 24px;
+      height: 24px;
+      background: rgba(250, 204, 21, 0.35);
+      border: 2px solid #facc15;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 14px #facc15;
+      color: #ffffff;
+      font-size: 0.75rem;
+      font-weight: 800;
+    }
+
     .vessel-marker {
       font-size: 24px;
       line-height: 1;
@@ -724,6 +743,16 @@
       color: var(--text-main);
     }
 
+    /* Researcher-persona SHAP explainability chart (see appendAdvisoryCard) */
+    .advisory-card .shap-chart-wrap {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(148, 163, 184, 0.18);
+    }
+    .advisory-card .shap-chart-wrap canvas {
+      max-width: 100%;
+    }
+
     /* 5d. Vessel Safety Buffer (pulsating 5 NM ring) */
     .vessel-safety-buffer {
       animation: safetyBufferPulse 2.4s ease-in-out infinite;
@@ -844,10 +873,40 @@
 
     .sos-button:hover { background: rgba(220, 38, 38, 0.24); transform: scale(1.02); }
     .sos-button:active { transform: scale(0.97); }
+    .sos-button:disabled { opacity: 0.6; cursor: wait; transform: none; }
+
+    .sos-wrap { display: flex; flex-direction: column; align-items: stretch; gap: 8px; flex-shrink: 0; }
+
+    .sos-status {
+      display: none;
+      width: 180px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-align: center;
+      line-height: 1.35;
+    }
+    .sos-status.is-visible { display: block; }
+    .sos-status.is-pending {
+      background: rgba(148, 163, 184, 0.18);
+      color: #cbd5e1;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+    }
+    .sos-status.is-success {
+      background: rgba(16, 185, 129, 0.16);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.45);
+    }
+    .sos-status.is-error {
+      background: rgba(220, 38, 38, 0.16);
+      color: #f87171;
+      border: 1px solid rgba(220, 38, 38, 0.45);
+    }
 
     @media (max-width: 700px) {
       .dashboard-footer-row { flex-direction: column; align-items: stretch; }
-      .sos-button { width: 100%; }
+      .sos-button, .sos-wrap, .sos-status { width: 100%; }
     }
 
     @keyframes sosDotPulse {
@@ -906,6 +965,41 @@
     }
 
     .search-send-btn:hover { transform: scale(1.06); }
+
+    .mic-btn {
+      width: 40px;
+      height: 40px;
+      background: transparent;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 50%;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    .mic-btn:hover { transform: scale(1.06); border-color: var(--accent-cyan); }
+
+    .mic-btn.is-recording {
+      background: #ef4444;
+      border-color: #ef4444;
+      color: #fff;
+      animation: micPulse 1.2s ease-in-out infinite;
+    }
+
+    .mic-btn.is-busy {
+      opacity: 0.6;
+      cursor: wait;
+      animation: none;
+    }
+
+    @keyframes micPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
+      50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+    }
 
     .chat-processing-indicator {
       display: none;
@@ -1177,6 +1271,9 @@
                 placeholder="Ask ORCA about hazards, EEZ or fishing zones..."
                 autocomplete="off"
               />
+              <button type="button" id="micBtn" class="mic-btn" title="Speak your query" aria-label="Record voice query">
+                <i data-lucide="mic" class="w-5 h-5"></i>
+              </button>
               <button type="submit" class="search-send-btn">
                 <i data-lucide="arrow-up" class="w-5 h-5"></i>
               </button>
@@ -1211,7 +1308,10 @@
         </div>
 
         <!-- Mayday Protocol -->
-        <button class="sos-button" id="sosButton" onclick="triggerMayday()">Initiate SOS</button>
+        <div class="sos-wrap">
+          <button class="sos-button" id="sosButton" onclick="triggerMayday()">Initiate SOS</button>
+          <div class="sos-status" id="sosStatus"></div>
+        </div>
       </div>
 
     </div>
@@ -1483,6 +1583,33 @@
       });
     }
 
+    // --- 6c2. Regional Favorability Scan Markers ---
+    // Renders regional_scan.py's scan_favorable_regions output (via
+    // main.py's `regional_zones` response field): point markers, not
+    // polygons like plotPFZZones above, since each entry is a single
+    // ranked candidate zone ({name, lat, lon, sst_c, chlorophyll_mgm3,
+    // ml_confidence_pct}), not an area.
+    let regionalZoneMarkers = [];
+    function plotRegionalZones(zones) {
+      regionalZoneMarkers.forEach(m => map.removeLayer(m));
+      regionalZoneMarkers = [];
+      (zones || []).forEach(z => {
+        if (typeof z.lat !== "number" || typeof z.lon !== "number") return;
+        const ml = typeof z.ml_confidence_pct === "number" ? `${z.ml_confidence_pct}%` : "N/A";
+        const marker = L.circleMarker([z.lat, z.lon], {
+          radius: 7,
+          color: "#a78bfa",
+          fillColor: "#a78bfa",
+          fillOpacity: 0.55,
+          weight: 1.5,
+        }).addTo(map).bindPopup(
+          `<b>${z.name || "Favorable Zone"}</b><br>SST: ${z.sst_c ?? "N/A"}°C<br>` +
+          `Chlorophyll: ${z.chlorophyll_mgm3 ?? "N/A"} mg/m3<br>ML Confidence: ${ml}`
+        );
+        regionalZoneMarkers.push(marker);
+      });
+    }
+
     // --- 6d. Tactical Route to Nearest PFZ ---
     let routeLine = null;
 
@@ -1600,6 +1727,50 @@
       });
     }
 
+    // Researcher-persona SHAP explainability chart -- renders
+    // telemetry.shap_attributions (see backend/app/pfz_ml.py's
+    // include_shap output, surfaced via main.py's _build_telemetry) as a
+    // horizontal bar chart so a Researcher can see WHY the PFZ model
+    // reached its confidence score, not just the score itself. Gated on
+    // persona so Fisherman/Student/General Public cards never show it.
+    let shapChartCounter = 0;
+    const shapChartInstances = {};
+
+    function renderShapChart(canvasId, featureAttributions, baseValue) {
+      if (typeof Chart === "undefined") {
+        console.warn("Chart.js failed to load -- skipping SHAP chart render.");
+        return;
+      }
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+
+      const labels = Object.keys(featureAttributions);
+      const values = Object.values(featureAttributions);
+
+      shapChartInstances[canvasId] = new Chart(canvas.getContext("2d"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: `SHAP attribution (base value ${typeof baseValue === "number" ? baseValue.toFixed(3) : "N/A"})`,
+            data: values,
+            backgroundColor: values.map(v => v >= 0 ? "rgba(16, 185, 129, 0.75)" : "rgba(248, 113, 113, 0.75)"),
+            borderRadius: 4,
+          }],
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: true, labels: { color: "#cbd5e1", font: { size: 10 } } } },
+          scales: {
+            x: { grid: { color: "rgba(148,163,184,0.15)" }, ticks: { color: "#94a3b8" } },
+            y: { grid: { display: false }, ticks: { color: "#94a3b8" } },
+          },
+        },
+      });
+    }
+
     function appendAdvisoryCard(data) {
       const feed = document.getElementById("agentStreamFeed");
       const card = document.createElement("div");
@@ -1609,16 +1780,41 @@
         .map(a => `<span class="advisory-alert">⚠ ${a}</span>`)
         .join("");
 
+      // Only the Researcher persona sees the SHAP chart, and only when the
+      // backend actually returned attributions for this point (it's None
+      // when the PFZ model hasn't been trained, or SST/chlorophyll weren't
+      // both available -- see _build_telemetry).
+      const shapData = data.shap_attributions;
+      const showShapChart = data.persona === "Researcher" &&
+        shapData && shapData.feature_attributions &&
+        Object.keys(shapData.feature_attributions).length > 0;
+      const chartId = showShapChart ? `shapChart_${++shapChartCounter}` : null;
+
       card.innerHTML = `
         <h4>🧭 Maritime Advisory</h4>
         <div class="advisory-row"><b>Status:</b> ${(data.hazard_status || "SAFE").toUpperCase()}</div>
         <div class="advisory-row"><b>Vessel Position:</b> ${data.vessel_coord ? data.vessel_coord.join(", ") : "Unknown"}</div>
         ${alertsHtml || '<div class="advisory-row">No active alerts.</div>'}
+        ${showShapChart ? `
+          <div class="shap-chart-wrap">
+            <div class="advisory-row"><b>🔬 PFZ Model Explainability (SHAP)</b></div>
+            <div style="height:160px;"><canvas id="${chartId}"></canvas></div>
+          </div>
+        ` : ""}
       `;
 
       feed.appendChild(card);
       feed.scrollTop = feed.scrollHeight;
+
+      if (showShapChart) {
+        renderShapChart(chartId, shapData.feature_attributions, shapData.base_value);
+      }
     }
+
+    // Point to your local FastAPI server running on port 8000. Shared by
+    // both the text query flow (handleQuerySubmit) and the mic voice flow
+    // (initVoiceMic) below.
+    const API_BASE = "http://127.0.0.1:8000";
 
     // -------------------------------------------------------------
     // 8b. CONVERSATION SESSION ID (multi-turn memory persistence)
@@ -1692,9 +1888,6 @@
       await runAgentSequence();
 
       const coords = await getVesselCoordinates();
-      
-      // Point to your local FastAPI server running on port 8000
-      const API_BASE = "http://127.0.0.1:8000";
 
       let parsedData;
       try {
@@ -1737,11 +1930,22 @@
           pfz_location: backendData.pfz_location || [],
           telemetry: backendData.telemetry || null,
           route: backendData.route || null,
+          plot_url: backendData.plot_url || null,
+          regional_zones: backendData.regional_zones || [],
+          // Researcher-persona SHAP explainability chart (appendAdvisoryCard)
+          // needs both of these: which persona to gate the chart on, and the
+          // per-feature attributions themselves (nested under telemetry --
+          // see main.py's _build_telemetry).
+          persona: backendData.persona || "Fisherman",
+          shap_attributions: (backendData.telemetry && backendData.telemetry.shap_attributions) || null,
         };
       } catch (err) {
         console.error("API Connection Error:", err);
         // Fall back to the mock payload if the backend is off
-        parsedData = { ...MOCK_ORCHESTRATOR_RESPONSE, vessel_coord: coords, route: null };
+        parsedData = {
+          ...MOCK_ORCHESTRATOR_RESPONSE, vessel_coord: coords, route: null, plot_url: null,
+          regional_zones: [], persona: "Fisherman", shap_attributions: null,
+        };
       }
 
       loader.style.display = "none";
@@ -1749,9 +1953,183 @@
       plotVesselMarker(parsedData.vessel_coord[0], parsedData.vessel_coord[1]);
       plotPFZZones(parsedData.pfz_location);
       plotRoute(parsedData.vessel_coord, parsedData.pfz_location, parsedData.route);
+      plotRegionalZones(parsedData.regional_zones);
       appendAdvisoryCard(parsedData);
       setLastKnownState(parsedData.vessel_coord, parsedData.hazard_status);
       updateTelemetryBars(parsedData.telemetry);
+    }
+
+    // -------------------------------------------------------------
+    // 10b. VOICE MIC INPUT (/api/voice/orchestrate)
+    // -------------------------------------------------------------
+    // Records a short clip from the browser mic via MediaRecorder, uploads
+    // it to the backend's speech-in/speech-out endpoint, and shows the
+    // transcript + spoken-language advisory (with playable audio reply) in
+    // the agent stream feed. Kept fully separate from handleQuerySubmit's
+    // /api/orchestrate flow since the two return different shapes.
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let micStream = null;
+    // 'idle' -> 'recording' -> 'busy' (uploading/processing) -> 'idle'
+    let micState = "idle";
+
+    function pickAudioMimeType() {
+      const candidates = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/ogg;codecs=opus",
+      ];
+      if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) {
+        return ""; // let the browser pick its own default
+      }
+      return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+    }
+
+    function setMicState(next) {
+      micState = next;
+      const btn = document.getElementById("micBtn");
+      if (!btn) return;
+      btn.classList.toggle("is-recording", next === "recording");
+      btn.classList.toggle("is-busy", next === "busy");
+      btn.disabled = next === "busy";
+      btn.title = next === "recording" ? "Stop recording" : "Speak your query";
+    }
+
+    async function startMicRecording() {
+      // MediaDevices is only exposed in secure contexts (https, or
+      // http://localhost/http://127.0.0.1) -- opening this file directly
+      // as file:// or over a plain http:// LAN IP will leave
+      // navigator.mediaDevices undefined, not throw a permission error, so
+      // check for it explicitly with a clear message instead of a silent
+      // click-does-nothing bug.
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        appendAgentBadge(
+          "🎤 Microphone unavailable: this page must be served over https:// or " +
+          "http://localhost (not opened as a file:// path) for mic access to work."
+        );
+        return;
+      }
+      if (typeof MediaRecorder === "undefined") {
+        appendAgentBadge("🎤 This browser doesn't support MediaRecorder for mic capture.");
+        return;
+      }
+
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        console.error("Mic permission error:", err);
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          appendAgentBadge(
+            "🎤 Microphone permission denied. Click the padlock/camera icon in your " +
+            "browser's address bar and allow microphone access, then try again."
+          );
+        } else if (err.name === "NotFoundError") {
+          appendAgentBadge("🎤 No microphone found on this device.");
+        } else {
+          appendAgentBadge(`🎤 Could not access microphone: ${err.message || err.name}`);
+        }
+        return;
+      }
+
+      recordedChunks = [];
+      const mimeType = pickAudioMimeType();
+      mediaRecorder = mimeType
+        ? new MediaRecorder(micStream, { mimeType })
+        : new MediaRecorder(micStream);
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+      };
+      mediaRecorder.onstop = () => {
+        // Always release the mic hardware once we're done with it.
+        micStream.getTracks().forEach((track) => track.stop());
+        micStream = null;
+        const blobType = mediaRecorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(recordedChunks, { type: blobType });
+        if (blob.size === 0) {
+          appendAgentBadge("🎤 No audio captured -- please try again.");
+          setMicState("idle");
+          return;
+        }
+        submitVoiceQuery(blob, blobType);
+      };
+
+      mediaRecorder.start();
+      setMicState("recording");
+      appendAgentBadge("🎤 Listening... click the mic again to stop.");
+    }
+
+    function stopMicRecording() {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        setMicState("busy");
+        mediaRecorder.stop();
+      }
+    }
+
+    async function submitVoiceQuery(blob, mimeType) {
+      appendAgentBadge("📡 Uploading voice clip to ORCA for transcription...");
+      const loader = document.getElementById("chatLoader");
+      loader.style.display = "flex";
+
+      try {
+        const coords = await getVesselCoordinates();
+        const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
+        const formData = new FormData();
+        formData.append("audio", blob, `voice_query.${ext}`);
+        formData.append("latitude", coords[0]);
+        formData.append("longitude", coords[1]);
+
+        const res = await fetch(`${API_BASE}/api/voice/orchestrate`, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errBody = await res.json();
+            detail = errBody.detail || detail;
+          } catch (e) { /* non-JSON error body -- keep the status code */ }
+          throw new Error(detail);
+        }
+
+        const data = await res.json();
+        appendAgentBadge(`🗣️ Heard (${data.detected_language}): "${data.transcript}"`);
+        appendAgentBadge(`🌊 ${data.advisory_text}`);
+
+        if (data.audio_url) {
+          const feed = document.getElementById("agentStreamFeed");
+          const player = document.createElement("audio");
+          player.controls = true;
+          player.src = data.audio_url;
+          player.style.width = "100%";
+          player.style.marginTop = "4px";
+          feed.appendChild(player);
+          feed.scrollTop = feed.scrollHeight;
+          player.play().catch(() => { /* autoplay blocked -- user can hit play */ });
+        }
+      } catch (err) {
+        console.error("Voice orchestrate error:", err);
+        appendAgentBadge(`⚠ Voice query failed: ${err.message}`);
+      } finally {
+        loader.style.display = "none";
+        setMicState("idle");
+      }
+    }
+
+    function initVoiceMic() {
+      const micBtn = document.getElementById("micBtn");
+      if (!micBtn) return;
+      micBtn.addEventListener("click", (e) => {
+        // type="button" already keeps this out of the form's submit cycle,
+        // but stop propagation too in case a future markup change nests it
+        // differently -- clicking mic must never submit/refresh the page.
+        e.preventDefault();
+        e.stopPropagation();
+        if (micState === "idle") startMicRecording();
+        else if (micState === "recording") stopMicRecording();
+      });
     }
 
     // -------------------------------------------------------------
@@ -1765,10 +2143,61 @@
       lastHazardStatus = hazardStatus;
     }
 
-    function triggerMayday() {
+    // Nearest-port distance isn't computed anywhere in this backend yet --
+    // this stays the same placeholder text the old alert() used, just no
+    // longer the ONLY thing shown: the real payload (lat/lon/hazard) is
+    // what actually gets logged server-side via POST /api/sos.
+    const SOS_NEAREST_PORT_PLACEHOLDER = "45 NM";
+
+    function setSOSStatus(kind, text) {
+      const el = document.getElementById("sosStatus");
+      if (!el) return;
+      el.className = `sos-status is-visible is-${kind}`;
+      el.textContent = text;
+    }
+
+    async function triggerMayday() {
       const [lat, lon] = lastVesselCoord;
-      const message = `[MAYDAY] Vessel at [${lat.toFixed(3)}, ${lon.toFixed(3)}] | Hazard: ${(lastHazardStatus || "SAFE").toUpperCase()} | Nearest Port: 45 NM`;
-      alert(message);
+      const hazardStatus = (lastHazardStatus || "SAFE").toUpperCase();
+      const message = `[MAYDAY] Vessel at [${lat.toFixed(3)}, ${lon.toFixed(3)}] | Hazard: ${hazardStatus} | Nearest Port: ${SOS_NEAREST_PORT_PLACEHOLDER}`;
+
+      const sosButton = document.getElementById("sosButton");
+      sosButton.disabled = true;
+      setSOSStatus("pending", "📡 Sending SOS...");
+      appendAgentBadge(`🆘 ${message}`);
+
+      try {
+        const res = await fetch(`${API_BASE}/api/sos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lat, lon,
+            hazard_status: hazardStatus,
+            nearest_port: SOS_NEAREST_PORT_PLACEHOLDER,
+            message,
+            session_id: sessionId,
+          }),
+        });
+
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errBody = await res.json();
+            detail = errBody.detail || detail;
+          } catch (e) { /* non-JSON error body -- keep the status code */ }
+          throw new Error(detail);
+        }
+
+        const data = await res.json();
+        setSOSStatus("success", `✅ SOS logged (#${data.id}) at ${new Date(data.timestamp).toLocaleTimeString()}`);
+        appendAgentBadge(`✅ SOS confirmed logged by ORCA (event #${data.id}).`);
+      } catch (err) {
+        console.error("SOS submission failed:", err);
+        setSOSStatus("error", `⚠ SOS failed to send: ${err.message}. Try again.`);
+        appendAgentBadge(`⚠ SOS FAILED to reach ORCA: ${err.message}. Retry immediately.`);
+      } finally {
+        sosButton.disabled = false;
+      }
     }
 
     // -------------------------------------------------------------
@@ -1796,12 +2225,98 @@
       });
     }
 
+    // -------------------------------------------------------------
+    // 13. PROACTIVE GEOFENCE SIREN (5KM BOUNDARY PROXIMITY ALERT)
+    // -------------------------------------------------------------
+    // Polls GET /api/geofence-check (Feature 3, already implemented
+    // server-side -- see main.py's geofence_check/distance_to_nearest_
+    // boundary_km) on an interval and raises a Web Audio alarm the moment
+    // the vessel comes within GEOFENCE_ALERT_KM of the Indian EEZ boundary
+    // or a Marine Protected Area. Uses the same raw oscillator + GainNode
+    // envelope technique createOceanSound (above) already uses for tone
+    // generation, instead of a parallel <audio>-tag alert system.
+    const GEOFENCE_POLL_MS = 15000;
+    const GEOFENCE_ALERT_KM = 5; // mirrors main.py's GEOFENCE_WARNING_KM
+
+    let geofencePollTimer = null;
+    // true = no alert currently active, so the NEXT crossing into the zone
+    // is allowed to fire. Set false right after firing, and only reset
+    // back to true once a poll reports clear of the zone again -- this is
+    // what keeps a vessel sitting inside the 5km band from re-triggering
+    // the siren on every single poll.
+    let geofenceAlertArmed = true;
+    let geofenceAudioCtx = null;
+
+    function playGeofenceSiren() {
+      // Separate AudioContext from the soundscape toggle's `audioCtx`
+      // above, so the siren still plays even if the ambient ocean sound
+      // has never been started (or is currently suspended).
+      if (!geofenceAudioCtx) {
+        geofenceAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (geofenceAudioCtx.state === "suspended") {
+        geofenceAudioCtx.resume();
+      }
+      const ctx = geofenceAudioCtx;
+      const now = ctx.currentTime;
+
+      // Two short, urgent square-wave beeps with a linear gain envelope --
+      // same oscillator + GainNode building blocks as createOceanSound's
+      // LFO/filter chain, just shaped for an alarm instead of ambient noise.
+      [0, 0.35].forEach((offset) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "square";
+        osc.frequency.setValueAtTime(880, now + offset);
+        gain.gain.setValueAtTime(0, now + offset);
+        gain.gain.linearRampToValueAtTime(0.25, now + offset + 0.02);
+        gain.gain.linearRampToValueAtTime(0, now + offset + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.3);
+      });
+    }
+
+    async function pollGeofence() {
+      try {
+        const [lat, lon] = lastVesselCoord;
+        const res = await fetch(`${API_BASE}/api/geofence-check?lat=${lat}&lon=${lon}`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const distances = [data.eez_distance_km, data.mpa_distance_km].filter(
+          (d) => typeof d === "number"
+        );
+        const nearestKm = distances.length ? Math.min(...distances) : null;
+        const isNear = nearestKm !== null && nearestKm <= GEOFENCE_ALERT_KM;
+
+        if (isNear && geofenceAlertArmed) {
+          geofenceAlertArmed = false; // one alert per crossing, not one per poll
+          playGeofenceSiren();
+          appendAgentBadge(`🚨 GEOFENCE ALERT: ${data.message} (${nearestKm.toFixed(2)} km)`);
+        } else if (!isNear) {
+          geofenceAlertArmed = true; // re-arm only once clear of the zone again
+        }
+      } catch (err) {
+        console.error("Geofence poll failed:", err);
+      }
+    }
+
+    function startGeofencePolling() {
+      if (geofencePollTimer) return;
+      pollGeofence();
+      geofencePollTimer = setInterval(pollGeofence, GEOFENCE_POLL_MS);
+    }
+
     // Seed the dashboard with the mock payload on load so it isn't empty before the first query.
     updateHazardBanner(MOCK_ORCHESTRATOR_RESPONSE.hazard_status);
     plotVesselMarker(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord[0], MOCK_ORCHESTRATOR_RESPONSE.vessel_coord[1]);
     plotPFZZones(MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
     plotRoute(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord, MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
     updateTelemetryBars(MOCK_ORCHESTRATOR_RESPONSE.telemetry);
+    initVoiceMic();
+    startGeofencePolling();
 
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();

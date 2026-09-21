@@ -31,23 +31,56 @@ os.makedirs(PLOTS_DIR, exist_ok=True)
 # Set SAGAR_MITRA_BASE_URL in .env once deployed (e.g. https://your-app.onrender.com).
 BASE_URL = os.environ.get("SAGAR_MITRA_BASE_URL", "http://127.0.0.1:8000")
 
+# Progressively widened search radii (degrees) for region-scoped historical
+# queries. Argo floats are open-ocean profiling instruments, not coastal
+# sensors -- they don't operate right up against the shoreline, so a
+# near-coast query point (e.g. [19.0, 72.8] near Mumbai) can have its
+# nearest real profile 2-3 degrees away even though the dataset genuinely
+# covers that part of the Arabian Sea. A single fixed ~2-degree box used to
+# come up completely empty for exactly that kind of point. Trying wider
+# boxes in order (instead of failing at the first one) is what lets a
+# coastal query still find the closest real regional data.
+_REGION_RADIUS_CANDIDATES = (2.0, 3.0, 5.0, 8.0, 12.0)
+
+
+def _region_filtered(df: pd.DataFrame, region_lat: Optional[float],
+                      region_lon: Optional[float]) -> tuple:
+    """
+    Filters `df` to a lat/lon bounding box around (region_lat, region_lon),
+    trying _REGION_RADIUS_CANDIDATES in increasing order and stopping at
+    the first radius that actually contains data.
+
+    Returns (filtered_df, radius_used). radius_used is None when no region
+    was given at all (the whole dataset is returned, unfiltered -- e.g. a
+    global "when was the highest recorded temperature" question), or the
+    widest radius tried if even that came up empty (so the caller can
+    report exactly how far it searched instead of a bare "no data").
+    """
+    if region_lat is None or region_lon is None:
+        return df, None
+    for radius in _REGION_RADIUS_CANDIDATES:
+        subset = df[(df["LATITUDE"].between(region_lat - radius, region_lat + radius)) &
+                    (df["LONGITUDE"].between(region_lon - radius, region_lon + radius))]
+        if not subset.empty:
+            return subset, radius
+    return df.iloc[0:0], _REGION_RADIUS_CANDIDATES[-1]
+
 
 # ---------------------------------------------------------------------------
 # TOOL FUNCTIONS (Gemini calls these automatically when needed)
 # ---------------------------------------------------------------------------
 
 def query_historical_extreme(parameter: str, mode: str, region_lat: Optional[float] = None,
-                              region_lon: Optional[float] = None, radius_deg: float = 2.0) -> dict:
+                              region_lon: Optional[float] = None) -> dict:
     """
     Finds the historical max/min/last-occurrence of a parameter.
     parameter: one of 'TEMP','PSAL','PRES'
     mode: 'max' or 'min'
     """
-    df = store.final_dataset.copy()
-    if region_lat is not None and region_lon is not None:
-        df = df[(df["LATITUDE"].between(region_lat - radius_deg, region_lat + radius_deg)) &
-                (df["LONGITUDE"].between(region_lon - radius_deg, region_lon + radius_deg))]
+    df, radius_used = _region_filtered(store.final_dataset, region_lat, region_lon)
     if df.empty or parameter not in df.columns:
+        if radius_used is not None:
+            return {"error": f"No matching data found within {radius_used:g} degrees of this region."}
         return {"error": "No matching data found."}
 
     column = cast(pd.Series, df[parameter])
@@ -56,26 +89,36 @@ def query_historical_extreme(parameter: str, mode: str, region_lat: Optional[flo
         "value": float(row[parameter]),
         "date": str(row.get("JULD", "unknown")),
         "lat": float(row["LATITUDE"]), "lon": float(row["LONGITUDE"]),
+        "search_radius_deg": radius_used,
     }
 
 
 def get_yearly_trend(parameter: str, region_lat: Optional[float] = None,
-                      region_lon: Optional[float] = None, radius_deg: float = 2.0) -> dict:
+                      region_lon: Optional[float] = None) -> dict:
     """Returns yearly average of a parameter for trend/graph questions."""
-    df = store.final_dataset.copy()
-    if region_lat is not None and region_lon is not None:
-        df = df[(df["LATITUDE"].between(region_lat - radius_deg, region_lat + radius_deg)) &
-                (df["LONGITUDE"].between(region_lon - radius_deg, region_lon + radius_deg))]
+    df, radius_used = _region_filtered(store.final_dataset, region_lat, region_lon)
+    if df.empty:
+        return {"years": [], "values": [], "search_radius_deg": radius_used}
+    df = df.copy()
     juld = cast(pd.Series, df["JULD"])
     df["YEAR"] = pd.to_datetime(juld).dt.year
     yearly = cast(pd.Series, df.groupby("YEAR")[parameter].mean()).dropna()
-    return {"years": yearly.index.tolist(), "values": yearly.to_numpy().round(2).tolist()}
+    return {"years": yearly.index.tolist(), "values": yearly.to_numpy().round(2).tolist(),
+            "search_radius_deg": radius_used}
 
 
 def plot_yearly_trend(parameter: str, region_lat: Optional[float] = None,
                        region_lon: Optional[float] = None) -> dict:
     """Generates and saves a trend graph, returns the file path + public URL."""
     data = get_yearly_trend(parameter, region_lat, region_lon)
+    if not data["years"]:
+        # Report honestly instead of saving a blank/empty chart image -- an
+        # empty plot with a "chart generated" message would be worse than
+        # no chart at all.
+        radius = data.get("search_radius_deg")
+        detail = f" within {radius:g} degrees of this region" if radius is not None else ""
+        return {"error": f"No {parameter} data found{detail} to plot."}
+
     plt.figure(figsize=(8, 4))
     plt.plot(data["years"], data["values"], marker="o")
     plt.title(f"{parameter} Trend Over Years")
@@ -98,11 +141,8 @@ def plot_category_distribution(parameter: str = "TEMP", region_lat: Optional[flo
     Hot), based on the real calibrated surface climatology. Use when user
     asks for a 'pie chart' or 'distribution' or 'breakdown' of conditions.
     """
-    df = store.final_dataset.copy()
-    df = cast(pd.DataFrame, df[df["PRES"] <= 30])  # match the surface-only climatology baseline
-    if region_lat is not None and region_lon is not None:
-        df = df[(df["LATITUDE"].between(region_lat - 2.0, region_lat + 2.0)) &
-                (df["LONGITUDE"].between(region_lon - 2.0, region_lon + 2.0))]
+    surface_df = cast(pd.DataFrame, store.final_dataset[store.final_dataset["PRES"] <= 30])  # surface-only, matches the climatology baseline
+    df, _radius_used = _region_filtered(surface_df, region_lat, region_lon)
     mu = store.calibrated_clim["temp"]["mu"]
     sigma = store.calibrated_clim["temp"]["sigma"] or 0.9
     z = (df["TEMP"] - mu) / sigma
@@ -248,7 +288,11 @@ def _format_tool_result(fn_name: str, fn_args: dict, result: dict) -> str:
     if fn_name == "get_yearly_trend":
         parameter = fn_args.get("parameter", "value")
         pairs = ", ".join(f"{y}: {v}" for y, v in zip(result.get("years", []), result.get("values", [])))
-        return f"Yearly {parameter} averages -- {pairs}." if pairs else f"No yearly {parameter} data found for this region."
+        if pairs:
+            return f"Yearly {parameter} averages -- {pairs}."
+        radius = result.get("search_radius_deg")
+        detail = f" within {radius:g} degrees of this region" if radius is not None else " for this region"
+        return f"No yearly {parameter} data found{detail}."
 
     if fn_name == "plot_yearly_trend":
         parameter = fn_args.get("parameter", "value")

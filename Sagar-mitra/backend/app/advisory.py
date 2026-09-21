@@ -88,11 +88,52 @@ def _is_quota_error(e: Exception) -> bool:
     ])
 
 
+def _is_permission_denied_error(e: Exception) -> bool:
+    """True for 403 PERMISSION_DENIED errors from the Gemini API (e.g. the
+    key/project lacks access to a model/feature, billing not enabled, or the
+    project itself was denied access). This IS per-key -- confirmed live, one
+    key in GEMINI_API_KEYS can be denied while another works fine -- so
+    generate_content (below) rotates past it like a quota error instead of
+    failing the whole request. Callers only see this surface once every key
+    has been tried and denied, in which case a retry truly won't help and
+    they should show a plain status message instead of the raw error."""
+    msg = str(e).lower()
+    return "403" in msg or "permission_denied" in msg or "permission denied" in msg
+
+
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
         _client = get_gemini_client()
     return _client
+
+
+def require_gemini_key() -> None:
+    """
+    Strict startup check -- called from app/graph.py's create_orca_graph()
+    (which app/main.py runs at import time), so a missing key fails the
+    server's own startup with clear terminal instructions instead of
+    starting normally and letting every request silently degrade to the
+    raw-data fallback formatter ("ORCA's AI summarizer is temporarily
+    busy") with no visible signal to whoever's running it.
+    """
+    if _KEYS:
+        return
+    print("=" * 72)
+    print("ORCA STARTUP ERROR: No Gemini API key configured.")
+    print("=" * 72)
+    print("ORCA needs a Gemini API key to generate localized, persona-aware")
+    print("advisories. Without one, every request will silently fall back to")
+    print("the raw-data formatter (\"ORCA's AI summarizer is temporarily busy\").")
+    print()
+    print("To fix this:")
+    print("  1. Copy backend/.env.example to backend/.env")
+    print("  2. Get a free key at https://aistudio.google.com/apikey")
+    print("  3. Add it to backend/.env as GEMINI_API_KEY=<your key>")
+    print("     (or GEMINI_API_KEYS=key1,key2,... for automatic quota rotation)")
+    print("  4. Restart the server: uvicorn app.main:app --reload")
+    print("=" * 72)
+    raise SystemExit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -113,8 +154,9 @@ LITE_MODEL = "gemini-flash-lite-latest"
 def generate_content(model: str, contents, config=None):
     """
     Drop-in replacement for client.models.generate_content(...) that
-    automatically rotates through GEMINI_API_KEYS on quota/rate-limit errors
-    and retries, instead of failing the whole request.
+    automatically rotates through GEMINI_API_KEYS on quota/rate-limit OR
+    permission-denied errors and retries, instead of getting permanently
+    stuck on a single bad key for the rest of the process lifetime.
     """
     last_err = None
     attempts = max(len(_KEYS), 1)
@@ -124,7 +166,7 @@ def generate_content(model: str, contents, config=None):
             return client.models.generate_content(model=model, contents=contents, config=config)
         except Exception as e:
             last_err = e
-            if _is_quota_error(e) and len(_KEYS) > 1:
+            if (_is_quota_error(e) or _is_permission_denied_error(e)) and len(_KEYS) > 1:
                 _rotate_key()
                 continue
             raise
@@ -371,6 +413,12 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
         "exact query. Base your answer on it -- never claim you lack real-time data, and never "
         "invent a number or fact that isn't in it. If a section reports an error or missing "
         "data, say so honestly rather than filling the gap yourself.\n\n"
+        "TEMPORAL CONSISTENCY: If the data below mixes a FUTURE forecast (e.g. wave/weather "
+        "conditions for 'tomorrow') with a section explicitly marked as TODAY's CURRENT/LIVE "
+        "reading (e.g. a PFZ/chlorophyll note saying so), you MUST preserve that distinction "
+        "clearly in your answer -- state plainly which figures are the future forecast and "
+        "which are today's live reading. Never imply the current/live figures are themselves "
+        "a forecast for that future time.\n\n"
         "FORMATTING: Plain text only, no markdown (no **bold**, no # headers, no backticks), "
         "no LaTeX ($...$)."
     )

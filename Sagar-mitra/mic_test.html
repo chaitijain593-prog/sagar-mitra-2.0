@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sagar Mitra - Mic Test</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0a1420; color: #e2f1ff; max-width: 640px; margin: 40px auto; padding: 0 20px; }
+  h1 { font-size: 1.3rem; }
+  button { font-size: 1rem; padding: 12px 20px; border-radius: 8px; border: none; cursor: pointer; background: #38bdf8; color: #020914; font-weight: 600; }
+  button.recording { background: #ef4444; color: #fff; }
+  button:disabled { opacity: 0.6; cursor: wait; }
+  #status { margin: 16px 0; padding: 12px; background: #101d2e; border-radius: 8px; white-space: pre-wrap; font-size: 0.92rem; line-height: 1.5; }
+  label { display: block; margin: 8px 0 2px; font-size: 0.85rem; color: #93b4d0; }
+  input { background: #101d2e; border: 1px solid #234; color: #e2f1ff; padding: 6px 10px; border-radius: 6px; width: 140px; }
+  audio { width: 100%; margin-top: 12px; }
+</style>
+</head>
+<body>
+  <h1>Sagar Mitra &mdash; Mic Endpoint Test</h1>
+  <p>Standalone page to test <code>POST /api/voice/orchestrate</code> in isolation. Must be opened over
+     <code>http://localhost</code> (not <code>file://</code>) for the browser to allow mic access.</p>
+
+  <label for="apiBase">Backend URL</label>
+  <input id="apiBase" value="http://127.0.0.1:8000" />
+  <label for="lat">Latitude</label>
+  <input id="lat" value="18.9" />
+  <label for="lon">Longitude</label>
+  <input id="lon" value="72.8" />
+
+  <p><button id="micBtn">🎤 Start Recording</button></p>
+
+  <div id="status">Idle. Click the button and speak a short query (e.g. "Is it safe to fish near Ratnagiri today?").</div>
+  <audio id="player" controls style="display:none;"></audio>
+
+<script>
+  const micBtn = document.getElementById("micBtn");
+  const statusEl = document.getElementById("status");
+  const player = document.getElementById("player");
+  let mediaRecorder = null;
+  let chunks = [];
+  let stream = null;
+  let state = "idle";
+
+  function log(msg) {
+    statusEl.textContent += "\n" + msg;
+    console.log(msg);
+  }
+
+  function pickMimeType() {
+    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
+    if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) return "";
+    return candidates.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+  }
+
+  async function startRecording() {
+    statusEl.textContent = "Requesting microphone access...";
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      log("ERROR: navigator.mediaDevices is unavailable. Serve this page over http://localhost or https://, not file://.");
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      log(`ERROR: getUserMedia failed (${err.name}): ${err.message}`);
+      if (err.name === "NotAllowedError") {
+        log("Permission was denied. Check the address bar's site-permission icon and allow the microphone, then retry.");
+      }
+      return;
+    }
+
+    chunks = [];
+    const mimeType = pickMimeType();
+    mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const blobType = mediaRecorder.mimeType || mimeType || "audio/webm";
+      const blob = new Blob(chunks, { type: blobType });
+      log(`Recorded ${blob.size} bytes (${blobType}). Uploading...`);
+      uploadClip(blob, blobType);
+    };
+    mediaRecorder.start();
+    state = "recording";
+    micBtn.textContent = "⏹ Stop Recording";
+    micBtn.classList.add("recording");
+    statusEl.textContent = "Recording... speak now, then click Stop.";
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+      state = "busy";
+      micBtn.disabled = true;
+      micBtn.textContent = "Processing...";
+      micBtn.classList.remove("recording");
+      mediaRecorder.stop();
+    }
+  }
+
+  async function uploadClip(blob, mimeType) {
+    const apiBase = document.getElementById("apiBase").value.replace(/\/$/, "");
+    const lat = document.getElementById("lat").value;
+    const lon = document.getElementById("lon").value;
+    const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
+
+    const formData = new FormData();
+    formData.append("audio", blob, `voice_query.${ext}`);
+    formData.append("latitude", lat);
+    formData.append("longitude", lon);
+
+    try {
+      const res = await fetch(`${apiBase}/api/voice/orchestrate`, { method: "POST", body: formData });
+      const bodyText = await res.text();
+      let body;
+      try { body = JSON.parse(bodyText); } catch (e) { body = { raw: bodyText }; }
+
+      if (!res.ok) {
+        log(`FAILED: HTTP ${res.status} - ${body.detail || bodyText}`);
+        return;
+      }
+
+      log(`Transcript (${body.detected_language}): ${body.transcript}`);
+      log(`English translation: ${body.translated_query}`);
+      log(`Advisory: ${body.advisory_text}`);
+      if (body.audio_url) {
+        log(`Audio reply: ${body.audio_url}`);
+        player.src = body.audio_url;
+        player.style.display = "block";
+        player.play().catch(() => log("(autoplay blocked - press play manually)"));
+      } else {
+        log("No audio reply was generated (TTS may have failed) - text advisory above still succeeded.");
+      }
+    } catch (err) {
+      log(`FAILED: network/fetch error - ${err.message}. Is the backend running and reachable at ${apiBase}?`);
+    } finally {
+      state = "idle";
+      micBtn.disabled = false;
+      micBtn.textContent = "🎤 Start Recording";
+    }
+  }
+
+  micBtn.addEventListener("click", () => {
+    if (state === "idle") startRecording();
+    else if (state === "recording") stopRecording();
+  });
+</script>
+</body>
+</html>
