@@ -7,3 +7,5 @@ static/audio/
 *.tar.gz
 *_temp/
 *.log
+data/*.db
+*.parquet

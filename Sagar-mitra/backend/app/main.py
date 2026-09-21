@@ -2,7 +2,7 @@ import os
 import re
 import traceback
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from dotenv import load_dotenv
 load_dotenv()  # reads .env in the working directory, if present
 
@@ -18,6 +18,7 @@ from app.pfz_ml import predict_pfz_confidence
 from app.route_planner import plan_safe_route
 from app.session_store import store as session_store
 from app.data import store
+from app import db
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
 from app.advisory import _is_quota_error, _is_permission_denied_error
 from app.boundary_toool import distance_to_nearest_boundary_km
@@ -58,6 +59,13 @@ app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 # clear terminal instructions instead of starting a server that silently
 # degrades every request.
 orca_graph = create_orca_graph()
+
+# Phase 0 #1: stand up the persistent SQLite store (app/db.py) -- loads
+# final_dataset.parquet into argo_readings (idempotent: a no-op after the
+# first run) and ensures sos_events exists for Task 2's mayday logging.
+# Additive only -- app/data.py's in-memory pandas `store` above is
+# untouched and still the source of truth for every existing caller.
+db.init_db()
 
 # --- Request Models ------------------------------------------------------
 class OrchestrateRequest(BaseModel):
@@ -149,8 +157,8 @@ _pfz_validator = PFZStatisticalValidator()
 
 def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_report: str) -> dict:
     """
-    Builds the three Prediction Telemetry values from real, live-computed
-    signals instead of the frontend's old hardcoded 85%/72%/91% placeholders:
+    Builds the Prediction Telemetry values from real, live-computed signals
+    instead of the frontend's old hardcoded 85%/72%/91% placeholders:
 
       - sst_anomaly_pct: Z-Test confidence (1 - p_value) that live SST at
         this coordinate deviates from the Arabian Sea baseline.
@@ -159,6 +167,13 @@ def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_repo
       - ml_confidence_pct: the trained PFZ classifier's own predicted
         probability for this point (None if the model hasn't been trained
         yet -- see backend/scripts/train_pfz_model.py).
+      - shap_attributions: per-feature SHAP attributions explaining
+        ml_confidence_pct (Feature/Task: SHAP explainability -- see
+        pfz_ml.py's include_shap flag), None if unavailable. Only the
+        Researcher persona's advisory card renders this (see index.html's
+        appendAdvisoryCard) -- it's still computed for every request here
+        since the SST/chlorophyll/salinity signals it needs are already
+        being fetched for the other two telemetry values anyway.
     """
     sst_match = _SST_RE.search(ocean_report)
     chl_match = _CHLOROPHYLL_RE.search(chlorophyll_report)
@@ -181,13 +196,17 @@ def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_repo
         chlorophyll_gradient_pct = round((1 - chl_check["p_value"]) * 100, 1)
 
     ml_confidence_pct = None
+    shap_attributions = None
     if sst is not None and chlorophyll is not None:
-        ml_confidence_pct = predict_pfz_confidence(sst, chlorophyll, salinity, lat, lon)
+        ml_confidence_pct, shap_attributions = predict_pfz_confidence(
+            sst, chlorophyll, salinity, lat, lon, include_shap=True
+        )
 
     return {
         "sst_anomaly_pct": sst_anomaly_pct,
         "chlorophyll_gradient_pct": chlorophyll_gradient_pct,
         "ml_confidence_pct": ml_confidence_pct,
+        "shap_attributions": shap_attributions,
     }
 
 
@@ -223,6 +242,46 @@ def geofence_check(lat: float, lon: float):
         **boundary,
         "geofence_alert": alert_level,
         "message": message,
+    }
+
+
+# --- Feature: Real SOS / Mayday logging (Phase 1 #5) ----------------------
+class SOSRequest(BaseModel):
+    lat: float
+    lon: float
+    hazard_status: str | None = None
+    nearest_port: str | None = None
+    message: str | None = None
+    session_id: str | None = None
+
+
+@app.post("/api/sos")
+def report_sos(request: SOSRequest):
+    """
+    Logs a mayday/SOS event to the persistent store (app/db.py's sos_events
+    table -- see Task 1) instead of only ever showing a local alert() in the
+    browser (see index.html's triggerMayday). Every field here mirrors what
+    triggerMayday's payload sends: the vessel's last known coordinates, the
+    last known hazard status, and the (currently hardcoded) nearest-port
+    text shown in its mayday message.
+    """
+    timestamp = datetime.now(timezone.utc).isoformat()
+    event = {
+        "timestamp": timestamp,
+        "lat": request.lat,
+        "lon": request.lon,
+        "hazard_status": request.hazard_status,
+        "nearest_port": request.nearest_port,
+        "message": request.message,
+        "session_id": request.session_id,
+        "raw_payload": request.model_dump_json(),
+    }
+    event_id = db.insert_sos_event(event)
+    return {
+        "status": "success",
+        "id": event_id,
+        "timestamp": timestamp,
+        "coordinates": [request.lat, request.lon],
     }
 
 
