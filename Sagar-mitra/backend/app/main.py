@@ -21,6 +21,7 @@ from app.data import store
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
 from app.advisory import _is_quota_error, _is_permission_denied_error
 from app.boundary_toool import distance_to_nearest_boundary_km
+from app.dispatch import generate_morning_dispatch
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -469,3 +470,38 @@ async def run_voice_orchestration(
         "advisory_text": advisory_text,
         "audio_url": audio_url,
     }
+
+
+# --- Feature 4: Offline "Morning Dispatch" --------------------------------
+class DispatchRequest(BaseModel):
+    coordinates: list[float]  # e.g., [18.9, 72.8]
+    persona: str = "Fisherman"
+    language: str = "English"
+    day_offset: int = 0        # 0 = today, 1 = tomorrow, ...
+    target_hour: int | None = 8  # hour-of-day (24h) the briefing's conditions should describe
+
+
+@app.post("/api/dispatch/generate")
+def generate_dispatch(request: DispatchRequest):
+    """
+    Generates a downloadable pre-departure briefing (PDF + spoken audio) of
+    today's tides/waves, nearest PFZ, hazard alerts, boundary status, and
+    top favorable regions -- meant to be called ONCE while still online in
+    port, then read/played back later with no connectivity at sea. See
+    app/dispatch.py for the generation pipeline.
+    """
+    lat, lon = request.coordinates[0], request.coordinates[1]
+    try:
+        result = generate_morning_dispatch(
+            lat, lon,
+            persona=request.persona,
+            language=request.language,
+            day_offset=request.day_offset,
+            target_hour=request.target_hour,
+        )
+    except Exception as e:
+        traceback.print_exc()
+        status_code = 429 if _is_quota_error(e) else 500
+        raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
+
+    return {"status": "success", **result}
