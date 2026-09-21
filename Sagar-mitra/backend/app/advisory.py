@@ -88,6 +88,19 @@ def _is_quota_error(e: Exception) -> bool:
     ])
 
 
+def _is_permission_denied_error(e: Exception) -> bool:
+    """True for 403 PERMISSION_DENIED errors from the Gemini API (e.g. the
+    key/project lacks access to a model/feature, billing not enabled, or the
+    project itself was denied access). This IS per-key -- confirmed live, one
+    key in GEMINI_API_KEYS can be denied while another works fine -- so
+    generate_content (below) rotates past it like a quota error instead of
+    failing the whole request. Callers only see this surface once every key
+    has been tried and denied, in which case a retry truly won't help and
+    they should show a plain status message instead of the raw error."""
+    msg = str(e).lower()
+    return "403" in msg or "permission_denied" in msg or "permission denied" in msg
+
+
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
@@ -141,8 +154,9 @@ LITE_MODEL = "gemini-flash-lite-latest"
 def generate_content(model: str, contents, config=None):
     """
     Drop-in replacement for client.models.generate_content(...) that
-    automatically rotates through GEMINI_API_KEYS on quota/rate-limit errors
-    and retries, instead of failing the whole request.
+    automatically rotates through GEMINI_API_KEYS on quota/rate-limit OR
+    permission-denied errors and retries, instead of getting permanently
+    stuck on a single bad key for the rest of the process lifetime.
     """
     last_err = None
     attempts = max(len(_KEYS), 1)
@@ -152,7 +166,7 @@ def generate_content(model: str, contents, config=None):
             return client.models.generate_content(model=model, contents=contents, config=config)
         except Exception as e:
             last_err = e
-            if _is_quota_error(e) and len(_KEYS) > 1:
+            if (_is_quota_error(e) or _is_permission_denied_error(e)) and len(_KEYS) > 1:
                 _rotate_key()
                 continue
             raise

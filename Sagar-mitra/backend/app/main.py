@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from dotenv import load_dotenv
 load_dotenv()  # reads .env in the working directory, if present
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -18,6 +18,17 @@ from app.pfz_ml import predict_pfz_confidence
 from app.route_planner import plan_safe_route
 from app.session_store import store as session_store
 from app.data import store
+from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
+from app.advisory import _is_quota_error, _is_permission_denied_error
+from app.boundary_toool import distance_to_nearest_boundary_km
+from app.dispatch import generate_morning_dispatch
+
+
+def _orchestration_error_detail(e: Exception) -> str:
+    if _is_quota_error(e):
+        return ("The AI service has hit its API quota/rate limit right now. "
+                "Please wait a bit and try again.")
+    return f"Internal error during orchestration: {e}"
 
 app = FastAPI(title="ORCA Backend API", version="0.2.0")
 
@@ -34,8 +45,11 @@ app.add_middleware(
 # Serves the historical-chart PNGs app/historical.py saves under
 # backend/static/plots -- the plot_url returned to the frontend (see
 # run_orchestration below) points at this mount, e.g.
-# http://127.0.0.1:8000/static/plots/TEMP_trend_xxxx.png.
+# http://127.0.0.1:8000/static/plots/TEMP_trend_xxxx.png. Also serves
+# synthesized advisory audio saved under backend/static/audio (see
+# app/voice.py's save_advisory_audio).
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+os.makedirs(_STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 # Compile the LangGraph orchestrator on startup. create_orca_graph() itself
@@ -45,7 +59,7 @@ app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 # degrades every request.
 orca_graph = create_orca_graph()
 
-# --- Request Model ------------------------------------------------------
+# --- Request Models ------------------------------------------------------
 class OrchestrateRequest(BaseModel):
     user_message: str
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
@@ -60,6 +74,35 @@ class OrchestrateRequest(BaseModel):
 # silently show a stale/default value the rest of the time.
 _PFZ_COORD_RE = re.compile(r"Coordinates:\s*\[\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\]")
 _PFZ_ZONE_HALF_WIDTH_DEG = 0.08  # ~9 km box drawn around the nearest known PFZ point
+
+# Feature 3 (Proactive IMBL/Geofence Siren): the proximity, in km, at which
+# /api/geofence-check starts warning -- matches the "5km threshold" named in
+# the ORCA brief.
+GEOFENCE_WARNING_KM = 5.0
+
+
+def _derive_geofence_alert(boundary: dict) -> tuple[str, str]:
+    """
+    Turns distance_to_nearest_boundary_km's raw proximity numbers into a
+    SAFE/CAUTION/HAZARDOUS verdict + a plain-language message -- the same
+    three-tier vocabulary _derive_hazard_status already uses for the main
+    hazard banner, so the frontend can reuse its existing hazard-banner CSS
+    classes for this too instead of inventing a fourth status vocabulary.
+    """
+    inside_eez = boundary["inside_eez"]
+    inside_mpa = boundary["inside_mpa"]
+    eez_km = boundary["eez_distance_km"]
+    mpa_km = boundary["mpa_distance_km"]
+
+    if inside_eez is False:
+        return "HAZARDOUS", "Vessel has crossed the Indian EEZ boundary into international waters."
+    if inside_mpa:
+        return "HAZARDOUS", "Vessel is inside a Marine Protected Area."
+    if eez_km is not None and inside_eez and eez_km < GEOFENCE_WARNING_KM:
+        return "CAUTION", f"Approaching the Indian EEZ boundary ({eez_km} km remaining)."
+    if mpa_km is not None and mpa_km < GEOFENCE_WARNING_KM:
+        return "CAUTION", f"Approaching a Marine Protected Area ({mpa_km} km away)."
+    return "SAFE", "No maritime boundary within the 5 km geofence threshold."
 
 
 def _derive_hazard_status(boundary_report: str, ocean_report: str, hazard_report: dict) -> str:
@@ -162,6 +205,27 @@ def health():
     }
 
 
+@app.get("/api/geofence-check")
+def geofence_check(lat: float, lon: float):
+    """
+    Feature 3 (Proactive IMBL/Geofence Siren): a lightweight, poll-friendly
+    endpoint the frontend calls on an interval (not on every chat query --
+    see /api/orchestrate for that), so a vessel drifting toward the EEZ
+    boundary or a Marine Protected Area gets a warning before it next asks
+    ORCA anything. See boundary_toool.distance_to_nearest_boundary_km for
+    the underlying proximity math and check_maritime_boundary for the
+    confirmed-breach text used elsewhere in the advisory pipeline.
+    """
+    boundary = distance_to_nearest_boundary_km(lat, lon)
+    alert_level, message = _derive_geofence_alert(boundary)
+    return {
+        "coordinates": [lat, lon],
+        **boundary,
+        "geofence_alert": alert_level,
+        "message": message,
+    }
+
+
 @app.post("/api/orchestrate")
 def run_orchestration(request: OrchestrateRequest):
     # Conversation memory: a session_id lets a follow-up ("and what about
@@ -223,7 +287,8 @@ def run_orchestration(request: OrchestrateRequest):
         result = orca_graph.invoke(initial_state)
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal error during orchestration: {e}")
+        status_code = 429 if _is_quota_error(e) else 500
+        raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
 
     lat, lon = coordinates[0], coordinates[1]
     # The graph's dispatch_node already fetched boundary/ocean/PFZ/
@@ -308,3 +373,135 @@ def run_orchestration(request: OrchestrateRequest):
             if (day_offset > 0 or target_hour is not None) else None
         ),
     }
+
+
+# --- Feature 1: Regional Language Voice In/Out ---------------------------
+@app.post("/api/voice/orchestrate")
+async def run_voice_orchestration(
+    audio: UploadFile = File(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+):
+    """
+    Accepts a spoken query (Marathi, Tamil, Telugu, Gujarati, Malayalam, or
+    English), transcribes + translates it via Gemini, runs the English
+    translation through the same LangGraph workflow as /api/orchestrate
+    (producing the final advisory natively in the detected language), and
+    synthesizes that advisory back into speech.
+    """
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=422, detail="No audio data received.")
+    mime_type = audio.content_type or "audio/wav"
+
+    try:
+        transcription = transcribe_and_translate(audio_bytes, mime_type)
+    except UnsupportedAudioError as e:
+        # Don't guess at what was said - tell the user plainly instead.
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        traceback.print_exc()
+        if _is_quota_error(e):
+            raise HTTPException(
+                status_code=429,
+                detail="The voice transcription service has hit its API quota/rate "
+                       "limit right now. Please wait a bit and try again.",
+            )
+        if _is_permission_denied_error(e):
+            # Don't let the raw Gemini error JSON (which can include the full
+            # error body) reach the agent stream - show a plain status instead.
+            raise HTTPException(
+                status_code=403,
+                detail="The voice transcription service isn't authorized to process "
+                       "this request right now. Please try again later or contact support.",
+            )
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+
+    initial_state: AgentState = {
+        # The native-script transcript, not the English translation -- the
+        # planner detects language/persona/intent directly from this message
+        # (it handles any language, see app/planner.py) and that detection
+        # decides what language the final advisory/TTS come back in. Feeding
+        # it the English translation would always detect "English" here.
+        "user_message": transcription["transcript"],
+        "coordinates": [latitude, longitude],
+        "session_id": "",
+        "day_offset": 0,
+        "target_hour": None,
+        "history": [],
+        "last_agents": [],
+        "next_steps": [],
+        "agent_reports": {},
+        "hazard_alerts": [],
+        "common_signals": {},
+        "plot_url": None,
+        "regional_zones": [],
+        "language": transcription["language"],
+        "persona": "Fisherman",
+        "query_intent": "",
+        "final_output": "",
+        "final_advisory": "",
+    }
+
+    try:
+        result = orca_graph.invoke(initial_state)
+    except Exception as e:
+        traceback.print_exc()
+        status_code = 429 if _is_quota_error(e) else 500
+        raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
+
+    advisory_text = result.get("final_advisory", "Advisory generated successfully.")
+
+    audio_url = None
+    try:
+        advisory_audio = synthesize_speech(advisory_text, language=transcription["language"])
+        audio_url = save_advisory_audio(advisory_audio)["url"]
+    except Exception as e:
+        # Voice output is on top of the text advisory - if TTS fails, still
+        # return the text result rather than failing the whole request.
+        print(f"[Voice] TTS failed, returning text-only advisory: {e}")
+
+    return {
+        "status": "success",
+        "transcript": transcription["transcript"],
+        "detected_language": transcription["language"],
+        "translated_query": transcription["english_text"],
+        "coordinates": [latitude, longitude],
+        "advisory_text": advisory_text,
+        "audio_url": audio_url,
+    }
+
+
+# --- Feature 4: Offline "Morning Dispatch" --------------------------------
+class DispatchRequest(BaseModel):
+    coordinates: list[float]  # e.g., [18.9, 72.8]
+    persona: str = "Fisherman"
+    language: str = "English"
+    day_offset: int = 0        # 0 = today, 1 = tomorrow, ...
+    target_hour: int | None = 8  # hour-of-day (24h) the briefing's conditions should describe
+
+
+@app.post("/api/dispatch/generate")
+def generate_dispatch(request: DispatchRequest):
+    """
+    Generates a downloadable pre-departure briefing (PDF + spoken audio) of
+    today's tides/waves, nearest PFZ, hazard alerts, boundary status, and
+    top favorable regions -- meant to be called ONCE while still online in
+    port, then read/played back later with no connectivity at sea. See
+    app/dispatch.py for the generation pipeline.
+    """
+    lat, lon = request.coordinates[0], request.coordinates[1]
+    try:
+        result = generate_morning_dispatch(
+            lat, lon,
+            persona=request.persona,
+            language=request.language,
+            day_offset=request.day_offset,
+            target_hour=request.target_hour,
+        )
+    except Exception as e:
+        traceback.print_exc()
+        status_code = 429 if _is_quota_error(e) else 500
+        raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
+
+    return {"status": "success", **result}

@@ -739,15 +739,6 @@
       color: var(--text-main);
     }
 
-    .advisory-card .advisory-chart-img {
-      display: block;
-      width: 100%;
-      max-width: 100%;
-      border-radius: 8px;
-      margin-top: 8px;
-      border: 1px solid rgba(56, 189, 248, 0.35);
-    }
-
     /* 5d. Vessel Safety Buffer (pulsating 5 NM ring) */
     .vessel-safety-buffer {
       animation: safetyBufferPulse 2.4s ease-in-out infinite;
@@ -930,6 +921,41 @@
     }
 
     .search-send-btn:hover { transform: scale(1.06); }
+
+    .mic-btn {
+      width: 40px;
+      height: 40px;
+      background: transparent;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 50%;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    .mic-btn:hover { transform: scale(1.06); border-color: var(--accent-cyan); }
+
+    .mic-btn.is-recording {
+      background: #ef4444;
+      border-color: #ef4444;
+      color: #fff;
+      animation: micPulse 1.2s ease-in-out infinite;
+    }
+
+    .mic-btn.is-busy {
+      opacity: 0.6;
+      cursor: wait;
+      animation: none;
+    }
+
+    @keyframes micPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
+      50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+    }
 
     .chat-processing-indicator {
       display: none;
@@ -1201,6 +1227,9 @@
                 placeholder="Ask ORCA about hazards, EEZ or fishing zones..."
                 autocomplete="off"
               />
+              <button type="button" id="micBtn" class="mic-btn" title="Speak your query" aria-label="Record voice query">
+                <i data-lucide="mic" class="w-5 h-5"></i>
+              </button>
               <button type="submit" class="search-send-btn">
                 <i data-lucide="arrow-up" class="w-5 h-5"></i>
               </button>
@@ -1507,34 +1536,6 @@
       });
     }
 
-    // --- 6c2. Regional Scan Rankings (backend/app/regional_scan.py) ---
-    // Plots the ranked "which zones look favorable" results as numbered map
-    // markers, instead of leaving them as text-only lines inside the chat
-    // advisory (the only way to see them previously).
-    let regionalMarkers = [];
-    function plotRegionalZones(zones) {
-      regionalMarkers.forEach(m => map.removeLayer(m));
-      regionalMarkers = [];
-      (zones || []).forEach((z, i) => {
-        const icon = L.divIcon({
-          className: "",
-          html: `<div class="regional-marker">${i + 1}</div>`,
-          iconSize: [24, 24],
-        });
-        const confText = z.ml_confidence_pct != null
-          ? `${z.ml_confidence_pct}% ML confidence`
-          : "ML confidence unavailable";
-        const marker = L.marker([z.lat, z.lon], { icon })
-          .addTo(map)
-          .bindPopup(
-            `<b>#${i + 1} ${z.name || "Unnamed Zone"}</b><br>` +
-            `Chlorophyll-a: ${z.chlorophyll_mgm3} mg/m&sup3;<br>` +
-            `SST: ${z.sst_c}&deg;C<br>${confText}`
-          );
-        regionalMarkers.push(marker);
-      });
-    }
-
     // --- 6d. Tactical Route to Nearest PFZ ---
     let routeLine = null;
 
@@ -1661,25 +1662,21 @@
         .map(a => `<span class="advisory-alert">⚠ ${a}</span>`)
         .join("");
 
-      // Historical charts (app/historical.py's trend/pie-chart plots) are
-      // returned as a first-class plot_url field (see main.py's
-      // /api/orchestrate response) instead of only ever appearing as a raw
-      // URL buried inside the advisory prose -- render it directly here.
-      const plotHtml = data.plot_url
-        ? `<div class="advisory-row"><img src="${data.plot_url}" alt="Historical chart" class="advisory-chart-img" loading="lazy" /></div>`
-        : "";
-
       card.innerHTML = `
         <h4>🧭 Maritime Advisory</h4>
         <div class="advisory-row"><b>Status:</b> ${(data.hazard_status || "SAFE").toUpperCase()}</div>
         <div class="advisory-row"><b>Vessel Position:</b> ${data.vessel_coord ? data.vessel_coord.join(", ") : "Unknown"}</div>
         ${alertsHtml || '<div class="advisory-row">No active alerts.</div>'}
-        ${plotHtml}
       `;
 
       feed.appendChild(card);
       feed.scrollTop = feed.scrollHeight;
     }
+
+    // Point to your local FastAPI server running on port 8000. Shared by
+    // both the text query flow (handleQuerySubmit) and the mic voice flow
+    // (initVoiceMic) below.
+    const API_BASE = "http://127.0.0.1:8000";
 
     // -------------------------------------------------------------
     // 8b. CONVERSATION SESSION ID (multi-turn memory persistence)
@@ -1753,9 +1750,6 @@
       await runAgentSequence();
 
       const coords = await getVesselCoordinates();
-      
-      // Point to your local FastAPI server running on port 8000
-      const API_BASE = "http://127.0.0.1:8000";
 
       let parsedData;
       try {
@@ -1798,11 +1792,6 @@
           pfz_location: backendData.pfz_location || [],
           telemetry: backendData.telemetry || null,
           route: backendData.route || null,
-          // Historical chart image + regional-scan ranked zones, surfaced
-          // by the backend as first-class fields (see main.py) instead of
-          // only ever living inside the advisory's free text.
-          plot_url: backendData.plot_url || null,
-          regional_zones: backendData.regional_zones || [],
         };
       } catch (err) {
         console.error("API Connection Error:", err);
@@ -1816,9 +1805,183 @@
       plotPFZZones(parsedData.pfz_location);
       plotRegionalZones(parsedData.regional_zones);
       plotRoute(parsedData.vessel_coord, parsedData.pfz_location, parsedData.route);
+      plotRegionalZones(parsedData.regional_zones);
       appendAdvisoryCard(parsedData);
       setLastKnownState(parsedData.vessel_coord, parsedData.hazard_status);
       updateTelemetryBars(parsedData.telemetry);
+    }
+
+    // -------------------------------------------------------------
+    // 10b. VOICE MIC INPUT (/api/voice/orchestrate)
+    // -------------------------------------------------------------
+    // Records a short clip from the browser mic via MediaRecorder, uploads
+    // it to the backend's speech-in/speech-out endpoint, and shows the
+    // transcript + spoken-language advisory (with playable audio reply) in
+    // the agent stream feed. Kept fully separate from handleQuerySubmit's
+    // /api/orchestrate flow since the two return different shapes.
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let micStream = null;
+    // 'idle' -> 'recording' -> 'busy' (uploading/processing) -> 'idle'
+    let micState = "idle";
+
+    function pickAudioMimeType() {
+      const candidates = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/ogg;codecs=opus",
+      ];
+      if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) {
+        return ""; // let the browser pick its own default
+      }
+      return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+    }
+
+    function setMicState(next) {
+      micState = next;
+      const btn = document.getElementById("micBtn");
+      if (!btn) return;
+      btn.classList.toggle("is-recording", next === "recording");
+      btn.classList.toggle("is-busy", next === "busy");
+      btn.disabled = next === "busy";
+      btn.title = next === "recording" ? "Stop recording" : "Speak your query";
+    }
+
+    async function startMicRecording() {
+      // MediaDevices is only exposed in secure contexts (https, or
+      // http://localhost/http://127.0.0.1) -- opening this file directly
+      // as file:// or over a plain http:// LAN IP will leave
+      // navigator.mediaDevices undefined, not throw a permission error, so
+      // check for it explicitly with a clear message instead of a silent
+      // click-does-nothing bug.
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        appendAgentBadge(
+          "🎤 Microphone unavailable: this page must be served over https:// or " +
+          "http://localhost (not opened as a file:// path) for mic access to work."
+        );
+        return;
+      }
+      if (typeof MediaRecorder === "undefined") {
+        appendAgentBadge("🎤 This browser doesn't support MediaRecorder for mic capture.");
+        return;
+      }
+
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        console.error("Mic permission error:", err);
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          appendAgentBadge(
+            "🎤 Microphone permission denied. Click the padlock/camera icon in your " +
+            "browser's address bar and allow microphone access, then try again."
+          );
+        } else if (err.name === "NotFoundError") {
+          appendAgentBadge("🎤 No microphone found on this device.");
+        } else {
+          appendAgentBadge(`🎤 Could not access microphone: ${err.message || err.name}`);
+        }
+        return;
+      }
+
+      recordedChunks = [];
+      const mimeType = pickAudioMimeType();
+      mediaRecorder = mimeType
+        ? new MediaRecorder(micStream, { mimeType })
+        : new MediaRecorder(micStream);
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+      };
+      mediaRecorder.onstop = () => {
+        // Always release the mic hardware once we're done with it.
+        micStream.getTracks().forEach((track) => track.stop());
+        micStream = null;
+        const blobType = mediaRecorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(recordedChunks, { type: blobType });
+        if (blob.size === 0) {
+          appendAgentBadge("🎤 No audio captured -- please try again.");
+          setMicState("idle");
+          return;
+        }
+        submitVoiceQuery(blob, blobType);
+      };
+
+      mediaRecorder.start();
+      setMicState("recording");
+      appendAgentBadge("🎤 Listening... click the mic again to stop.");
+    }
+
+    function stopMicRecording() {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        setMicState("busy");
+        mediaRecorder.stop();
+      }
+    }
+
+    async function submitVoiceQuery(blob, mimeType) {
+      appendAgentBadge("📡 Uploading voice clip to ORCA for transcription...");
+      const loader = document.getElementById("chatLoader");
+      loader.style.display = "flex";
+
+      try {
+        const coords = await getVesselCoordinates();
+        const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
+        const formData = new FormData();
+        formData.append("audio", blob, `voice_query.${ext}`);
+        formData.append("latitude", coords[0]);
+        formData.append("longitude", coords[1]);
+
+        const res = await fetch(`${API_BASE}/api/voice/orchestrate`, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errBody = await res.json();
+            detail = errBody.detail || detail;
+          } catch (e) { /* non-JSON error body -- keep the status code */ }
+          throw new Error(detail);
+        }
+
+        const data = await res.json();
+        appendAgentBadge(`🗣️ Heard (${data.detected_language}): "${data.transcript}"`);
+        appendAgentBadge(`🌊 ${data.advisory_text}`);
+
+        if (data.audio_url) {
+          const feed = document.getElementById("agentStreamFeed");
+          const player = document.createElement("audio");
+          player.controls = true;
+          player.src = data.audio_url;
+          player.style.width = "100%";
+          player.style.marginTop = "4px";
+          feed.appendChild(player);
+          feed.scrollTop = feed.scrollHeight;
+          player.play().catch(() => { /* autoplay blocked -- user can hit play */ });
+        }
+      } catch (err) {
+        console.error("Voice orchestrate error:", err);
+        appendAgentBadge(`⚠ Voice query failed: ${err.message}`);
+      } finally {
+        loader.style.display = "none";
+        setMicState("idle");
+      }
+    }
+
+    function initVoiceMic() {
+      const micBtn = document.getElementById("micBtn");
+      if (!micBtn) return;
+      micBtn.addEventListener("click", (e) => {
+        // type="button" already keeps this out of the form's submit cycle,
+        // but stop propagation too in case a future markup change nests it
+        // differently -- clicking mic must never submit/refresh the page.
+        e.preventDefault();
+        e.stopPropagation();
+        if (micState === "idle") startMicRecording();
+        else if (micState === "recording") stopMicRecording();
+      });
     }
 
     // -------------------------------------------------------------
@@ -1869,6 +2032,7 @@
     plotPFZZones(MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
     plotRoute(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord, MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
     updateTelemetryBars(MOCK_ORCHESTRATOR_RESPONSE.telemetry);
+    initVoiceMic();
 
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
