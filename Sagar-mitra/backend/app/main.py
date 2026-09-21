@@ -20,6 +20,7 @@ from app.session_store import store as session_store
 from app.data import store
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
 from app.advisory import _is_quota_error, _is_permission_denied_error
+from app.boundary_toool import distance_to_nearest_boundary_km
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -72,6 +73,35 @@ class OrchestrateRequest(BaseModel):
 # silently show a stale/default value the rest of the time.
 _PFZ_COORD_RE = re.compile(r"Coordinates:\s*\[\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\]")
 _PFZ_ZONE_HALF_WIDTH_DEG = 0.08  # ~9 km box drawn around the nearest known PFZ point
+
+# Feature 3 (Proactive IMBL/Geofence Siren): the proximity, in km, at which
+# /api/geofence-check starts warning -- matches the "5km threshold" named in
+# the ORCA brief.
+GEOFENCE_WARNING_KM = 5.0
+
+
+def _derive_geofence_alert(boundary: dict) -> tuple[str, str]:
+    """
+    Turns distance_to_nearest_boundary_km's raw proximity numbers into a
+    SAFE/CAUTION/HAZARDOUS verdict + a plain-language message -- the same
+    three-tier vocabulary _derive_hazard_status already uses for the main
+    hazard banner, so the frontend can reuse its existing hazard-banner CSS
+    classes for this too instead of inventing a fourth status vocabulary.
+    """
+    inside_eez = boundary["inside_eez"]
+    inside_mpa = boundary["inside_mpa"]
+    eez_km = boundary["eez_distance_km"]
+    mpa_km = boundary["mpa_distance_km"]
+
+    if inside_eez is False:
+        return "HAZARDOUS", "Vessel has crossed the Indian EEZ boundary into international waters."
+    if inside_mpa:
+        return "HAZARDOUS", "Vessel is inside a Marine Protected Area."
+    if eez_km is not None and inside_eez and eez_km < GEOFENCE_WARNING_KM:
+        return "CAUTION", f"Approaching the Indian EEZ boundary ({eez_km} km remaining)."
+    if mpa_km is not None and mpa_km < GEOFENCE_WARNING_KM:
+        return "CAUTION", f"Approaching a Marine Protected Area ({mpa_km} km away)."
+    return "SAFE", "No maritime boundary within the 5 km geofence threshold."
 
 
 def _derive_hazard_status(boundary_report: str, ocean_report: str, hazard_report: dict) -> str:
@@ -171,6 +201,27 @@ def health():
     return {
         "status": "ok",
         "gemini_key_configured": bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEYS")),
+    }
+
+
+@app.get("/api/geofence-check")
+def geofence_check(lat: float, lon: float):
+    """
+    Feature 3 (Proactive IMBL/Geofence Siren): a lightweight, poll-friendly
+    endpoint the frontend calls on an interval (not on every chat query --
+    see /api/orchestrate for that), so a vessel drifting toward the EEZ
+    boundary or a Marine Protected Area gets a warning before it next asks
+    ORCA anything. See boundary_toool.distance_to_nearest_boundary_km for
+    the underlying proximity math and check_maritime_boundary for the
+    confirmed-breach text used elsewhere in the advisory pipeline.
+    """
+    boundary = distance_to_nearest_boundary_km(lat, lon)
+    alert_level, message = _derive_geofence_alert(boundary)
+    return {
+        "coordinates": [lat, lon],
+        **boundary,
+        "geofence_alert": alert_level,
+        "message": message,
     }
 
 
