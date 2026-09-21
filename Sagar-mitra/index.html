@@ -41,6 +41,47 @@
       <p class="loading-text" id="oceanVerbText">Surfing...</p>
     </div>
   </div>
+  <div id="onboarding-screen">
+    <div class="onboarding-card">
+      <div class="onboarding-step" id="onboardStep1">
+        <span class="onboarding-eyebrow">Step 1 of 2</span>
+        <h2 class="onboarding-title">Welcome Aboard</h2>
+        <p class="onboarding-subtitle">Tell us a little about yourself before we set sail.</p>
+        <label class="onboarding-label" for="onboardName">Your Name</label>
+        <input type="text" id="onboardName" class="onboarding-input" placeholder="e.g. Aarya" autocomplete="off" />
+        <label class="onboarding-label">I am a...</label>
+        <div class="onboarding-radio-group" id="onboardPersonaGroup">
+          <label class="onboarding-radio"><input type="radio" name="persona" value="Primary Grade Student" /><span>Primary Grade Student</span></label>
+          <label class="onboarding-radio"><input type="radio" name="persona" value="High School Student" /><span>High School Student</span></label>
+          <label class="onboarding-radio"><input type="radio" name="persona" value="Researcher" /><span>Researcher</span></label>
+          <label class="onboarding-radio"><input type="radio" name="persona" value="Coastal Community" /><span>Coastal Community</span></label>
+          <label class="onboarding-radio"><input type="radio" name="persona" value="Others" /><span>Others</span></label>
+        </div>
+        <input type="text" id="onboardPersonaOther" class="onboarding-input onboarding-hidden" placeholder="Please specify your role" autocomplete="off" />
+        <p class="onboarding-error" id="onboardStep1Error"></p>
+        <div class="onboarding-actions onboarding-actions-end">
+          <button class="onboarding-btn onboarding-btn-primary" id="onboardNextBtn">Next <i data-lucide="arrow-right"></i></button>
+        </div>
+      </div>
+      <div class="onboarding-step onboarding-hidden" id="onboardStep2">
+        <span class="onboarding-eyebrow">Step 2 of 2</span>
+        <h2 class="onboarding-title">What interests you?</h2>
+        <p class="onboarding-subtitle">Pick the ocean domains you'd like Sagar Mitra to focus on.</p>
+        <div class="onboarding-checkbox-group" id="onboardDomainGroup">
+          <label class="onboarding-checkbox"><input type="checkbox" value="Abyssal Anomalies" /><span>Abyssal Anomalies</span></label>
+          <label class="onboarding-checkbox"><input type="checkbox" value="Geofencing" /><span>Geofencing</span></label>
+          <label class="onboarding-checkbox"><input type="checkbox" value="Marine Biodiversity" /><span>Marine Biodiversity</span></label>
+          <label class="onboarding-checkbox"><input type="checkbox" value="Potential Fishing Zones" /><span>Potential Fishing Zones</span></label>
+          <label class="onboarding-checkbox"><input type="checkbox" value="Weather & Hazard Alerts" /><span>Weather & Hazard Alerts</span></label>
+          <label class="onboarding-checkbox"><input type="checkbox" value="Historical Ocean Trends" /><span>Historical Ocean Trends</span></label>
+        </div>
+        <div class="onboarding-actions">
+          <button class="onboarding-btn onboarding-btn-ghost" id="onboardBackBtn"><i data-lucide="arrow-left"></i> Back</button>
+          <button class="onboarding-btn onboarding-btn-primary" id="onboardFinishBtn">Get Started <i data-lucide="check"></i></button>
+        </div>
+      </div>
+    </div>
+  </div>
   <section id="hero-slide">
     <div class="video-background">
       <iframe
@@ -87,6 +128,10 @@
         <button class="theme-toggle-btn" id="themeToggle">
           <span id="themeIcon">☀️</span>
           <span id="themeLabel">Light</span>
+        </button>
+        <button class="logout-btn" id="logoutBtn" title="Logout">
+          <i data-lucide="log-out"></i>
+          <span>Logout</span>
         </button>
       </div>
     </nav>

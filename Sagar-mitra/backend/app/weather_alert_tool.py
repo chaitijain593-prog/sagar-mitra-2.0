@@ -22,6 +22,8 @@ from typing import Optional
 
 import requests
 
+from app.blackout_cache import cached_get
+
 _THUNDERSTORM_CODES = {95, 96, 99}
 CYCLONE_WIND_THRESHOLD_KMH = 62.0  # gale force (Beaufort 8+)
 
@@ -88,9 +90,7 @@ def _get_current_hazard_alerts(lat: float, lon: float) -> dict:
         "timezone": "auto",
     }
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        current = response.json().get("current", {})
+        current = cached_get(url, params=params, timeout=10).get("current", {})
         return _build_alert_result(
             current.get("weather_code"), current.get("wind_speed_10m"), current.get("wind_gusts_10m"),
         )
@@ -113,9 +113,7 @@ def _get_forecast_hazard_alerts(lat: float, lon: float, day_offset: int, hour: i
     target_date = (date.today() + timedelta(days=day_offset)).isoformat()
     label_prefix = f"[Forecast for {target_date} {hour:02d}:00] "
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        hourly = response.json().get("hourly", {})
+        hourly = cached_get(url, params=params, timeout=10).get("hourly", {})
         times = hourly.get("time", [])
         target_str = f"{target_date}T{hour:02d}:00"
         if target_str not in times:
