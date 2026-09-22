@@ -58,6 +58,14 @@ def _init_schema(conn: sqlite3.Connection) -> None:
     existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(hazard_mesh)")}
     if "timestamp" not in existing_cols:
         conn.execute("ALTER TABLE hazard_mesh ADD COLUMN timestamp TEXT")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS anchor_state (
+            session_id TEXT PRIMARY KEY,
+            lat REAL NOT NULL,
+            lon REAL NOT NULL,
+            set_at TEXT NOT NULL
+        )
+    """)
     conn.commit()
 
 
@@ -160,6 +168,45 @@ def get_hazard_mesh(limit: int = 1000, ttl_hours: float = HAZARD_MESH_TTL_HOURS)
             (cutoff, limit),
         )
         return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# --- Anchor drift (Sentry) --------------------------------------------------
+
+def get_anchor(session_id: str) -> Optional[dict]:
+    """The dropped-anchor reference point for this session, or None if no
+    anchor has been set yet."""
+    conn = _get_connection()
+    try:
+        _init_schema(conn)
+        row = conn.execute(
+            "SELECT lat, lon, set_at FROM anchor_state WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def set_anchor(session_id: str, lat: float, lon: float) -> dict:
+    """Drops (or re-drops) the anchor reference point for this session at
+    the given position, replacing any previous one."""
+    conn = _get_connection()
+    try:
+        _init_schema(conn)
+        set_at = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """
+            INSERT INTO anchor_state (session_id, lat, lon, set_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(session_id) DO UPDATE SET
+                lat = excluded.lat, lon = excluded.lon, set_at = excluded.set_at
+            """,
+            (session_id, lat, lon, set_at),
+        )
+        conn.commit()
+        return {"lat": lat, "lon": lon, "set_at": set_at}
     finally:
         conn.close()
 

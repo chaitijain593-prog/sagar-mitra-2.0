@@ -105,6 +105,7 @@
       const profile = { name, persona, domains, createdAt: new Date().toISOString() };
       localStorage.setItem(ONBOARD_KEY, JSON.stringify(profile));
       onboardScreen.classList.remove("active");
+      refreshActivePersona();
     });
     logoutBtn.addEventListener("click", () => {
       localStorage.removeItem(ONBOARD_KEY);
@@ -260,6 +261,143 @@
         regionalZoneMarkers.push(marker);
       });
     }
+    // --- 7. Crowdsourced Hazard Mesh Layer & Click-to-Report Modal ---
+    const hazardMeshLayer = L.layerGroup().addTo(map);
+    const HAZARD_TYPE_ICONS = { net: "🕸️", oil_slick: "🛢️", debris: "🪵" };
+    function hazardTypeLabel(type) {
+      return (type || "hazard").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    function hazardDivIcon(type) {
+      const symbol = HAZARD_TYPE_ICONS[type] || "⚠️";
+      return L.divIcon({ className: "", html: `<div class="hazard-mesh-marker">${symbol}</div>`, iconSize: [26, 26] });
+    }
+    function addHazardMarker(point) {
+      const marker = L.marker([point.lat, point.lon], { icon: hazardDivIcon(point.type) }).addTo(hazardMeshLayer);
+      marker.bindPopup(
+        `<div class="hazard-popup"><b>${hazardTypeLabel(point.type)}</b><br>Status: ${point.status || "active"}<br>` +
+        `<button type="button" class="hazard-popup-remove-btn">Remove / Clear Marker</button></div>`
+      );
+      marker.on("popupopen", (e) => {
+        const popupEl = e.popup.getElement();
+        const removeBtn = popupEl && popupEl.querySelector(".hazard-popup-remove-btn");
+        if (removeBtn) {
+          removeBtn.addEventListener("click", () => {
+            hazardMeshLayer.removeLayer(marker);
+            map.closePopup();
+          });
+        }
+      });
+      return marker;
+    }
+    async function loadHazardMesh() {
+      try {
+        const res = await fetch(`${API_BASE}/api/hazard/mesh`);
+        if (!res.ok) return;
+        const data = await res.json();
+        (data.points || []).forEach(addHazardMarker);
+      } catch (err) {
+        console.error("Failed to load hazard mesh:", err);
+      }
+    }
+    let pendingHazardCoords = null;
+    const hazardModalOverlay = document.getElementById("hazardModalOverlay");
+    const hazardModalCoords = document.getElementById("hazardModalCoords");
+    const hazardModalForm = document.getElementById("hazardModalForm");
+    const hazardModalClose = document.getElementById("hazardModalClose");
+    const hazardTypeSelect = document.getElementById("hazardTypeSelect");
+    function openHazardModal(latlng) {
+      pendingHazardCoords = { lat: latlng.lat, lon: latlng.lng };
+      if (hazardModalCoords) {
+        hazardModalCoords.textContent = `Location: ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`;
+      }
+      if (hazardModalOverlay) hazardModalOverlay.classList.add("active");
+    }
+    function closeHazardModal() {
+      if (hazardModalOverlay) hazardModalOverlay.classList.remove("active");
+      pendingHazardCoords = null;
+    }
+    async function submitHazardReport(e) {
+      e.preventDefault();
+      if (!pendingHazardCoords) return;
+      const submitBtn = hazardModalForm.querySelector(".hazard-modal-submit");
+      const hazardType = hazardTypeSelect.value;
+      const { lat, lon } = pendingHazardCoords;
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        const res = await fetch(`${API_BASE}/api/hazard`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat, lon, hazard_type: hazardType, status: "active" }), });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        addHazardMarker({ lat, lon, type: hazardType, status: "active" });
+        closeHazardModal();
+      } catch (err) {
+        console.error("Hazard report failed:", err);
+        appendAgentBadge(`⚠ Failed to submit hazard report: ${err.message}`);
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    }
+    // --- Historical Oceanographic Trends Chart (Feature 18) ---
+    let historicalChartInstance = null;
+    function initHistoricalChart() {
+      const canvas = document.getElementById("historicalChart");
+      if (!canvas || typeof Chart === "undefined") return;
+      const baselineLabels = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"];
+      const baselineSST = [27.1, 27.3, 27.6, 27.9, 28.2, 27.8];
+      const baselineSalinity = [34.9, 35.0, 35.1, 35.0, 34.8, 34.9];
+      historicalChartInstance = new Chart(canvas.getContext("2d"), {
+        type: "line", data: {
+          labels: baselineLabels, datasets: [{
+            label: "SST (°C)", data: baselineSST, borderColor: "#38bdf8", backgroundColor: "rgba(56, 189, 248, 0.15)",
+            tension: 0.35, fill: true, pointRadius: 3, }, {
+            label: "Salinity (PSU)", data: baselineSalinity, borderColor: "#f472b6", backgroundColor: "rgba(244, 114, 182, 0.12)",
+            tension: 0.35, fill: true, pointRadius: 3, }], }, options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: true, labels: { color: "#cbd5e1", font: { size: 10 } } } }, scales: {
+            x: { grid: { color: "rgba(148,163,184,0.12)" }, ticks: { color: "#94a3b8" } },
+            y: { grid: { color: "rgba(148,163,184,0.12)" }, ticks: { color: "#94a3b8" } }, }, }, });
+    }
+    function updateHistoricalChart(telemetry) {
+      if (!historicalChartInstance || !telemetry || !Array.isArray(telemetry.historical_series) || !telemetry.historical_series.length) return;
+      const series = telemetry.historical_series;
+      historicalChartInstance.data.labels = series.map((p) => p.date || p.label || "");
+      historicalChartInstance.data.datasets[0].data = series.map((p) => p.value);
+      historicalChartInstance.update();
+    }
+    // --- Compass / Bearing HUD (Feature 28) ---
+    function calculateBearing(lat1, lon1, lat2, lon2) {
+      const toRad = (d) => (d * Math.PI) / 180;
+      const toDeg = (r) => (r * 180) / Math.PI;
+      const phi1 = toRad(lat1);
+      const phi2 = toRad(lat2);
+      const deltaLambda = toRad(lon2 - lon1);
+      const y = Math.sin(deltaLambda) * Math.cos(phi2);
+      const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+    const COMPASS_CARDINALS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+    function bearingToCardinal(deg) {
+      return COMPASS_CARDINALS[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+    }
+    function updateCompassHeading(deg) {
+      const needle = document.getElementById("compassNeedle");
+      const readout = document.getElementById("compassHeadingReadout");
+      if (needle) needle.style.transform = "rotate(" + deg + "deg)";
+      if (readout) {
+        const normalized = Math.round(((deg % 360) + 360) % 360);
+        readout.textContent = `${String(normalized).padStart(3, "0")}° ${bearingToCardinal(normalized)}`;
+      }
+    }
+    function initHazardReporting() {
+      map.on("click", (e) => openHazardModal(e.latlng));
+      if (hazardModalClose) hazardModalClose.addEventListener("click", closeHazardModal);
+      if (hazardModalOverlay) {
+        hazardModalOverlay.addEventListener("click", (e) => {
+          if (e.target === hazardModalOverlay) closeHazardModal();
+        });
+      }
+      if (hazardModalForm) hazardModalForm.addEventListener("submit", submitHazardReport);
+    }
     // --- 6d. Tactical Route to Nearest PFZ ---
     let routeLine = null;
     function polygonCentroid(coords) {
@@ -388,6 +526,43 @@
         renderShapChart(chartId, shapData.feature_attributions, shapData.base_value);
       }
     }
+    // --- Persona Runtime Switcher (Feature 15) ---
+    // Maps the onboarding "I am a..." role radios onto the canonical persona
+    // strings the backend advisory/dispatch pipeline expects.
+    const DEFAULT_PERSONA = "Fisherman";
+    const PERSONA_ALIASES = {
+      "Primary Grade Student": "Fisherman",
+      "High School Student": "Fisherman",
+      "Researcher": "Marine Researcher",
+      "Coastal Community": "Port Authority",
+    };
+    function mapPersonaAlias(rawPersona) {
+      return PERSONA_ALIASES[rawPersona] || DEFAULT_PERSONA;
+    }
+    function readOnboardingPersona() {
+      try {
+        const profileRaw = localStorage.getItem(ONBOARD_KEY);
+        if (profileRaw) {
+          const profile = JSON.parse(profileRaw);
+          if (profile && profile.persona) return profile.persona;
+        }
+      } catch (e) {
+      }
+      return null;
+    }
+    let activePersona = mapPersonaAlias(readOnboardingPersona());
+    function refreshActivePersona() {
+      activePersona = mapPersonaAlias(readOnboardingPersona());
+    }
+    function openRoleSwitcher() {
+      onboardStep2.classList.add("onboarding-hidden");
+      onboardStep1.classList.remove("onboarding-hidden");
+      onboardScreen.classList.add("active");
+    }
+    function initPersonaSwitcher() {
+      const switchBtn = document.getElementById("switchRoleBtn");
+      if (switchBtn) switchBtn.addEventListener("click", openRoleSwitcher);
+    }
     const API_BASE = "http://127.0.0.1:8000";
     let sessionId = null;
     try {
@@ -426,7 +601,7 @@
       try {
         const res = await fetch(`${API_BASE}/api/orchestrate`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_message: text, coordinates: coords, session_id: sessionId }), });
+          body: JSON.stringify({ user_message: text, coordinates: coords, session_id: sessionId, persona: activePersona }), });
         if (!res.ok) throw new Error("Backend not responding correctly");
         const backendData = await res.json();
         sessionId = backendData.session_id || sessionId;
@@ -460,6 +635,7 @@
       appendAdvisoryCard(parsedData);
       setLastKnownState(parsedData.vessel_coord, parsedData.hazard_status);
       updateTelemetryBars(parsedData.telemetry);
+      updateHistoricalChart(parsedData.telemetry);
     }
     let mediaRecorder = null;
     let recordedChunks = [];
@@ -590,6 +766,10 @@
     let lastVesselCoord = MOCK_ORCHESTRATOR_RESPONSE.vessel_coord;
     let lastHazardStatus = MOCK_ORCHESTRATOR_RESPONSE.hazard_status;
     function setLastKnownState(vesselCoord, hazardStatus) {
+      if (lastVesselCoord && vesselCoord &&
+          (lastVesselCoord[0] !== vesselCoord[0] || lastVesselCoord[1] !== vesselCoord[1])) {
+        updateCompassHeading(calculateBearing(lastVesselCoord[0], lastVesselCoord[1], vesselCoord[0], vesselCoord[1]));
+      }
       lastVesselCoord = vesselCoord;
       lastHazardStatus = hazardStatus;
     }
@@ -643,7 +823,9 @@
       const metrics = {
         telemetrySST: { pct: telemetry?.sst_anomaly_pct, labelId: "telemetrySSTLabel" },
         telemetryChlorophyll: { pct: telemetry?.chlorophyll_gradient_pct, labelId: "telemetryChlorophyllLabel" },
-        telemetryML: { pct: telemetry?.ml_confidence_pct, labelId: "telemetryMLLabel" }, };
+        telemetryML: { pct: telemetry?.ml_confidence_pct, labelId: "telemetryMLLabel" },
+        telemetrySalinity: { pct: telemetry?.salinity_anomaly_pct, labelId: "telemetrySalinityLabel" },
+        telemetryDissolvedOxygen: { pct: telemetry?.dissolved_oxygen_pct, labelId: "telemetryDissolvedOxygenLabel" }, };
       Object.entries(metrics).forEach(([barId, { pct, labelId }]) => {
         const bar = document.getElementById(barId);
         const label = document.getElementById(labelId);
@@ -680,6 +862,130 @@
         osc.stop(now + offset + 0.3);
       });
     }
+    async function triggerMorningDispatch() {
+      const btn = document.getElementById("dispatchButton");
+      const label = document.getElementById("dispatchButtonLabel");
+      const status = document.getElementById("dispatchStatus");
+      const player = document.getElementById("dispatchPlayer");
+      if (!btn || !status || !player) return;
+
+      const persona = activePersona;
+      const language = "English";
+
+      btn.disabled = true;
+      if (label) label.textContent = "Generating...";
+      status.textContent = "Generating your offline briefing (PDF + audio)...";
+      status.className = "dispatch-status is-visible is-pending";
+      player.innerHTML = "";
+
+      try {
+        const coords = await getVesselCoordinates();
+        const res = await fetch(`${API_BASE}/api/dispatch/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ coordinates: coords, persona, language }),
+        });
+        if (!res.ok) {
+          throw new Error(`Dispatch request failed (${res.status})`);
+        }
+        const data = await res.json();
+
+        status.textContent = data.degraded
+          ? "Briefing ready (degraded mode -- some data may be limited)."
+          : "Briefing ready.";
+        status.className = `dispatch-status is-visible ${data.degraded ? "is-pending" : "is-success"}`;
+
+        if (data.pdf_url) {
+          const pdfLink = document.createElement("a");
+          pdfLink.href = data.pdf_url;
+          pdfLink.target = "_blank";
+          pdfLink.rel = "noopener noreferrer";
+          pdfLink.download = "";
+          pdfLink.textContent = "Download Briefing PDF";
+          player.appendChild(pdfLink);
+        }
+        if (data.audio_url) {
+          const audioEl = document.createElement("audio");
+          audioEl.controls = true;
+          audioEl.src = data.audio_url;
+          player.appendChild(audioEl);
+        }
+        if (!data.pdf_url && !data.audio_url) {
+          status.textContent = "Briefing generated, but no downloadable output was returned.";
+          status.className = "dispatch-status is-visible is-error";
+        }
+      } catch (err) {
+        console.error("Morning Dispatch failed:", err);
+        status.textContent = "Failed to generate Morning Dispatch. Please try again.";
+        status.className = "dispatch-status is-visible is-error";
+      } finally {
+        btn.disabled = false;
+        if (label) label.textContent = "Morning Dispatch";
+      }
+    }
+    async function loadNewsDomains() {
+      const select = document.getElementById("newsDomainSelect");
+      if (!select) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/news/domains`);
+        if (!res.ok) return;
+        const data = await res.json();
+        (data.domains || []).forEach((d) => {
+          const opt = document.createElement("option");
+          opt.value = d;
+          opt.textContent = d.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        console.error("Failed to load news domains:", err);
+      }
+    }
+    async function loadNewsFeed(domain = "") {
+      const list = document.getElementById("newsArticlesList");
+      if (!list) return;
+      list.innerHTML = "";
+      const loadingMsg = document.createElement("div");
+      loadingMsg.className = "news-article-empty";
+      loadingMsg.textContent = "Loading ocean news...";
+      list.appendChild(loadingMsg);
+      try {
+        const url = domain ? `${API_BASE}/api/news?domain=${encodeURIComponent(domain)}` : `${API_BASE}/api/news`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const articles = data.articles || [];
+        list.innerHTML = "";
+        if (!articles.length) {
+          const emptyMsg = document.createElement("div");
+          emptyMsg.className = "news-article-empty";
+          emptyMsg.textContent = "No articles found for this domain.";
+          list.appendChild(emptyMsg);
+          return;
+        }
+        articles.forEach((a) => {
+          const card = document.createElement("a");
+          card.className = "news-article-card";
+          card.href = a.link || "#";
+          card.target = "_blank";
+          card.rel = "noopener noreferrer";
+          const title = document.createElement("div");
+          title.className = "news-article-title";
+          title.textContent = a.title || "";
+          const summary = document.createElement("div");
+          summary.className = "news-article-summary";
+          summary.textContent = a.summary || "";
+          card.appendChild(title);
+          card.appendChild(summary);
+          list.appendChild(card);
+        });
+      } catch (err) {
+        console.error("Failed to load news feed:", err);
+        list.innerHTML = "";
+        const errMsg = document.createElement("div");
+        errMsg.className = "news-article-empty";
+        errMsg.textContent = "Unable to load news right now.";
+        list.appendChild(errMsg);
+      }
+    }
     async function pollGeofence() {
       try {
         const [lat, lon] = lastVesselCoord;
@@ -711,8 +1017,15 @@
     plotPFZZones(MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
     plotRoute(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord, MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
     updateTelemetryBars(MOCK_ORCHESTRATOR_RESPONSE.telemetry);
+    initPersonaSwitcher();
     initVoiceMic();
+    initHazardReporting();
+    loadHazardMesh();
+    initHistoricalChart();
+    updateCompassHeading(45);
     startGeofencePolling();
+    loadNewsDomains();
+    loadNewsFeed();
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
