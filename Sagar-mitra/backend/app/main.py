@@ -2,7 +2,9 @@ import os
 import re
 import traceback
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
+from typing import Optional
 from dotenv import load_dotenv
 load_dotenv()  # reads .env in the working directory, if present
 
@@ -16,12 +18,12 @@ from app.nlp_extract import extract_coordinates_from_message, extract_target_dat
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
 from app.route_planner import plan_safe_route
-from app.db_store import store as session_store
+from app.db_store import store as session_store, insert_hazard_point, get_hazard_mesh
 from app.data import store
 from app import db
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
 from app.advisory import _is_quota_error, _is_permission_denied_error
-from app.boundary_toool import distance_to_nearest_boundary_km
+from app.boundary_toool import distance_to_nearest_boundary_km, return_heading_to_safety
 from app.dispatch import generate_morning_dispatch
 from app.news_feed import get_oceanography_news
 
@@ -165,6 +167,16 @@ def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_repo
         this coordinate deviates from the Arabian Sea baseline.
       - chlorophyll_gradient_pct: same Z-Test confidence, for chlorophyll --
         i.e. how strong the biological-productivity gradient is here.
+      - salinity_anomaly_pct: same Z-Test confidence for salinity. No live
+        salinity feed is wired up yet, so this checks the dataset's own
+        calibrated median (store.calibrated_clim) against the
+        PFZStatisticalValidator's independent Arabian Sea baseline rather
+        than fabricating a "current" reading.
+      - ph_gradient_pct: None -- no live OR dataset-observed pH feed exists
+        anywhere in this app (see app/data.py's calibrated_clim comment:
+        "not in this dataset; kept as fallback"). Returned as None rather
+        than a fabricated synthetic signal, matching how sst/chlorophyll
+        are already None when their own regex match fails below.
       - ml_confidence_pct: the trained PFZ classifier's own predicted
         probability for this point (None if the model hasn't been trained
         yet -- see backend/scripts/train_pfz_model.py).
@@ -175,6 +187,12 @@ def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_repo
         appendAdvisoryCard) -- it's still computed for every request here
         since the SST/chlorophyll/salinity signals it needs are already
         being fetched for the other two telemetry values anyway.
+
+    The four independent checks below (sst/chlorophyll/salinity z-tests +
+    the ML/SHAP call) don't depend on each other's results, so they run
+    concurrently via a thread pool instead of one after another -- the
+    ML/SHAP call in particular does real model-inference work, so this is
+    genuine parallelism, not just bookkeeping.
     """
     sst_match = _SST_RE.search(ocean_report)
     chl_match = _CHLOROPHYLL_RE.search(chlorophyll_report)
@@ -186,26 +204,48 @@ def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_repo
     # available stand-in, rather than fabricating a "current" reading.
     salinity = store.calibrated_clim["sal"]["median"]
 
-    sst_anomaly_pct = None
-    if sst is not None:
+    def _sst_anomaly() -> Optional[float]:
+        if sst is None:
+            return None
         z_check = _pfz_validator.zscore_baseline_check("sst", sst)
-        sst_anomaly_pct = round((1 - z_check["p_value"]) * 100, 1)
+        return round((1 - z_check["p_value"]) * 100, 1)
 
-    chlorophyll_gradient_pct = None
-    if chlorophyll is not None:
+    def _chlorophyll_gradient() -> Optional[float]:
+        if chlorophyll is None:
+            return None
         chl_check = _pfz_validator.zscore_baseline_check("chlorophyll", chlorophyll)
-        chlorophyll_gradient_pct = round((1 - chl_check["p_value"]) * 100, 1)
+        return round((1 - chl_check["p_value"]) * 100, 1)
 
-    ml_confidence_pct = None
-    shap_attributions = None
-    if sst is not None and chlorophyll is not None:
-        ml_confidence_pct, shap_attributions = predict_pfz_confidence(
-            sst, chlorophyll, salinity, lat, lon, include_shap=True
-        )
+    def _salinity_anomaly() -> Optional[float]:
+        sal_check = _pfz_validator.zscore_baseline_check("salinity", salinity)
+        return round((1 - sal_check["p_value"]) * 100, 1)
+
+    def _ph_gradient() -> Optional[float]:
+        return None  # no live/observed pH signal exists to check -- see docstring above
+
+    def _ml_confidence():
+        if sst is None or chlorophyll is None:
+            return None, None
+        return predict_pfz_confidence(sst, chlorophyll, salinity, lat, lon, include_shap=True)
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        f_sst = pool.submit(_sst_anomaly)
+        f_chl = pool.submit(_chlorophyll_gradient)
+        f_sal = pool.submit(_salinity_anomaly)
+        f_ph = pool.submit(_ph_gradient)
+        f_ml = pool.submit(_ml_confidence)
+
+        sst_anomaly_pct = f_sst.result()
+        chlorophyll_gradient_pct = f_chl.result()
+        salinity_anomaly_pct = f_sal.result()
+        ph_gradient_pct = f_ph.result()
+        ml_confidence_pct, shap_attributions = f_ml.result()
 
     return {
         "sst_anomaly_pct": sst_anomaly_pct,
         "chlorophyll_gradient_pct": chlorophyll_gradient_pct,
+        "salinity_anomaly_pct": salinity_anomaly_pct,
+        "ph_gradient_pct": ph_gradient_pct,
         "ml_confidence_pct": ml_confidence_pct,
         "shap_attributions": shap_attributions,
     }
@@ -238,11 +278,15 @@ def geofence_check(lat: float, lon: float):
     """
     boundary = distance_to_nearest_boundary_km(lat, lon)
     alert_level, message = _derive_geofence_alert(boundary)
+    # Feature 3 polish -- only computed (and non-None) once the vessel has
+    # actually left safe water; a SAFE verdict has no return heading to give.
+    return_heading = return_heading_to_safety(lat, lon) if alert_level != "SAFE" else None
     return {
         "coordinates": [lat, lon],
         **boundary,
         "geofence_alert": alert_level,
         "message": message,
+        "return_heading": return_heading,
     }
 
 
@@ -284,6 +328,71 @@ def report_sos(request: SOSRequest):
         "timestamp": timestamp,
         "coordinates": [request.lat, request.lon],
     }
+
+
+class EscalationRequest(BaseModel):
+    lat: float
+    lon: float
+    reason: str | None = None
+    nearest_port: str | None = None
+    session_id: str | None = None
+
+
+@app.post("/api/escalate")
+def escalate_boundary_violation(request: EscalationRequest):
+    """
+    Feature 13: SIMULATED maritime boundary violation escalation. Logs a
+    telemetry event to the local ops queue (db.insert_escalation_event) so
+    a confirmed EEZ/MPA breach has an auditable trail. This does NOT
+    dispatch to a real Coast Guard system -- no such integration exists
+    (see ROADMAP.md's Non-Goals) -- and the response says so plainly rather
+    than implying a live dispatch happened.
+    """
+    timestamp = datetime.now(timezone.utc).isoformat()
+    event = {
+        "timestamp": timestamp,
+        "lat": request.lat,
+        "lon": request.lon,
+        "reason": request.reason or "Maritime boundary violation detected.",
+        "nearest_port": request.nearest_port,
+        "session_id": request.session_id,
+        "raw_payload": request.model_dump_json(),
+    }
+    event_id = db.insert_escalation_event(event)
+    return {
+        "status": "simulated_escalation_logged",
+        "id": event_id,
+        "timestamp": timestamp,
+        "coordinates": [request.lat, request.lon],
+        "note": ("This is a simulated escalation logged to the local ops queue. "
+                 "No live Coast Guard/VHF/satellite dispatch is integrated."),
+    }
+
+
+class HazardReportRequest(BaseModel):
+    lat: float
+    lon: float
+    hazard_type: str  # e.g. "net", "oil_slick", "debris"
+    status: str | None = None
+
+
+@app.post("/api/hazard")
+def report_hazard(request: HazardReportRequest):
+    """
+    Feature 7 (Crowdsourced Hazard Mesh Network): logs a geocoded hazard
+    report to app/db_store.py's hazard_mesh table (previously a dead
+    schema -- insert_hazard_point/get_hazard_mesh existed but nothing
+    called them). See GET /api/hazard/mesh for the 24h-TTL read side.
+    """
+    point_id = insert_hazard_point(request.lat, request.lon, request.hazard_type, request.status)
+    return {"status": "success", "id": point_id}
+
+
+@app.get("/api/hazard/mesh")
+def get_hazard_mesh_endpoint(ttl_hours: float = 24.0, limit: int = 1000):
+    """Reports from the last `ttl_hours` only (default 24h) -- see
+    db_store.get_hazard_mesh's TTL filter."""
+    return {"points": get_hazard_mesh(limit=limit, ttl_hours=ttl_hours)}
 
 
 @app.get("/api/news")

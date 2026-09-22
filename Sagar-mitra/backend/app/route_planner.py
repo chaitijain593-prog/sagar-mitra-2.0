@@ -33,8 +33,8 @@ from typing import Dict, List, Optional, Tuple
 
 from shapely.geometry import LineString, Point as ShapelyPoint
 
-from app.boundary_toool import mpa_geoms
-from app.satellite_tool import get_live_ocean_conditions
+from app.boundary_toool import mpa_geoms, eez_geoms
+from app.marine_weather_tool import get_live_ocean_conditions
 
 WAVE_HAZARD_THRESHOLD_M = 2.5
 _WAVE_RE = re.compile(r"Wave Height:\s*([\d.]+)m")
@@ -77,6 +77,28 @@ def _segment_crosses_mpa(a: Point, b: Point) -> bool:
         return False
     line = LineString([(a[1], a[0]), (b[1], b[0])])
     return any(line.intersects(geom) for geom in mpa_geoms)
+
+
+def _point_outside_eez(lat: float, lon: float) -> bool:
+    """True if (lat, lon) is NOT inside any loaded EEZ polygon -- the same
+    'crossed into international waters' condition boundary_toool.py's
+    check_maritime_boundary already flags, treated here as a hard routing
+    obstacle so A* never plans a leg outside Indian waters (Feature 2:
+    foreign-EEZ avoidance). If no EEZ data is loaded, nothing is blocked on
+    this basis -- matches boundary_toool.py's own fail-open behavior when
+    eez_geoms is empty, rather than silently blocking the entire grid."""
+    if not eez_geoms:
+        return False
+    pt = ShapelyPoint(lon, lat)
+    return not any(geom.contains(pt) for geom in eez_geoms)
+
+
+def _segment_crosses_eez_boundary(a: Point, b: Point) -> bool:
+    """True if the step from a to b would exit the EEZ. Checked via either
+    endpoint being outside it -- sufficient at this grid's cell spacing,
+    unlike the small-MPA case _segment_crosses_mpa guards against, since the
+    EEZ boundary spans a huge area relative to one grid cell."""
+    return _point_outside_eez(*a) or _point_outside_eez(*b)
 
 
 class _CostGrid:
@@ -138,18 +160,22 @@ class _CostGrid:
 
     def blocked(self, cell: Cell) -> bool:
         if cell not in self._blocked_cache:
-            self._blocked_cache[cell] = _point_in_mpa(*self.cell_center(*cell))
+            lat, lon = self.cell_center(*cell)
+            self._blocked_cache[cell] = _point_in_mpa(lat, lon) or _point_outside_eez(lat, lon)
         return self._blocked_cache[cell]
 
     def edge_blocked(self, a: Cell, b: Cell) -> bool:
-        """Whether the STEP from cell a to cell b crosses an MPA -- checked
-        along the full segment between their centers, not just the
-        endpoints, since a small MPA (well under one grid cell wide) can
-        sit between two cell centers without either one's center falling
-        inside it."""
+        """Whether the STEP from cell a to cell b crosses an MPA, or would
+        exit the EEZ -- checked along the full segment between their
+        centers for the MPA case, not just the endpoints, since a small MPA
+        (well under one grid cell wide) can sit between two cell centers
+        without either one's center falling inside it."""
         key = (a, b) if a <= b else (b, a)
         if key not in self._edge_blocked_cache:
-            self._edge_blocked_cache[key] = _segment_crosses_mpa(self.cell_center(*a), self.cell_center(*b))
+            ca, cb = self.cell_center(*a), self.cell_center(*b)
+            self._edge_blocked_cache[key] = (
+                _segment_crosses_mpa(ca, cb) or _segment_crosses_eez_boundary(ca, cb)
+            )
         return self._edge_blocked_cache[key]
 
     def move_cost(self, a: Cell, b: Cell) -> float:
@@ -225,26 +251,28 @@ def plan_safe_route(vessel: Point, target: Point, day_offset: int = 0,
 
     day_offset/target_hour let the wave-hazard cost apply to a FUTURE time
     ("tomorrow morning") instead of only ever checking sea state right now
-    -- see satellite_tool.get_live_ocean_conditions.
+    -- see marine_weather_tool.get_live_ocean_conditions.
     """
     grid = _CostGrid(vessel, target, day_offset, target_hour)
     start_cell = grid.nearest_cell(vessel)
     goal_cell = grid.nearest_cell(target)
 
     direct_crosses = _segment_crosses_mpa(vessel, target)
+    direct_exits_eez = _segment_crosses_eez_boundary(vessel, target)
     known_samples = [{"lat": p[0], "lon": p[1], "wave_m": w} for p, w in grid.samples]
     direct_max_wave = max((s["wave_m"] for s in known_samples if s["wave_m"] is not None), default=None)
 
     if grid.blocked(start_cell) or grid.blocked(goal_cell):
-        # Vessel or target position itself sits inside an MPA -- A* can't
-        # route "into" a blocked cell. Fall back to a direct line and let
-        # the compliance agent's own MPA alert (boundary_toool.py) carry
-        # the actual legal warning rather than silently hiding the point.
+        # Vessel or target position itself sits inside an MPA or outside the
+        # EEZ -- A* can't route "into" a blocked cell. Fall back to a direct
+        # line and let the compliance agent's own boundary alert
+        # (boundary_toool.py) carry the actual legal warning rather than
+        # silently hiding the point.
         return {
             "waypoints": [list(vessel), list(target)],
             "hazard_avoided": False,
             "max_wave_m": direct_max_wave,
-            "note": "Vessel or target position is inside a Marine Protected Area -- see compliance alert.",
+            "note": "Vessel or target position is inside a Marine Protected Area or outside the Indian EEZ -- see compliance alert.",
             "samples": known_samples,
         }
 
@@ -254,7 +282,7 @@ def plan_safe_route(vessel: Point, target: Point, day_offset: int = 0,
             "waypoints": [list(vessel), list(target)],
             "hazard_avoided": False,
             "max_wave_m": direct_max_wave,
-            "note": "No MPA-clear path found across the routing grid; showing a direct line. Exercise caution.",
+            "note": "No EEZ-compliant, MPA-clear path found across the routing grid; showing a direct line. Exercise caution.",
             "samples": known_samples,
         }
 
@@ -266,6 +294,8 @@ def plan_safe_route(vessel: Point, target: Point, day_offset: int = 0,
     reasons = []
     if direct_crosses:
         reasons.append("direct line crosses a Marine Protected Area")
+    if direct_exits_eez:
+        reasons.append("direct line exits the Indian EEZ")
     if direct_max_wave is not None and direct_max_wave >= WAVE_HAZARD_THRESHOLD_M:
         reasons.append(f"direct line passes near {round(direct_max_wave, 2)}m waves")
 

@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from app.satellite_tool import get_live_ocean_conditions
+from app.marine_weather_tool import get_live_ocean_conditions
 from app.pfz_tool import get_nearest_pfz
 from app.chlorophyll_tool import get_chlorophyll_data
 from app.boundary_toool import check_maritime_boundary
@@ -10,7 +10,7 @@ from app.regional_scan import scan_favorable_regions, format_regional_scan
 from app.data import store as data_store
 from app.state import AgentState
 
-# 1. Navigation & Hazard Worker (Powered by satellite_tool.py)
+# 1. Navigation & Hazard Worker (Powered by marine_weather_tool.py)
 @tool
 def check_marine_hazards(lat: float, lon: float) -> str:
     """Checks wave heights, temperature, and maritime hazards for given coordinates using live NOAA/Open-Meteo data."""

@@ -16,10 +16,12 @@ covers sessions and the hazard mesh.
 import json
 import os
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 DB_PATH = os.environ.get("SAGAR_MITRA_STORE_DB_PATH", "./data/sagar_mitra_store.db")
 MAX_TURNS_KEPT = 8  # last 8 (user+assistant) messages is plenty of context
+HAZARD_MESH_TTL_HOURS = 24.0  # Feature 7: crowdsourced hazard reports expire after this many hours
 
 
 def _get_connection() -> sqlite3.Connection:
@@ -45,9 +47,17 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             lat REAL NOT NULL,
             lon REAL NOT NULL,
             type TEXT NOT NULL,
-            status TEXT
+            status TEXT,
+            timestamp TEXT
         )
     """)
+    # Migration: a hazard_mesh table created before the TTL column existed
+    # (this table was dead code with zero writes, but guard anyway rather
+    # than assume) won't have `timestamp` -- add it instead of dropping the
+    # table, so this stays safe to run on every startup.
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(hazard_mesh)")}
+    if "timestamp" not in existing_cols:
+        conn.execute("ALTER TABLE hazard_mesh ADD COLUMN timestamp TEXT")
     conn.commit()
 
 
@@ -116,12 +126,17 @@ class SessionStore:
 
 def insert_hazard_point(lat: float, lon: float, hazard_type: str,
                          status: Optional[str] = None) -> int:
+    """Feature 7 (Crowdsourced Hazard Mesh Network): logs a geocoded hazard
+    report (net, slick, debris, etc.). Timestamped in UTC so
+    get_hazard_mesh's TTL filter below can expire it consistently
+    regardless of the server's local timezone."""
     conn = _get_connection()
     try:
         _init_schema(conn)
+        timestamp = datetime.now(timezone.utc).isoformat()
         cur = conn.execute(
-            "INSERT INTO hazard_mesh (lat, lon, type, status) VALUES (?, ?, ?, ?)",
-            (lat, lon, hazard_type, status),
+            "INSERT INTO hazard_mesh (lat, lon, type, status, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (lat, lon, hazard_type, status, timestamp),
         )
         conn.commit()
         return int(cur.lastrowid)
@@ -129,12 +144,20 @@ def insert_hazard_point(lat: float, lon: float, hazard_type: str,
         conn.close()
 
 
-def get_hazard_mesh(limit: int = 1000) -> List[dict]:
+def get_hazard_mesh(limit: int = 1000, ttl_hours: float = HAZARD_MESH_TTL_HOURS) -> List[dict]:
+    """Crowdsourced hazard reports from the last `ttl_hours` hours only -- a
+    report older than the TTL is excluded (not deleted: a stale report is
+    simply no longer surfaced, so the underlying history isn't destroyed by
+    a read). A row written before this TTL column existed has `timestamp =
+    NULL` and is excluded by the `>=` comparison below rather than raising,
+    which is the right call for genuinely-unknown-age data."""
     conn = _get_connection()
     try:
         _init_schema(conn)
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=ttl_hours)).isoformat()
         cur = conn.execute(
-            "SELECT * FROM hazard_mesh ORDER BY id DESC LIMIT ?", (limit,)
+            "SELECT * FROM hazard_mesh WHERE timestamp >= ? ORDER BY id DESC LIMIT ?",
+            (cutoff, limit),
         )
         return [dict(r) for r in cur.fetchall()]
     finally:
