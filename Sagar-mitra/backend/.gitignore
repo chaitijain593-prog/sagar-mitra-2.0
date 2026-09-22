@@ -9,3 +9,8 @@ static/audio/
 *.log
 data/*.db
 *.parquet
+static/offline_cache/
+static/dispatch/
+static/plots/
+*.wav
+*.pdf
