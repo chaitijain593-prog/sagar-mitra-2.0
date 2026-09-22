@@ -2,8 +2,8 @@
 Sagar Mitra - Feature 1: Regional Language Voice In/Out
 ==============================================================================
 Lets a fisherman speak a query in Marathi, Tamil, Telugu, Gujarati,
-Malayalam, or English and get the advisory back as speech in that same
-language. Both directions go straight through Gemini's native multimodal
+Malayalam, English, Hindi, Bengali, Kannada, Punjabi, or Odia and get the
+advisory back as speech in that same language. Both directions go straight through Gemini's native multimodal
 audio understanding and TTS -- no separate STT/TTS service -- using the
 same key-rotation machinery (app.advisory.generate_content) as every other
 Gemini call in ORCA, so a quota hit here rotates keys exactly like it does
@@ -42,20 +42,23 @@ TRANSCRIBE_MODEL = LITE_MODEL
 TTS_MODEL = "gemini-2.5-flash-preview-tts"
 TTS_VOICE = "Kore"
 
-SUPPORTED_LANGUAGES = ["Marathi", "Tamil", "Telugu", "Gujarati", "Malayalam", "English"]
+SUPPORTED_LANGUAGES = [
+    "Marathi", "Tamil", "Telugu", "Gujarati", "Malayalam", "English",
+    "Hindi", "Bengali", "Kannada", "Punjabi", "Odia",
+]
 
 TRANSCRIBE_SYSTEM_PROMPT = """
 You are the speech-input layer for Sagar Mitra, an ocean intelligence system
 for the Indian coast. You are given a short spoken audio clip from a
 fisherman or coastal resident, in Marathi, Tamil, Telugu, Gujarati,
-Malayalam, or English.
+Malayalam, English, Hindi, Bengali, Kannada, Punjabi, or Odia.
 
 Respond with ONLY valid JSON, no markdown, no explanation, matching this
 exact schema:
 
 {
   "transcript": "<exact transcription of the speech, in its own native script>",
-  "language": "<one of: Marathi, Tamil, Telugu, Gujarati, Malayalam, English>",
+  "language": "<one of: Marathi, Tamil, Telugu, Gujarati, Malayalam, English, Hindi, Bengali, Kannada, Punjabi, Odia>",
   "english_text": "<English translation of the transcript>"
 }
 

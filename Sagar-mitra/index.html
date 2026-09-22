@@ -174,6 +174,18 @@
           <h3>ORCA Control Room</h3>
           <p style="color: var(--text-sub); font-size: 0.9rem;">Live vessel telemetry, EEZ boundaries & fishing zone intelligence in the Indian Ocean Basin.</p>
         </div>
+        <div class="dispatch-wrap">
+          <button type="button" class="persona-role-chip" id="switchRoleBtn" title="Switch your role">
+            <i data-lucide="user-cog" class="w-4 h-4"></i>
+            <span id="switchRoleBtnLabel">Switch Role</span>
+          </button>
+          <button class="dispatch-button" id="dispatchButton" onclick="triggerMorningDispatch()">
+            <i data-lucide="sunrise" class="w-5 h-5"></i>
+            <span id="dispatchButtonLabel">Morning Dispatch</span>
+          </button>
+          <div class="dispatch-status" id="dispatchStatus"></div>
+          <div class="dispatch-player" id="dispatchPlayer"></div>
+        </div>
       </div>
       <div class="dashboard-grid">
         <div class="dashboard-map-panel">
@@ -241,6 +253,14 @@
               <div class="telemetry-metric-label"><span>ML Confidence Score</span><span id="telemetryMLLabel">--</span></div>
               <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetryML" style="background:#a78bfa;"></div></div>
             </div>
+            <div class="telemetry-metric">
+              <div class="telemetry-metric-label"><span>Sea Surface Salinity</span><span id="telemetrySalinityLabel">--</span></div>
+              <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetrySalinity" style="background:#f472b6;"></div></div>
+            </div>
+            <div class="telemetry-metric">
+              <div class="telemetry-metric-label"><span>Dissolved Oxygen</span><span id="telemetryDissolvedOxygenLabel">--</span></div>
+              <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetryDissolvedOxygen" style="background:#fb923c;"></div></div>
+            </div>
           </div>
         </div>
         <div class="sos-wrap">
@@ -248,8 +268,59 @@
           <div class="sos-status" id="sosStatus"></div>
         </div>
       </div>
+      <div class="chart-hud-row">
+        <div class="chart-card">
+          <span class="agent-stream-header">Oceanographic Trends</span>
+          <div class="chart-container" style="position: relative; height: 180px; width: 100%;"><canvas id="historicalChart"></canvas></div>
+        </div>
+        <div class="compass-card">
+          <span class="agent-stream-header">Vessel Bearing</span>
+          <div class="compass-hud">
+            <div class="compass-dial">
+              <span class="compass-label compass-label-n">N</span>
+              <span class="compass-label compass-label-e">E</span>
+              <span class="compass-label compass-label-s">S</span>
+              <span class="compass-label compass-label-w">W</span>
+              <svg class="compass-needle" id="compassNeedle" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="12,2 16,14 12,11 8,14" fill="#f87171" />
+                <polygon points="12,22 16,14 12,17 8,14" fill="var(--accent-cyan)" />
+              </svg>
+            </div>
+            <div class="compass-readout" id="compassHeadingReadout">045° NE</div>
+          </div>
+        </div>
+      </div>
+      <div class="news-panel">
+        <div class="news-panel-header">
+          <span class="agent-stream-header">Ocean News Feed</span>
+          <select id="newsDomainSelect" class="news-domain-select" onchange="loadNewsFeed(this.value)">
+            <option value="">All Domains</option>
+          </select>
+        </div>
+        <div class="news-articles-list" id="newsArticlesList">
+          <div class="news-article-empty">Loading ocean news...</div>
+        </div>
+      </div>
     </div>
   </section>
+  <div class="hazard-modal-overlay" id="hazardModalOverlay">
+    <div class="hazard-modal">
+      <div class="hazard-modal-header">
+        <h4>Report Hazard</h4>
+        <button type="button" class="hazard-modal-close" id="hazardModalClose" aria-label="Close">&times;</button>
+      </div>
+      <form class="hazard-modal-form" id="hazardModalForm">
+        <div class="hazard-modal-coords" id="hazardModalCoords"></div>
+        <label class="hazard-modal-label" for="hazardTypeSelect">Hazard Type</label>
+        <select id="hazardTypeSelect" class="hazard-modal-select">
+          <option value="net">Fishing Net</option>
+          <option value="oil_slick">Oil Slick</option>
+          <option value="debris">Debris</option>
+        </select>
+        <button type="submit" class="hazard-modal-submit">Submit Report</button>
+      </form>
+    </div>
+  </div>
 <script src="script.js"></script>
 </body>
 </html>

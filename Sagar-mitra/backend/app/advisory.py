@@ -23,7 +23,7 @@ Author: Sagar Mitra Hackathon Team
 
 import os
 import json
-from typing import Dict, Any, Literal
+from typing import Dict, Any, Literal, Optional
 
 from google import genai
 from google.genai import types
@@ -298,6 +298,53 @@ RESPONSE STRUCTURE:
 }
 
 
+# Normalization map: resolves raw client onboarding inputs (operational
+# role, vessel type, experience level, free-text labels, etc.) to one of the
+# valid PERSONA_SYSTEM_PROMPTS keys. Keys must be lowercase/stripped for
+# lookup; unrecognized inputs safely fall back to "Fisherman".
+PERSONA_ALIASES: Dict[str, PersonaType] = {
+    # Fisherman / coastal worker
+    "fisherman": "Fisherman", "fisher": "Fisherman", "fisherwoman": "Fisherman",
+    "fishing": "Fisherman", "fishermen": "Fisherman", "angler": "Fisherman",
+    "trawler operator": "Fisherman", "trawler": "Fisherman", "boat owner": "Fisherman",
+    "boat operator": "Fisherman", "vessel operator": "Fisherman", "crew": "Fisherman",
+    "deckhand": "Fisherman", "coastal community member": "Fisherman",
+    "small-scale fisher": "Fisherman", "commercial fisher": "Fisherman",
+    # Student / learner
+    "student": "Student", "learner": "Student", "school student": "Student",
+    "college student": "Student", "beginner": "Student", "trainee": "Student",
+    # Researcher / technical
+    "researcher": "Researcher", "scientist": "Researcher", "technician": "Researcher",
+    "oceanographer": "Researcher", "academic": "Researcher", "analyst": "Researcher",
+    "marine biologist": "Researcher", "phd": "Researcher", "expert": "Researcher",
+    # General public
+    "general public": "General Public", "public": "General Public",
+    "tourist": "General Public", "visitor": "General Public",
+    "resident": "General Public", "beachgoer": "General Public",
+    "swimmer": "General Public", "citizen": "General Public",
+}
+
+
+def normalize_persona(raw_persona: Optional[str]) -> PersonaType:
+    """
+    Resolves a raw, client-supplied persona-ish string (e.g. from onboarding
+    fields like operational role, vessel type, or experience level) to a
+    valid PersonaType key. Exact matches against PERSONA_SYSTEM_PROMPTS keys
+    are passed through as-is (case-insensitive); anything else is looked up
+    in PERSONA_ALIASES; unrecognized input safely falls back to "Fisherman".
+    """
+    if not raw_persona or not isinstance(raw_persona, str):
+        return "Fisherman"
+
+    cleaned = raw_persona.strip().lower()
+
+    for valid_key in PERSONA_SYSTEM_PROMPTS:
+        if valid_key.lower() == cleaned:
+            return valid_key  # type: ignore[return-value]
+
+    return PERSONA_ALIASES.get(cleaned, "Fisherman")
+
+
 def _build_system_instruction(persona: PersonaType, language: str) -> str:
     """
     Combines the persona-specific instruction block with a language
@@ -404,7 +451,8 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
     dispatch step and must be reflected honestly, not hedged as "general
     guidance" or re-derived from the model's own background knowledge.
     """
-    persona_block = PERSONA_SYSTEM_PROMPTS.get(persona, PERSONA_SYSTEM_PROMPTS["Fisherman"])
+    persona = normalize_persona(persona)
+    persona_block = PERSONA_SYSTEM_PROMPTS[persona]
     system_instruction = (
         persona_block.strip() + "\n\n"
         f"LANGUAGE REQUIREMENT: Write your entire response natively and fluently in {language}. "
@@ -446,6 +494,7 @@ def plain_gemini_answer(user_message: str, persona: str = "General Public",
     knowledge instead of fabricating statistics, but stays in Sagar Mitra's
     voice/persona/language.
     """
+    persona = normalize_persona(persona)
     system_instruction = (
         f"You are Sagar Mitra, an ocean-intelligence assistant for the "
         f"Maharashtra coast. Answer the user's question as best you can in "
@@ -481,6 +530,7 @@ def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
     or invent any detail (regulation names, distances, other MPA names,
     penalties, legal citations) that isn't literally present in raw_report.
     """
+    persona = normalize_persona(persona)
     system_instruction = (
         f"You are Sagar Mitra's maritime compliance module, writing for a "
         f"{persona} in {language}.\n\n"

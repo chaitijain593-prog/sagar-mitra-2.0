@@ -1,3 +1,4 @@
+import math
 import os
 import re
 import traceback
@@ -11,21 +12,21 @@ load_dotenv()  # reads .env in the working directory, if present
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.graph import create_orca_graph
 from app.state import AgentState
 from app.nlp_extract import extract_coordinates_from_message, extract_target_datetime_from_message
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
 from app.route_planner import plan_safe_route
-from app.db_store import store as session_store, insert_hazard_point, get_hazard_mesh
+from app.db_store import store as session_store, insert_hazard_point, get_hazard_mesh, get_anchor, set_anchor
 from app.data import store
 from app import db
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
 from app.advisory import _is_quota_error, _is_permission_denied_error
 from app.boundary_toool import distance_to_nearest_boundary_km, return_heading_to_safety
 from app.dispatch import generate_morning_dispatch
-from app.news_feed import get_oceanography_news
+from app.news_feed import get_oceanography_news, DOMAIN_TAXONOMY
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -75,6 +76,14 @@ class OrchestrateRequest(BaseModel):
     user_message: str
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
     session_id: str | None = None  # carried across turns for conversation memory
+    # SHAP "What-If" sensitivity slider: optional perturbations applied to the
+    # ML confidence inputs before predict_pfz_confidence runs, so the
+    # frontend can ask "what if SST/chlorophyll/salinity were different here"
+    # without a second round-trip. Bounded to plausible physical swings so a
+    # bad slider value can't be passed straight into the model.
+    sst_delta: float | None = Field(default=None, ge=-10, le=10)
+    chlorophyll_delta: float | None = Field(default=None, ge=-5, le=5)
+    salinity_delta: float | None = Field(default=None, ge=-10, le=10)
 
 
 # --- Dashboard signal derivation ------------------------------------------
@@ -158,7 +167,11 @@ _CHLOROPHYLL_RE = re.compile(r"Chlorophyll-a:\s*([\d.]+)")
 _pfz_validator = PFZStatisticalValidator()
 
 
-def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_report: str) -> dict:
+def _build_telemetry(
+    lat: float, lon: float, ocean_report: str, chlorophyll_report: str,
+    sst_delta: Optional[float] = None, chlorophyll_delta: Optional[float] = None,
+    salinity_delta: Optional[float] = None,
+) -> dict:
     """
     Builds the Prediction Telemetry values from real, live-computed signals
     instead of the frontend's old hardcoded 85%/72%/91% placeholders:
@@ -226,7 +239,15 @@ def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_repo
     def _ml_confidence():
         if sst is None or chlorophyll is None:
             return None, None
-        return predict_pfz_confidence(sst, chlorophyll, salinity, lat, lon, include_shap=True)
+        # What-If sliders perturb only the ML/SHAP inputs, not the z-test
+        # anomaly signals above -- those describe real observed conditions,
+        # while this branch answers "what would the model say if...".
+        what_if_sst = sst + sst_delta if sst_delta is not None else sst
+        what_if_chlorophyll = chlorophyll + chlorophyll_delta if chlorophyll_delta is not None else chlorophyll
+        what_if_salinity = salinity + salinity_delta if salinity_delta is not None else salinity
+        return predict_pfz_confidence(
+            what_if_sst, what_if_chlorophyll, what_if_salinity, lat, lon, include_shap=True
+        )
 
     with ThreadPoolExecutor(max_workers=5) as pool:
         f_sst = pool.submit(_sst_anomaly)
@@ -288,6 +309,86 @@ def geofence_check(lat: float, lon: float):
         "message": message,
         "return_heading": return_heading,
     }
+
+
+# --- Feature: Sentry / Anchor Drift Alarm ---------------------------------
+import math
+import sqlite3
+import datetime
+
+ANCHOR_DRIFT_ALERT_M = 50.0  # metres of drift before this is flagged as dragging
+
+def get_anchor(session_id: str):
+    with sqlite3.connect("data/sagar_mitra_store.db") as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS anchor_state (session_id TEXT PRIMARY KEY, lat REAL, lon REAL, set_at TEXT)")
+        row = conn.execute("SELECT lat, lon FROM anchor_state WHERE session_id = ?", (session_id,)).fetchone()
+        return {"lat": row[0], "lon": row[1]} if row else None
+
+def set_anchor(session_id: str, lat: float, lon: float):
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with sqlite3.connect("data/sagar_mitra_store.db") as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS anchor_state (session_id TEXT PRIMARY KEY, lat REAL, lon REAL, set_at TEXT)")
+        conn.execute("INSERT OR REPLACE INTO anchor_state (session_id, lat, lon, set_at) VALUES (?, ?, ?, ?)", (session_id, lat, lon, now))
+    return {"lat": lat, "lon": lon, "set_at": now}
+
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371000.0
+    lat1_r, lon1_r = math.radians(lat1), math.radians(lon1)
+    lat2_r, lon2_r = math.radians(lat2), math.radians(lon2)
+    dlat, dlon = lat2_r - lat1_r, lon2_r - lon1_r
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+@app.get("/api/sentry/anchor-drift")
+def anchor_drift_check(session_id: str, lat: float, lon: float):
+    """
+    Lightweight anchor-drag check. The first call for a given session_id
+    drops the anchor at the supplied position (nothing to compare drift
+    against yet); every call after that compares the current position
+    against the stored anchor and flags dragging past
+    ANCHOR_DRIFT_ALERT_M metres. State persists in db_store.py's
+    anchor_state table (data/sagar_mitra_store.db) so a server restart
+    doesn't lose the anchor mid-watch.
+    """
+    anchor = get_anchor(session_id)
+    if anchor is None:
+        anchor = set_anchor(session_id, lat, lon)
+        return {
+            "status": "ANCHOR_SET",
+            "message": "Anchor dropped at current position.",
+            "anchor": [anchor["lat"], anchor["lon"]],
+            "current": [lat, lon],
+            "drift_m": 0.0,
+        }
+
+    drift_m = round(_haversine_m(anchor["lat"], anchor["lon"], lat, lon), 1)
+    dragging = drift_m > ANCHOR_DRIFT_ALERT_M
+    return {
+        "status": "DRAGGING" if dragging else "HOLDING",
+        "message": (
+            f"Anchor dragging -- {drift_m}m from the dropped position."
+            if dragging else
+            f"Holding -- {drift_m}m from the dropped position."
+        ),
+        "anchor": [anchor["lat"], anchor["lon"]],
+        "current": [lat, lon],
+        "drift_m": drift_m,
+        "alert_threshold_m": ANCHOR_DRIFT_ALERT_M,
+    }
+
+
+class AnchorResetRequest(BaseModel):
+    session_id: str
+    lat: float
+    lon: float
+
+
+@app.post("/api/sentry/anchor-drift/reset")
+def anchor_drift_reset(request: AnchorResetRequest):
+    """Re-drops the anchor at the given position, replacing any previous
+    reference point for this session (e.g. after deliberately repositioning)."""
+    anchor = set_anchor(request.session_id, request.lat, request.lon)
+    return {"status": "ANCHOR_SET", "anchor": [anchor["lat"], anchor["lon"]], "set_at": anchor["set_at"]}
 
 
 # --- Feature: Real SOS / Mayday logging (Phase 1 #5) ----------------------
@@ -396,12 +497,21 @@ def get_hazard_mesh_endpoint(ttl_hours: float = 24.0, limit: int = 1000):
 
 
 @app.get("/api/news")
-def get_news():
+def get_news(domain: str | None = None):
     """
     Task 3: top 5 ScienceDaily Oceanography RSS headlines, 1-hour cached
-    (see app/news_feed.py).
+    (see app/news_feed.py). Optional `?domain=` filters to articles tagged
+    with that domain slug (see app/news_feed.py's DOMAIN_TAXONOMY); an
+    unrecognized/omitted domain returns the full unfiltered set.
     """
-    return {"articles": get_oceanography_news(limit=5)}
+    return {"articles": get_oceanography_news(limit=5, domain=domain)}
+
+
+@app.get("/api/news/domains")
+def get_news_domains():
+    """Ocean domain taxonomy slugs, for the frontend's news domain selector
+    (see app/news_feed.py's DOMAIN_TAXONOMY)."""
+    return {"domains": list(DOMAIN_TAXONOMY.keys())}
 
 
 @app.post("/api/orchestrate")
@@ -530,7 +640,11 @@ def run_orchestration(request: OrchestrateRequest):
         "persona": result.get("persona", "Fisherman"),
         "hazard_status": _derive_hazard_status(boundary_report, ocean_report, hazard_report),
         "pfz_location": pfz_zones,
-        "telemetry": _build_telemetry(lat, lon, ocean_report, chlorophyll_report),
+        "telemetry": _build_telemetry(
+            lat, lon, ocean_report, chlorophyll_report,
+            sst_delta=request.sst_delta, chlorophyll_delta=request.chlorophyll_delta,
+            salinity_delta=request.salinity_delta,
+        ),
         "lightning_alert": hazard_report["lightning_alert"],
         "cyclone_alert": hazard_report["cyclone_alert"],
         "hazard_summary": hazard_report["summary"],
