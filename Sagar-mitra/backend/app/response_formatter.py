@@ -21,6 +21,24 @@ this path runs.
 import re
 from app.error_utils import busy_notice
 
+# Shared with main.py (which computes the authoritative hazard_status field
+# returned to the frontend's hazard banner) so a degraded advisory's
+# "Operational Status" line below can never contradict it -- defined once
+# here instead of duplicated, since two independent copies of this logic
+# drifting apart would be a real safety bug for a maritime advisory app.
+def derive_hazard_status(boundary_report: str, ocean_report: str, hazard_report: dict) -> str:
+    if boundary_report.startswith("ALERT"):
+        return "HAZARDOUS"
+    if "HAZARDOUS" in ocean_report.upper():
+        return "HAZARDOUS"
+    if hazard_report.get("cyclone_alert"):
+        return "HAZARDOUS"
+    if hazard_report.get("lightning_alert"):
+        return "CAUTION"
+    if boundary_report.startswith("UNVERIFIED"):
+        return "CAUTION"
+    return "SAFE"
+
 AGENT_DISPLAY_NAMES = {
     "English": {
         "navigation": "Navigation & Weather", "fishing": "Fishing Zones",
@@ -77,3 +95,73 @@ def format_fallback_advisory(agent_reports: dict, language: str = "English",
         lines.append(labels.get("_empty", "No data was available for this request."))
 
     return "\n".join(lines)
+
+
+# Real values only, parsed straight out of the same live tool-report text
+# Gemini synthesis would otherwise read (see sub_agents.py's navigation_node
+# / fishing_node) -- never fabricated. Kept next to their source format
+# strings for easy cross-checking:
+#   marine_weather_tool.py:  "... Wave Height: {wave_height}m, Water Temp: {temp}°C, ..."
+#   pfz_tool.py:              "... Nearest PFZ is near {landing}. Distance: ..."
+#   chlorophyll_tool.py:      "... Chlorophyll-a: {avg_chl} mg/m³. ..."
+_WAVE_HEIGHT_RE = re.compile(r"Wave Height:\s*([-\d.]+)m")
+_WATER_TEMP_RE = re.compile(r"Water Temp:\s*([-\d.]+)")
+_NEAREST_PFZ_RE = re.compile(r"Nearest PFZ is near ([^.]+)\.")
+_CHLOROPHYLL_RE = re.compile(r"Chlorophyll-a:\s*([\d.]+)")
+
+_OPERATIONAL_STATUS_TEXT = {
+    "SAFE": "Safe for navigation.",
+    "CAUTION": "Exercise caution -- monitor conditions closely before proceeding.",
+    "HAZARDOUS": "Hazardous -- do not proceed without confirming conditions.",
+}
+
+
+def format_natural_fallback_advisory(agent_reports: dict, hazard_status: str,
+                                      language: str = "English") -> str:
+    """
+    A calm, natural-sounding maritime paragraph built from REAL gathered
+    telemetry (wave height / water temperature / nearest PFZ / chlorophyll,
+    all parsed from the same live navigation/fishing agent reports the
+    Gemini synthesis path would otherwise phrase) -- used in place of
+    format_fallback_advisory's busy-notice-plus-bullet-dump when Gemini
+    synthesis is unavailable, so a degraded response still reads like a
+    normal advisory instead of exposing "AI summarizer busy"/infrastructure
+    language to the end user.
+
+    The Operational Status line always reflects the REAL, independently-
+    computed hazard_status (see derive_hazard_status above) -- this is a
+    maritime safety advisory, so a degraded/no-LLM response must never
+    claim conditions are safe when they aren't, no matter how clean the
+    prose needs to read. Falls back to a minimal, still-honest sentence
+    when no navigation/fishing data is present at all (e.g. a compliance-
+    or analytics-only query reached this path).
+    """
+    nav_report = agent_reports.get("navigation", "") or ""
+    fishing_report = agent_reports.get("fishing", "") or ""
+
+    wave_match = _WAVE_HEIGHT_RE.search(nav_report)
+    temp_match = _WATER_TEMP_RE.search(nav_report)
+    pfz_match = _NEAREST_PFZ_RE.search(fishing_report)
+    chl_match = _CHLOROPHYLL_RE.search(fishing_report)
+
+    status_text = _OPERATIONAL_STATUS_TEXT.get(hazard_status, _OPERATIONAL_STATUS_TEXT["CAUTION"])
+    sentences = [f"Operational Status: {status_text}"]
+
+    if wave_match and temp_match:
+        sentences.append(
+            f"Sea conditions off the coast show mild wave heights of {wave_match.group(1)}m "
+            f"with water temperature at {temp_match.group(1)}°C."
+        )
+    elif wave_match:
+        sentences.append(f"Wave heights off the coast are currently around {wave_match.group(1)}m.")
+    elif temp_match:
+        sentences.append(f"Water temperature off the coast is currently near {temp_match.group(1)}°C.")
+
+    if pfz_match:
+        pfz_sentence = f"Potential fishing zones are active near {pfz_match.group(1).strip()}"
+        pfz_sentence += (f", with favorable chlorophyll concentrations around {chl_match.group(1)} mg/m³."
+                          if chl_match else ".")
+        sentences.append(pfz_sentence)
+
+    sentences.append("Exercise standard maritime caution, particularly near boundary zones.")
+    return " ".join(sentences)

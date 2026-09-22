@@ -43,8 +43,11 @@ from app.response_formatter import format_fallback_advisory
 from app.voice import synthesize_speech
 
 # Same static/ mount main.py already serves (see main.py's StaticFiles
-# mount and historical.py's identical PLOTS_DIR / voice.py's AUDIO_DIR
-# pattern) -- no new server config needed for these files to be reachable.
+# mount and voice.py's AUDIO_DIR pattern) -- no new server config needed
+# for these files to be reachable. A PDF/audio briefing is only generated
+# on an explicit "Generate Morning Dispatch" action, not on every typed
+# chat message, so it isn't the live-reload trigger a chart-per-message
+# would be (see historical.py's in-memory, no-disk-write chart rendering).
 DISPATCH_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "dispatch")
 os.makedirs(DISPATCH_DIR, exist_ok=True)
 

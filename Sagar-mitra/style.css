@@ -211,6 +211,10 @@ body {
 }
 .advisory-card .shap-chart-wrap { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(148, 163, 184, 0.18); }
 .advisory-card .shap-chart-wrap canvas { max-width: 100%; }
+.advisory-minimap {
+  position: relative; height: 150px; width: 100%; border-radius: 8px; margin-top: 8px; overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
 .vessel-safety-buffer { animation: safetyBufferPulse 2.4s ease-in-out infinite; pointer-events: none; }
 @keyframes safetyBufferPulse {
   0%, 100% { opacity: 0.85; }
@@ -370,6 +374,7 @@ body {
   justify-content: center; cursor: pointer; box-shadow: 0 0 16px var(--accent-cyan); transition: transform 0.2s ease; flex-shrink: 0;
 }
 .search-send-btn:hover { transform: scale(1.06); }
+.search-send-btn:disabled { opacity: 0.6; cursor: wait; transform: none; }
 .mic-btn {
   width: 40px; height: 40px; background: transparent; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 50%; color: var(--accent-cyan);
   display: flex; align-items: center; justify-content: center; cursor: pointer;

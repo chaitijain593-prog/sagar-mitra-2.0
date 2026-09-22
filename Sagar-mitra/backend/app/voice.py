@@ -22,13 +22,16 @@ from google.genai import types
 
 from app.advisory import generate_content, LITE_MODEL
 
-# Same static directory app/main.py mounts at /static (see historical.py's
-# identical PLOTS_DIR pattern for generated plot images).
+# Same static directory app/main.py mounts at /static. Unlike historical.py's
+# chart images (in-memory base64, no disk write), audio genuinely needs a
+# real file for the frontend's <audio> element to stream/seek, and is only
+# ever written on an explicit voice query (not on every typed chat
+# message), so it isn't the live-reload trigger a chart-per-message would be.
 AUDIO_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "audio")
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
 # Full base URL so audio links are directly playable from the frontend.
-# Set SAGAR_MITRA_BASE_URL in .env once deployed (see historical.py's BASE_URL).
+# Set SAGAR_MITRA_BASE_URL in .env once deployed.
 BASE_URL = os.environ.get("SAGAR_MITRA_BASE_URL", "http://127.0.0.1:8000")
 
 # Transcription+translation is a structured extraction task, not open-ended

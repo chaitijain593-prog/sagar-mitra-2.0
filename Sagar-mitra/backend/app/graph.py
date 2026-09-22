@@ -19,7 +19,7 @@ from app.planner import plan_query
 # whenever Gemini itself is unavailable, so a quota/outage degrades the
 # FORMATTING and LANGUAGE gracefully instead of leaking a raw API error or
 # falling back to unlabeled, English-only, wall-of-text concatenation.
-from app.response_formatter import format_fallback_advisory
+from app.response_formatter import format_natural_fallback_advisory, derive_hazard_status
 from app.error_utils import safe_error_text
 
 # The five "common" live-data lookups that BOTH the corresponding chat
@@ -184,6 +184,7 @@ def create_orca_graph():
         reports: dict = {}
         hazard_alerts = list(state.get("hazard_alerts", []))
         plot_url = None
+        historical_series = None
         regional_zones: list = []
 
         # Merge in agents_to_run order (not completion order) so the
@@ -196,6 +197,7 @@ def create_orca_graph():
             reports[agent_name] = out.get("final_output", "")
             hazard_alerts.extend(out.get("hazard_alerts", []))
             plot_url = out.get("plot_url", plot_url)
+            historical_series = out.get("historical_series", historical_series)
             regional_zones = out.get("regional_zones", regional_zones)
 
         state["agent_reports"] = reports
@@ -206,6 +208,7 @@ def create_orca_graph():
         # synthesis pass can freely paraphrase (or drop) a raw URL/JSON
         # blob embedded in prose.
         state["plot_url"] = plot_url
+        state["historical_series"] = historical_series
         state["regional_zones"] = regional_zones
         # final_output is kept only as a plain-text join for the Gemini
         # synthesis prompt below; the FALLBACK path uses the structured
@@ -218,13 +221,45 @@ def create_orca_graph():
 
     # 3. Synthesizer Node (combines all agent reports and formats via Gemini)
     def synthesizer_node(state: AgentState):
-        print("--- SYNTHESIZER: Formatting combined advisory via Gemini ---")
         raw_output = state.get("final_output", "Standard maritime check complete.")
         agent_reports = state.get("agent_reports", {})
         persona = state.get("persona", "Fisherman")
         language = state.get("language", "English")
         agents_run = state.get("next_steps", [])
 
+        if agents_run == ["historical"]:
+            # Chart/dataset-only queries (see planner.py's
+            # _INSTANT_HISTORICAL_KEYWORDS fast path) need no Gemini prose at
+            # all -- the real answer is the chart itself
+            # (telemetry.historical_series, rendered by script.js), not a
+            # narrated summary of numbers already visible in it. Skipping
+            # Gemini here removes the last LLM call on this query path
+            # entirely: no network calls, immune to a 503/timeout. Scoped to
+            # EXACTLY ["historical"] (not "historical is present") so a
+            # compound query that also picked navigation/fishing/etc. still
+            # gets those agents' findings synthesized properly instead of
+            # silently discarded.
+            #
+            # Text picked from the REAL chart_type the historical agent
+            # actually produced this turn (historical.py's
+            # plot_yearly_trend -> "line" vs plot_category_distribution /
+            # plot_hazard_category_distribution -> "pie"), not guessed from
+            # keywords, so it never describes a chart that isn't there.
+            series = state.get("historical_series") or {}
+            if series.get("chart_type") == "line":
+                state["final_advisory"] = (
+                    "Historical sea surface temperature data loaded. Displaying multi-year "
+                    "oceanographic trendline below."
+                )
+            else:
+                state["final_advisory"] = (
+                    "Historical oceanographic telemetry and hazard distribution retrieved "
+                    "successfully. Displaying interactive dataset breakdown below."
+                )
+            state["advisory_degraded"] = False
+            return state
+
+        print("--- SYNTHESIZER: Formatting combined advisory via Gemini ---")
         try:
             if agents_run == ["compliance"]:
                 # A pure legal/boundary question: keep the strict,
@@ -245,14 +280,35 @@ def create_orca_graph():
                     history_text=history_text,
                 )
             state["final_advisory"] = polished_advisory
+            state["advisory_degraded"] = False
         except Exception as e:
-            # Gemini unavailable (quota/outage): degrade gracefully to a
+            # Gemini unavailable (quota/outage/503-high-demand/timeout --
+            # see advisory.LLM_CALL_TIMEOUT_S): degrade gracefully to a
             # clean, per-agent, language-labeled response built directly
             # from the structured agent_reports dict -- never the raw
             # exception text, and never an unlabeled wall of concatenated
-            # English strings.
+            # English strings. Flagged so main.py can surface this as
+            # status: "ADVISORY_BUSY" instead of silently claiming success.
+            #
+            # The advisory TEXT itself deliberately does not expose "AI
+            # busy"/infrastructure wording -- format_natural_fallback_advisory
+            # builds a calm, natural paragraph from the real gathered
+            # telemetry instead (see that function's docstring). Its
+            # Operational Status line is computed from the REAL hazard_status
+            # (derive_hazard_status, shared with main.py) rather than assumed
+            # safe -- this is a safety advisory, so a degraded response must
+            # never claim conditions are fine when they aren't, even while
+            # reading cleanly.
             print(f"[Synthesizer Error] Falling back to formatted raw output: {e}")
-            state["final_advisory"] = format_fallback_advisory(agent_reports, language=language)
+            common = state.get("common_signals") or {}
+            hazard_status = derive_hazard_status(
+                common.get("boundary_report", ""), common.get("ocean_report", ""),
+                common.get("hazard_report") or {},
+            )
+            state["final_advisory"] = format_natural_fallback_advisory(
+                agent_reports, hazard_status, language=language,
+            )
+            state["advisory_degraded"] = True
 
         return state
 

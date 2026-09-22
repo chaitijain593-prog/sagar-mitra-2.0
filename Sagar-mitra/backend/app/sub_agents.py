@@ -106,6 +106,8 @@ def historical_node(state: AgentState) -> dict:
     if result.get("plot_url"):
         out["final_output"] += f"\n[Chart generated: {result['plot_url']}]"
         out["plot_url"] = result["plot_url"]
+    if result.get("series"):
+        out["historical_series"] = result["series"]
     return out
 
 

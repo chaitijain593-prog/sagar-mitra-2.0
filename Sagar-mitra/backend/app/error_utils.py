@@ -15,6 +15,12 @@ import re
 _QUOTA_OR_UNAVAILABLE_PATTERNS = (
     "429", "resource_exhausted", "quota", "rate limit",
     "503", "unavailable", "high demand", "overloaded",
+    # A call that hit advisory.py's hard per-call timeout (see
+    # LLM_CALL_TIMEOUT_S) is functionally the same "Gemini isn't answering
+    # right now" situation as a 503, just detected client-side instead of
+    # server-side -- treat it the same way so it gets the same busy-notice
+    # fallback instead of the generic error notice.
+    "timeout", "timed out", "deadline exceeded",
 )
 
 
