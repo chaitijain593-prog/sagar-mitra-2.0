@@ -723,7 +723,7 @@ function startGeofenceMonitor() {
         if(!coords) return; // Wait until GPS is locked
 
         try {
-            const response = await fetch(`/api/geofence-check?lat=\({coords.lat}&lon=\){coords.lon}`);
+            const response = await fetch(`/api/geofence-check?lat=${coords.lat}&lon=${coords.lon}`);
             const data = await response.json();
 
             if(data.status === "CAUTION") {
