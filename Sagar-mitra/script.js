@@ -379,14 +379,111 @@
     function bearingToCardinal(deg) {
       return COMPASS_CARDINALS[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
     }
+    function normalizeHeading(deg) {
+      return ((deg % 360) + 360) % 360;
+    }
     function updateCompassHeading(deg) {
       const needle = document.getElementById("compassNeedle");
       const readout = document.getElementById("compassHeadingReadout");
       if (needle) needle.style.transform = "rotate(" + deg + "deg)";
       if (readout) {
-        const normalized = Math.round(((deg % 360) + 360) % 360);
+        const normalized = Math.round(normalizeHeading(deg));
         readout.textContent = `${String(normalized).padStart(3, "0")}° ${bearingToCardinal(normalized)}`;
       }
+    }
+    // True when the live device-orientation sensor is driving the needle; while active, GPS-derived
+    // course-over-ground updates (setLastKnownState) stand down so the two sources don't fight.
+    let compassLiveActive = false;
+    let compassLiveWatchdog = null;
+    function getScreenAngle() {
+      if (typeof screen !== "undefined" && screen.orientation && typeof screen.orientation.angle === "number") {
+        return screen.orientation.angle;
+      }
+      if (typeof window.orientation === "number") return window.orientation;
+      return 0;
+    }
+    // Pure so it can be exercised without a DOM: iOS exposes true compass heading directly via the
+    // non-standard webkitCompassHeading; everyone else only gets a real heading out of alpha when
+    // the event is explicitly flagged absolute (uncalibrated/relative alpha would just be noise).
+    function computeHeadingFromOrientationEvent(event, screenAngle) {
+      if (!event) return null;
+      if (typeof event.webkitCompassHeading === "number" && !Number.isNaN(event.webkitCompassHeading)) {
+        return normalizeHeading(event.webkitCompassHeading);
+      }
+      if (typeof event.alpha === "number" && event.alpha !== null && event.absolute === true) {
+        const angle = typeof screenAngle === "number" ? screenAngle : 0;
+        return normalizeHeading(360 - event.alpha + angle);
+      }
+      return null;
+    }
+    function setCompassMode(mode, subText) {
+      const label = document.getElementById("compassModeLabel");
+      const sub = document.getElementById("compassSubStatus");
+      if (label) label.textContent = mode === "live" ? "Live Compass Heading" : "Course over Ground";
+      if (sub) sub.textContent = subText || "";
+    }
+    function handleDeviceOrientation(event) {
+      const heading = computeHeadingFromOrientationEvent(event, getScreenAngle());
+      if (heading === null) return;
+      if (compassLiveWatchdog) {
+        clearTimeout(compassLiveWatchdog);
+        compassLiveWatchdog = null;
+      }
+      compassLiveActive = true;
+      updateCompassHeading(heading);
+      setCompassMode("live", "Reading your device's orientation sensor");
+    }
+    async function enableLiveCompass() {
+      const btn = document.getElementById("compassLiveBtn");
+      if (typeof DeviceOrientationEvent === "undefined") {
+        setCompassMode("course", "Device compass sensor not supported on this browser");
+        return;
+      }
+      try {
+        if (typeof DeviceOrientationEvent.requestPermission === "function") {
+          const result = await DeviceOrientationEvent.requestPermission();
+          if (result !== "granted") {
+            setCompassMode("course", "Compass permission denied — showing course over ground instead");
+            return;
+          }
+        }
+        const eventName = "ondeviceorientationabsolute" in window ? "deviceorientationabsolute" : "deviceorientation";
+        window.addEventListener(eventName, handleDeviceOrientation);
+        if (btn) {
+          btn.classList.add("is-active");
+          btn.textContent = "Live Compass Active";
+          btn.disabled = true;
+        }
+        setCompassMode("course", "Waiting for sensor data…");
+        compassLiveWatchdog = setTimeout(() => {
+          compassLiveWatchdog = null;
+          if (!compassLiveActive) {
+            setCompassMode("course", "No compass data from this device — showing course over ground");
+            if (btn) {
+              btn.classList.remove("is-active");
+              btn.textContent = "Enable Live Compass";
+              btn.disabled = false;
+            }
+            window.removeEventListener(eventName, handleDeviceOrientation);
+          }
+        }, 4000);
+      } catch (err) {
+        console.error("Live compass error:", err);
+        setCompassMode("course", "Could not enable device compass — showing course over ground");
+      }
+    }
+    function initCompassWidget() {
+      const btn = document.getElementById("compassLiveBtn");
+      setCompassMode("course", 'Tap "Enable Live Compass" to use your device\'s sensor');
+      if (!btn) return;
+      if (typeof window.DeviceOrientationEvent === "undefined") {
+        btn.style.display = "none";
+        return;
+      }
+      btn.addEventListener("click", enableLiveCompass);
+    }
+    if (typeof module !== "undefined" && module.exports) {
+      module.exports = { normalizeHeading, computeHeadingFromOrientationEvent, calculateBearing, bearingToCardinal };
     }
     function initHazardReporting() {
       map.on("click", (e) => openHazardModal(e.latlng));
@@ -766,7 +863,7 @@
     let lastVesselCoord = MOCK_ORCHESTRATOR_RESPONSE.vessel_coord;
     let lastHazardStatus = MOCK_ORCHESTRATOR_RESPONSE.hazard_status;
     function setLastKnownState(vesselCoord, hazardStatus) {
-      if (lastVesselCoord && vesselCoord &&
+      if (!compassLiveActive && lastVesselCoord && vesselCoord &&
           (lastVesselCoord[0] !== vesselCoord[0] || lastVesselCoord[1] !== vesselCoord[1])) {
         updateCompassHeading(calculateBearing(lastVesselCoord[0], lastVesselCoord[1], vesselCoord[0], vesselCoord[1]));
       }
@@ -1022,6 +1119,7 @@
     initHazardReporting();
     loadHazardMesh();
     initHistoricalChart();
+    initCompassWidget();
     updateCompassHeading(45);
     startGeofencePolling();
     loadNewsDomains();
