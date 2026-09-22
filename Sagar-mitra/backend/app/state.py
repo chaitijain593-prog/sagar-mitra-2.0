@@ -20,9 +20,15 @@ class AgentState(TypedDict):
     # chlorophyll_report, hazard_report.
     common_signals: Dict[str, object]
     plot_url: Optional[str]  # historical chart image URL, if the historical agent generated one
+    historical_series: Optional[dict]  # {chart_type, parameter, labels, values} for a real Chart.js render of the same chart_type/plot_url; None if no chart tool ran
     regional_zones: List[dict]  # ranked zones from the regional agent, for map markers
     language: str
     persona: str
     query_intent: str
     final_output: str
     final_advisory: str
+    # True when synthesizer_node had to fall back to format_fallback_advisory
+    # (Gemini synthesis exhausted primary+fallback model, e.g. a 503/high-
+    # demand stall or timeout) instead of a real Gemini-polished advisory --
+    # surfaced to the frontend as main.py's /api/orchestrate "status" field.
+    advisory_degraded: bool

@@ -2,7 +2,7 @@
 Sagar Mitra - Ocean Intelligence NLP & Explanation Layer
 ===========================================================
 
-This module wraps Google Gemini (gemini-2.5-flash) using the official
+This module wraps Google Gemini (gemini-3.6-flash) using the official
 `google-genai` SDK to translate structured oceanographic JSON data into
 persona-aware, language-localized advisories for:
 
@@ -23,6 +23,7 @@ Author: Sagar Mitra Hackathon Team
 
 import os
 import json
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import Dict, Any, Literal, Optional
 
 from google import genai
@@ -42,6 +43,7 @@ def get_gemini_client() -> genai.Client:
     """
     api_key = _current_key()
     if not api_key:
+        print("[advisory] ERROR: GEMINI_API_KEY is empty/unset -- no Gemini client can be built.")
         raise EnvironmentError(
             "No Gemini API key found. Set GEMINI_API_KEY (single key) or "
             "GEMINI_API_KEYS (comma-separated, for automatic rotation when "
@@ -59,8 +61,8 @@ def get_gemini_client() -> genai.Client:
 # When a call fails with a quota/rate-limit error, we automatically rotate
 # to the next key and retry -- no manual restart needed.
 
-_KEYS = [k.strip() for k in os.environ.get("GEMINI_API_KEYS", "").split(",") if k.strip()] \
-        or ([os.environ["GEMINI_API_KEY"]] if os.environ.get("GEMINI_API_KEY") else [])
+_KEYS = [k.strip() for k in os.getenv("GEMINI_API_KEYS", "").split(",") if k.strip()] \
+        or ([os.getenv("GEMINI_API_KEY")] if os.getenv("GEMINI_API_KEY") else [])
 _key_index = 0
 _client: genai.Client | None = None
 
@@ -85,6 +87,18 @@ def _is_quota_error(e: Exception) -> bool:
         "401", "unauthenticated", "account_state_invalid",
         "service account is deleted", "service account is disabled",
         "api key not valid", "invalid api key",
+    ])
+
+
+def _is_invalid_key_error(e: Exception) -> bool:
+    """True specifically for an invalid/rejected/unauthenticated API key, as
+    opposed to a plain quota/rate-limit hit -- logged loudly (see
+    generate_content) so a broken GEMINI_API_KEY is diagnosable from the
+    terminal instead of only surfacing as a generic advisory fallback."""
+    msg = str(e).lower()
+    return any(s in msg for s in [
+        "401", "unauthenticated", "api key not valid", "invalid api key",
+        "account_state_invalid", "service account is deleted", "service account is disabled",
     ])
 
 
@@ -150,22 +164,100 @@ def require_gemini_key() -> None:
 # actually has to succeed in the user's language.
 LITE_MODEL = "gemini-flash-lite-latest"
 
+# The strongest/default model for user-facing advisory generation and
+# synthesis (generate_sagar_mitra_advisory, synthesize_advisory,
+# plain_gemini_answer, format_compliance_advisory below all default to
+# this) -- kept as one explicit constant, mirroring LITE_MODEL above, so
+# there's a single place that names it rather than four repeated literals.
+#
+# gemini-2.5-flash was used here previously but now 404s live: "This model
+# models/gemini-2.5-flash is no longer available to new users. Please
+# update your code to use models/gemini-3.6-flash for the latest features"
+# -- confirmed against the real API with the project's own key (2026-09-22).
+# gemini-3.6-flash succeeds; gemini-3.8-flash also exists but returned a
+# live 503 (high demand) in that same check, so 3.6 is the reliable choice.
+PRIMARY_MODEL = "gemini-3.6-flash"
+
+# Fallback model for generate_content_with_fallback (below) when
+# PRIMARY_MODEL hits a 429/503/timeout -- a distinct, comparably-capable
+# model (not LITE_MODEL, which is reserved for cheap routing/classification
+# traffic -- see the "MODEL TIERING" note above) so a degraded synthesis
+# call still has a real shot at a good persona/language-aware answer.
+# Confirmed live/working alongside PRIMARY_MODEL in the same check above.
+FALLBACK_MODEL = "gemini-3.5-flash"
+
+
+# Hard ceiling on a single Gemini call ("circuit breaker"), enforced two
+# ways below: the SDK's own HttpOptions.timeout (per HTTP attempt) AND an
+# outer thread-based deadline. The SDK retries a transient httpx timeout/
+# connect error internally (up to 3x with backoff -- see
+# google.genai._api_client), so HttpOptions.timeout alone can't guarantee
+# this ceiling; the outer future.result(timeout=...) below is what actually
+# stops a caller from hanging on Gemini past this many seconds, whether
+# that's a real 503 "high demand" or a silent stall.
+#
+# 15s: a 6s ceiling (tried previously) was cutting off ordinary, eventually-
+# successful synthesis calls before they finished, forcing normal queries
+# into the degraded fallback under regular load -- too tight for genuine
+# Gemini latency. Historical/chart queries don't count against this at all
+# any more (see planner.py's _INSTANT_HISTORICAL_KEYWORDS and graph.py's
+# synthesizer_node historical-only bypass, both zero-Gemini), so the
+# remaining traffic is single-agent narrative synthesis, where 15s comfortably
+# covers normal generation time while still failing fast on a genuine
+# 503/stall. generate_content_with_fallback still gets one retry on
+# FALLBACK_MODEL, itself bounded by this same ceiling, so worst case is
+# ~2x this value (~30s) before degrading to the deterministic formatter --
+# never an indefinite hang.
+LLM_CALL_TIMEOUT_S = 15
+
+
+def _call_with_timeout(client: genai.Client, model: str, contents, config):
+    """Runs client.models.generate_content in a worker thread and gives up
+    after LLM_CALL_TIMEOUT_S regardless of what the SDK is still doing
+    internally. The worker thread isn't forcibly killed on timeout (Python
+    can't do that) -- shutdown(wait=False) lets it finish in the background
+    on its own instead of blocking our return on it, so a stalled call still
+    fails fast for the caller."""
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(client.models.generate_content, model=model, contents=contents, config=config)
+    try:
+        return future.result(timeout=LLM_CALL_TIMEOUT_S)
+    except FuturesTimeoutError:
+        raise TimeoutError(
+            f"Gemini call to model '{model}' timed out after {LLM_CALL_TIMEOUT_S}s "
+            "(likely a 503/high-demand stall)."
+        )
+    finally:
+        executor.shutdown(wait=False)
+
 
 def generate_content(model: str, contents, config=None):
     """
     Drop-in replacement for client.models.generate_content(...) that
     automatically rotates through GEMINI_API_KEYS on quota/rate-limit OR
     permission-denied errors and retries, instead of getting permanently
-    stuck on a single bad key for the rest of the process lifetime.
+    stuck on a single bad key for the rest of the process lifetime. Every
+    call is bounded by LLM_CALL_TIMEOUT_S (see _call_with_timeout).
     """
+    if config is None:
+        config = types.GenerateContentConfig(http_options=types.HttpOptions(timeout=LLM_CALL_TIMEOUT_S * 1000))
+    elif getattr(config, "http_options", None) is None:
+        config.http_options = types.HttpOptions(timeout=LLM_CALL_TIMEOUT_S * 1000)
+
     last_err = None
     attempts = max(len(_KEYS), 1)
     for _ in range(attempts):
         client = _get_client()
         try:
-            return client.models.generate_content(model=model, contents=contents, config=config)
+            return _call_with_timeout(client, model, contents, config)
         except Exception as e:
             last_err = e
+            if _is_invalid_key_error(e):
+                # Distinct from a quota hit -- explicit so an invalid/rejected
+                # GEMINI_API_KEY is diagnosable from the terminal instead of
+                # only surfacing as a generic advisory fallback later.
+                print(f"[advisory] ERROR: GEMINI_API_KEY (key #{_key_index + 1}/{max(len(_KEYS), 1)}) "
+                      f"was rejected by Google as invalid/unauthenticated: {e}")
             if (_is_quota_error(e) or _is_permission_denied_error(e)) and len(_KEYS) > 1:
                 _rotate_key()
                 continue
@@ -174,11 +266,12 @@ def generate_content(model: str, contents, config=None):
 
 
 def generate_content_with_fallback(primary_model: str, contents, config=None,
-                                    fallback_model: str = LITE_MODEL):
+                                    fallback_model: str = FALLBACK_MODEL):
     """
     Tries `primary_model` first; if it fails with a quota (429) OR
     availability (503 "high demand") error, retries ONCE on `fallback_model`
-    -- a separate quota pool, see LITE_MODEL -- before giving up.
+    -- a separate, comparably-capable model (see FALLBACK_MODEL) -- before
+    giving up.
 
     _is_quota_error() (used for key rotation, above) only recognizes 429s,
     since rotating API KEYS can't fix a 503 -- that's a whole-model outage,
@@ -387,7 +480,7 @@ def generate_sagar_mitra_advisory(
     json_payload: Dict[str, Any],
     persona: PersonaType,
     language: str = "English",
-    model: str = "gemini-3.6-flash",
+    model: str = PRIMARY_MODEL,
 ) -> str:
     """
     Generates a persona-aware, localized ocean advisory from structured
@@ -405,7 +498,7 @@ def generate_sagar_mitra_advisory(
             }
         persona: One of "Fisherman", "Student", "Researcher", "General Public".
         language: Target output language, e.g. "English", "Hindi", "Marathi".
-        model: Gemini model name (defaults to the free/fast gemini-2.5-flash).
+        model: Gemini model name (defaults to PRIMARY_MODEL, gemini-3.6-flash).
 
     Returns:
         A formatted advisory string, ready to display to the end user.
@@ -439,7 +532,7 @@ def generate_sagar_mitra_advisory(
 
 def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: str = "English",
                          user_message: str = "", history_text: str = "",
-                         model: str = "gemini-3.6-flash") -> str:
+                         model: str = PRIMARY_MODEL) -> str:
     """
     Combines the raw findings from one or more ORCA specialist agents
     (already live, real data -- wave height, PFZ location, boundary status,
@@ -487,7 +580,7 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
 
 
 def plain_gemini_answer(user_message: str, persona: str = "General Public",
-                         language: str = "English", model: str = "gemini-3.6-flash") -> str:
+                         language: str = "English", model: str = PRIMARY_MODEL) -> str:
     """
     Fallback path: used when we don't have enough real nearby ocean data to
     run the statistical engine honestly. Answers directly from Gemini's own
@@ -519,7 +612,7 @@ def plain_gemini_answer(user_message: str, persona: str = "General Public",
 
 
 def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
-                                language: str = "English", model: str = "gemini-3.6-flash") -> str:
+                                language: str = "English", model: str = PRIMARY_MODEL) -> str:
     """
     Strict, grounded formatter for maritime boundary / MPA compliance checks.
 

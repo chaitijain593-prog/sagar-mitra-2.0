@@ -27,6 +27,7 @@ from app.advisory import _is_quota_error, _is_permission_denied_error
 from app.boundary_toool import distance_to_nearest_boundary_km, return_heading_to_safety
 from app.dispatch import generate_morning_dispatch
 from app.news_feed import get_oceanography_news, DOMAIN_TAXONOMY
+from app.response_formatter import derive_hazard_status
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -47,12 +48,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serves the historical-chart PNGs app/historical.py saves under
-# backend/static/plots -- the plot_url returned to the frontend (see
-# run_orchestration below) points at this mount, e.g.
-# http://127.0.0.1:8000/static/plots/TEMP_trend_xxxx.png. Also serves
-# synthesized advisory audio saved under backend/static/audio (see
-# app/voice.py's save_advisory_audio).
+# Serves synthesized advisory audio saved under backend/static/audio (see
+# app/voice.py's save_advisory_audio) and Morning Dispatch PDFs/audio saved
+# under backend/static/dispatch (see app/dispatch.py). Historical-chart
+# images (app/historical.py) are NOT served from here -- they're rendered
+# straight to an in-memory buffer and returned as a base64 data: URL, with
+# no disk write at all, so a chart-generating chat query never drops a new
+# file under this (frontend-nested) static/ tree for a live-reload dev
+# tool to notice.
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 os.makedirs(_STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
@@ -105,9 +108,10 @@ def _derive_geofence_alert(boundary: dict) -> tuple[str, str]:
     """
     Turns distance_to_nearest_boundary_km's raw proximity numbers into a
     SAFE/CAUTION/HAZARDOUS verdict + a plain-language message -- the same
-    three-tier vocabulary _derive_hazard_status already uses for the main
-    hazard banner, so the frontend can reuse its existing hazard-banner CSS
-    classes for this too instead of inventing a fourth status vocabulary.
+    three-tier vocabulary derive_hazard_status (response_formatter.py)
+    already uses for the main hazard banner, so the frontend can reuse its
+    existing hazard-banner CSS classes for this too instead of inventing a
+    fourth status vocabulary.
     """
     inside_eez = boundary["inside_eez"]
     inside_mpa = boundary["inside_mpa"]
@@ -123,20 +127,6 @@ def _derive_geofence_alert(boundary: dict) -> tuple[str, str]:
     if mpa_km is not None and mpa_km < GEOFENCE_WARNING_KM:
         return "CAUTION", f"Approaching a Marine Protected Area ({mpa_km} km away)."
     return "SAFE", "No maritime boundary within the 5 km geofence threshold."
-
-
-def _derive_hazard_status(boundary_report: str, ocean_report: str, hazard_report: dict) -> str:
-    if boundary_report.startswith("ALERT"):
-        return "HAZARDOUS"
-    if "HAZARDOUS" in ocean_report.upper():
-        return "HAZARDOUS"
-    if hazard_report.get("cyclone_alert"):
-        return "HAZARDOUS"
-    if hazard_report.get("lightning_alert"):
-        return "CAUTION"
-    if boundary_report.startswith("UNVERIFIED"):
-        return "CAUTION"
-    return "SAFE"
 
 
 def _derive_pfz_zones(pfz_report: str) -> list[dict]:
@@ -562,12 +552,14 @@ def run_orchestration(request: OrchestrateRequest):
         "hazard_alerts": [],
         "common_signals": {},
         "plot_url": None,
+        "historical_series": None,
         "regional_zones": [],
         "language": "English",
         "persona": "Fisherman",
         "query_intent": "",
         "final_output": "",
         "final_advisory": "",
+        "advisory_degraded": False,
     }
 
     try:
@@ -627,9 +619,27 @@ def run_orchestration(request: OrchestrateRequest):
     session_store.append_turn(session_id, "assistant", final_advisory)
     session_store.set_last_context(session_id, coordinates, result.get("next_steps", []))
 
+    # Feature 18: real Chart.js series (line for a trend, pie for a
+    # distribution) from whichever plot tool the historical agent ran this
+    # turn, if any -- attached onto telemetry so the frontend's existing
+    # `updateHistoricalChart(parsedData.telemetry)` call (see script.js) can
+    # render it directly instead of only linking the matplotlib PNG.
+    telemetry = _build_telemetry(
+        lat, lon, ocean_report, chlorophyll_report,
+        sst_delta=request.sst_delta, chlorophyll_delta=request.chlorophyll_delta,
+        salinity_delta=request.salinity_delta,
+    )
+    telemetry["historical_series"] = result.get("historical_series")
+
     # Return the final synthesized response as JSON to the frontend
     return {
-        "status": "success",
+        # "ADVISORY_BUSY" when synthesizer_node (graph.py) had to fall back
+        # to the deterministic formatter after Gemini synthesis failed
+        # (503/high-demand/timeout on both the primary and fallback model --
+        # see advisory.LLM_CALL_TIMEOUT_S) -- the request still succeeded
+        # end-to-end, "advisory" below just contains the busy-notice plus
+        # real live agent data instead of a Gemini-polished narrative.
+        "status": "ADVISORY_BUSY" if result.get("advisory_degraded") else "success",
         "session_id": session_id,
         "user_message": request.user_message,
         "coordinates": coordinates,
@@ -638,13 +648,9 @@ def run_orchestration(request: OrchestrateRequest):
         "query_intent": result.get("query_intent", ""),
         "language": result.get("language", "English"),
         "persona": result.get("persona", "Fisherman"),
-        "hazard_status": _derive_hazard_status(boundary_report, ocean_report, hazard_report),
+        "hazard_status": derive_hazard_status(boundary_report, ocean_report, hazard_report),
         "pfz_location": pfz_zones,
-        "telemetry": _build_telemetry(
-            lat, lon, ocean_report, chlorophyll_report,
-            sst_delta=request.sst_delta, chlorophyll_delta=request.chlorophyll_delta,
-            salinity_delta=request.salinity_delta,
-        ),
+        "telemetry": telemetry,
         "lightning_alert": hazard_report["lightning_alert"],
         "cyclone_alert": hazard_report["cyclone_alert"],
         "hazard_summary": hazard_report["summary"],
@@ -727,12 +733,14 @@ async def run_voice_orchestration(
         "hazard_alerts": [],
         "common_signals": {},
         "plot_url": None,
+        "historical_series": None,
         "regional_zones": [],
         "language": transcription["language"],
         "persona": "Fisherman",
         "query_intent": "",
         "final_output": "",
         "final_advisory": "",
+        "advisory_degraded": False,
     }
 
     try:

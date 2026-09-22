@@ -40,6 +40,20 @@ VALID_AGENTS = ("navigation", "fishing", "compliance", "historical", "hazard", "
 
 _cache = TTLCache(ttl_seconds=300)  # short TTL -- routing decisions go stale fast in a live convo
 
+# Deterministic fast path: these phrasings unambiguously mean "run the
+# historical/chart agent" -- checked BEFORE the Gemini planning call (not
+# only as a post-failure fallback like _keyword_fallback below), so a
+# chart/trend/breakdown request never waits on, or gets misrouted by, a
+# Gemini call at all -- faster, and immune to a planner-side quota/503
+# stall. Loses referential-follow-up reasoning for these specific phrasings
+# (e.g. context carried from a prior turn), which is the deliberate
+# trade-off for guaranteed instant, correct routing on this query shape.
+_INSTANT_HISTORICAL_KEYWORDS = (
+    "pie chart", "breakdown", "distribution", "hazard categories",
+    "yearly trend", "trend of", "historical",
+    "sea surface temperature", "sst", "temperature trend", "yearly",
+)
+
 PLANNER_SYSTEM_PROMPT = """
 You are the task-planning layer for ORCA, a marine intelligence assistant
 for Indian coastal waters.
@@ -125,6 +139,11 @@ def plan_query(user_message: str, history: Optional[List[dict]] = None,
     hint (not sent to Gemini as ground truth -- Gemini gets the real
     conversation text and reasons for itself).
     """
+    text_lower = (user_message or "").lower()
+    if any(kw in text_lower for kw in _INSTANT_HISTORICAL_KEYWORDS):
+        return {"agents": ["historical"], "language": "English", "persona": "Fisherman",
+                "query_intent": user_message}
+
     history = history or []
     cache_key = normalize_key(user_message, *(t["text"] for t in history[-2:]))
     cached = _cache.get(cache_key)

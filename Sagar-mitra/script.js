@@ -339,6 +339,7 @@
     }
     // --- Historical Oceanographic Trends Chart (Feature 18) ---
     let historicalChartInstance = null;
+    const HISTORICAL_PIE_COLORS = ["#4A90D9", "#7ED957", "#F5A623", "#D0021B", "#a78bfa", "#f472b6"];
     function initHistoricalChart() {
       const canvas = document.getElementById("historicalChart");
       if (!canvas || typeof Chart === "undefined") return;
@@ -357,11 +358,46 @@
             x: { grid: { color: "rgba(148,163,184,0.12)" }, ticks: { color: "#94a3b8" } },
             y: { grid: { color: "rgba(148,163,184,0.12)" }, ticks: { color: "#94a3b8" } }, }, }, });
     }
+    // Backend attaches { chart_type: "line"|"pie", parameter, labels, values } to
+    // telemetry.historical_series from whichever historical.py plot tool Gemini
+    // picked this turn (plot_yearly_trend -> line, plot_category_distribution ->
+    // pie, already keyword-routed server-side off "pie chart"/"distribution"/
+    // "breakdown" -- see historical.py's TOOLS descriptions) -- see app/graph.py's
+    // dispatch_node and main.py's /api/orchestrate. Pie needs a different Chart.js
+    // dataset shape than the line baseline (one slice color per value, no
+    // scales), so a type switch destroys and recreates the instance on the same
+    // canvas rather than mutating an incompatible config in place.
     function updateHistoricalChart(telemetry) {
-      if (!historicalChartInstance || !telemetry || !Array.isArray(telemetry.historical_series) || !telemetry.historical_series.length) return;
-      const series = telemetry.historical_series;
-      historicalChartInstance.data.labels = series.map((p) => p.date || p.label || "");
-      historicalChartInstance.data.datasets[0].data = series.map((p) => p.value);
+      const canvas = document.getElementById("historicalChart");
+      const series = telemetry && telemetry.historical_series;
+      if (!canvas || typeof Chart === "undefined" || !series ||
+          !Array.isArray(series.labels) || !Array.isArray(series.values) || !series.labels.length) {
+        return;
+      }
+      const chartType = series.chart_type === "pie" ? "pie" : "line";
+      if (!historicalChartInstance || historicalChartInstance.config.type !== chartType) {
+        if (historicalChartInstance) historicalChartInstance.destroy();
+        historicalChartInstance = new Chart(canvas.getContext("2d"), chartType === "pie" ? {
+          type: "pie", data: {
+            labels: series.labels, datasets: [{
+              data: series.values,
+              backgroundColor: series.labels.map((_, i) => HISTORICAL_PIE_COLORS[i % HISTORICAL_PIE_COLORS.length]), }], },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: true, position: "right", labels: { color: "#cbd5e1", font: { size: 10 } } } }, }, } : {
+          type: "line", data: {
+            labels: series.labels, datasets: [{
+              label: series.parameter || "Value", data: series.values, borderColor: "#38bdf8", backgroundColor: "rgba(56, 189, 248, 0.15)",
+              tension: 0.35, fill: true, pointRadius: 3, }], }, options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: true, labels: { color: "#cbd5e1", font: { size: 10 } } } }, scales: {
+              x: { grid: { color: "rgba(148,163,184,0.12)" }, ticks: { color: "#94a3b8" } },
+              y: { grid: { color: "rgba(148,163,184,0.12)" }, ticks: { color: "#94a3b8" } }, }, }, });
+        return;
+      }
+      historicalChartInstance.data.labels = series.labels;
+      historicalChartInstance.data.datasets[0].data = series.values;
+      historicalChartInstance.data.datasets[0].label = series.parameter || historicalChartInstance.data.datasets[0].label;
       historicalChartInstance.update();
     }
     // --- Compass / Bearing HUD (Feature 28) ---
@@ -577,6 +613,35 @@
     }
     let shapChartCounter = 0;
     const shapChartInstances = {};
+    let miniMapCounter = 0;
+    // Feature 21: in-chat advisory mini-map. Reuses the vessel icon
+    // (script.js:222). Interactive (drag/scroll-zoom/touch-zoom, zoomed to
+    // 10 on the vessel) rather than a static snapshot, so a viewer can
+    // actually explore the immediate area around the advisory. Uses the
+    // standard OpenStreetMap tile layer -- open, keyless, no CDN
+    // account/quota to break -- instead of the main map's ArcGIS ocean
+    // layer + `dark-ocean-tiles` CSS filter combo, whose invert/contrast
+    // filter turned a slow-to-load or zero-height tile into a solid black
+    // square, which is exactly what a card popping into a scrolling feed
+    // is prone to.
+    function initAdvisoryMiniMap(mapId, vesselCoord) {
+      const miniMap = L.map(mapId, {
+        center: vesselCoord, zoom: 10, zoomControl: false, dragging: true, scrollWheelZoom: true,
+        doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: true, attributionControl: false, });
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "" }).addTo(miniMap);
+      L.marker(vesselCoord, { icon: vesselIcon })
+        .addTo(miniMap)
+        .bindPopup(`<b>Vessel Position</b><br>${vesselCoord[0]}° N, ${vesselCoord[1]}° E`)
+        .openPopup();
+      // Plain overlay child, not a Leaflet control -- added after init (not baked into the
+      // card's initial innerHTML) so Leaflet's own pane setup can't clobber it.
+      const container = document.getElementById(mapId);
+      if (container) {
+        container.insertAdjacentHTML("beforeend",
+          `<div style="position: absolute; bottom: 6px; left: 6px; z-index: 999; background: rgba(13, 27, 42, 0.85); color: #00f2fe; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-family: monospace; border: 1px solid rgba(0, 242, 254, 0.3);">📍 ${vesselCoord[0]}° N, ${vesselCoord[1]}° E</div>`);
+      }
+      return miniMap;
+    }
     function renderShapChart(canvasId, featureAttributions, baseValue) {
       if (typeof Chart === "undefined") {
         console.warn("Chart.js failed to load -- skipping SHAP chart render.");
@@ -605,11 +670,15 @@
       const showShapChart = data.persona === "Researcher" && shapData && shapData.feature_attributions &&
         Object.keys(shapData.feature_attributions).length > 0;
       const chartId = showShapChart ? `shapChart_${++shapChartCounter}` : null;
+      const hasMiniMap = Array.isArray(data.vessel_coord) && data.vessel_coord.length === 2 &&
+        typeof L !== "undefined";
+      const miniMapId = hasMiniMap ? `mini-map-${++miniMapCounter}` : null;
       card.innerHTML = `
         <h4>🧭 Maritime Advisory</h4>
         <div class="advisory-row"><b>Status:</b> ${(data.hazard_status || "SAFE").toUpperCase()}</div>
         <div class="advisory-row"><b>Vessel Position:</b> ${data.vessel_coord ? data.vessel_coord.join(", ") : "Unknown"}</div>
         ${alertsHtml || '<div class="advisory-row">No active alerts.</div>'}
+        ${hasMiniMap ? `<div id="${miniMapId}" class="advisory-minimap"></div>` : ""}
         ${showShapChart ? `
           <div class="shap-chart-wrap">
             <div class="advisory-row"><b>🔬 PFZ Model Explainability (SHAP)</b></div>
@@ -619,6 +688,13 @@
       `;
       feed.appendChild(card);
       feed.scrollTop = feed.scrollHeight;
+      if (hasMiniMap) {
+        const miniMap = initAdvisoryMiniMap(miniMapId, data.vessel_coord);
+        // The card was just inserted into a scrolling feed, so Leaflet's initial size
+        // measurement can race the browser's layout pass -- without this, tiles can be
+        // requested against a stale (often zero-height) box and render as solid black.
+        setTimeout(() => { miniMap.invalidateSize(); }, 250);
+      }
       if (showShapChart) {
         renderShapChart(chartId, shapData.feature_attributions, shapData.base_value);
       }
@@ -661,6 +737,13 @@
       if (switchBtn) switchBtn.addEventListener("click", openRoleSwitcher);
     }
     const API_BASE = "http://127.0.0.1:8000";
+    // Generous client-side ceiling for /api/orchestrate: the backend's own LLM calls are each
+    // bounded at 12s (advisory.LLM_CALL_TIMEOUT_S), with up to two chained (primary + fallback
+    // model) in the synthesis step, so a Gemini 503/high-demand stall resolves there well inside
+    // this window -- this is a safety net for the rest of the request (non-LLM live data fetches,
+    // network issues) so a hung request always resolves to a visible error instead of leaving the
+    // loading spinner running forever.
+    const ORCHESTRATE_TIMEOUT_MS = 45000;
     let sessionId = null;
     try {
       sessionId = localStorage.getItem("orca_session_id");
@@ -685,21 +768,36 @@
     }
     async function handleQuerySubmit(e) {
       e.preventDefault();
+      e.stopPropagation();
       const input = document.getElementById("chatInput");
       const text = input.value.trim();
       if (!text) return;
       const loader = document.getElementById("chatLoader");
+      const sendBtn = document.getElementById("chatSendBtn");
+      // Disabled for the whole request (Enter-key and click submissions both
+      // land here via the form's single onsubmit) so a double Enter-press or
+      // repeated click while a query is in flight can't fire a second
+      // overlapping submit/fetch -- re-enabled in the finally block below
+      // regardless of how the request ends.
+      if (sendBtn) sendBtn.disabled = true;
       input.value = "";
       appendAgentBadge(`🧑‍✈️ Query: "${text}"`);
       loader.style.display = "flex";
       await runAgentSequence();
       const coords = await getVesselCoordinates();
       let parsedData;
+      // Client-side deadline: if the backend hangs (or is unreachable), abort instead of leaving
+      // the loader spinning forever -- see ORCHESTRATE_TIMEOUT_MS. Never navigates/reloads the
+      // page either way; a failure just renders a visible error badge and falls back to the last
+      // known baseline so the dashboard stays usable.
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => abortController.abort(), ORCHESTRATE_TIMEOUT_MS);
       try {
         const res = await fetch(`${API_BASE}/api/orchestrate`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_message: text, coordinates: coords, session_id: sessionId, persona: activePersona }), });
-        if (!res.ok) throw new Error("Backend not responding correctly");
+          body: JSON.stringify({ user_message: text, coordinates: coords, session_id: sessionId, persona: activePersona }),
+          signal: abortController.signal, });
+        if (!res.ok) throw new Error(`Backend not responding correctly (HTTP ${res.status})`);
         const backendData = await res.json();
         sessionId = backendData.session_id || sessionId;
         try {
@@ -719,11 +817,21 @@
           shap_attributions: (backendData.telemetry && backendData.telemetry.shap_attributions) || null, };
       } catch (err) {
         console.error("API Connection Error:", err);
-        // Fall back to the mock payload if the backend is off
+        // Visible, in-chat error card instead of silently swapping in mock data with no
+        // indication anything went wrong -- see app/advisory.py's LLM_CALL_TIMEOUT_S for the
+        // backend-side half of this fix (bounded Gemini calls instead of an indefinite stall).
+        const isTimeout = err.name === "AbortError";
+        appendAgentBadge(isTimeout
+          ? "⚠ ORCA's advisory engine took too long to respond. Showing the last known baseline below."
+          : `⚠ Couldn't reach ORCA's backend (${err.message}). Showing the last known baseline below.`);
+        // Fall back to the mock payload if the backend is off, so the dashboard stays usable.
         parsedData = {...MOCK_ORCHESTRATOR_RESPONSE, vessel_coord: coords, route: null, plot_url: null,
           regional_zones: [], persona: "Fisherman", shap_attributions: null, };
+      } finally {
+        clearTimeout(timeoutId);
+        loader.style.display = "none";
+        if (sendBtn) sendBtn.disabled = false;
       }
-      loader.style.display = "none";
       updateHazardBanner(parsedData.hazard_status);
       plotVesselMarker(parsedData.vessel_coord[0], parsedData.vessel_coord[1]);
       plotPFZZones(parsedData.pfz_location);
