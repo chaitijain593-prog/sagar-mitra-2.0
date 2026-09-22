@@ -274,7 +274,10 @@
           <div class="chart-container" style="position: relative; height: 180px; width: 100%;"><canvas id="historicalChart"></canvas></div>
         </div>
         <div class="compass-card">
-          <span class="agent-stream-header">Vessel Bearing</span>
+          <div class="compass-header-row">
+            <span class="agent-stream-header" id="compassModeLabel">Course over Ground</span>
+            <button type="button" class="compass-live-btn" id="compassLiveBtn" title="Use this device's orientation sensor for a live heading">Enable Live Compass</button>
+          </div>
           <div class="compass-hud">
             <div class="compass-dial">
               <span class="compass-label compass-label-n">N</span>
@@ -287,6 +290,7 @@
               </svg>
             </div>
             <div class="compass-readout" id="compassHeadingReadout">045° NE</div>
+            <div class="compass-sub-status" id="compassSubStatus">Tap "Enable Live Compass" to use your device's sensor</div>
           </div>
         </div>
       </div>
