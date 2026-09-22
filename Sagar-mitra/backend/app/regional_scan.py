@@ -29,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
 
 from app.pfz_tool import get_all_pfz_zones
-from app.satellite_tool import get_live_ocean_conditions
+from app.marine_weather_tool import get_live_ocean_conditions
 from app.chlorophyll_tool import get_chlorophyll_data
 from app.pfz_ml import predict_pfz_confidence
 from app.data import store as data_store

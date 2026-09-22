@@ -21,6 +21,7 @@ from google.genai import types
 from google.genai.types import FunctionDeclaration
 
 from app.data import store
+from app.db import query_argo_bbox
 from app.advisory import generate_content, LITE_MODEL
 from app.llm_cache import TTLCache, normalize_key
 
@@ -180,6 +181,24 @@ def plot_category_distribution(parameter: str = "TEMP", region_lat: Optional[flo
     return {"file_path": path, "url": f"{BASE_URL}/static/plots/{filename}", "counts": dict(zip(labels, counts))}
 
 
+def query_ocean_sql(lat_min: float, lat_max: float, lon_min: float, lon_max: float,
+                     limit: int = 20) -> dict:
+    """
+    Feature 9 (Natural Language Text-to-SQL Deep Ocean Query Engine): runs a
+    real parameterized SQL query (app.db.query_argo_bbox) against the
+    SQLite argo_readings table for a lat/lon bounding box. Unlike this
+    file's other TOOLS (which filter store.final_dataset with pandas in
+    memory), this one is genuinely SQL, and was previously computed
+    (db.query_argo_bbox) but never exposed to Gemini's tool-selection layer.
+    """
+    df = query_argo_bbox(lat_min, lat_max, lon_min, lon_max, limit=limit)
+    if df.empty:
+        return {"error": f"No SQL rows found in the box lat[{lat_min},{lat_max}] lon[{lon_min},{lon_max}]."}
+    cols = [c for c in ("LATITUDE", "LONGITUDE", "PRES", "TEMP", "PSAL", "JULD") if c in df.columns]
+    rows = df[cols].head(limit).astype(object).where(df[cols].notna(), None).to_dict(orient="records")
+    return {"row_count": int(len(df)), "rows": rows}
+
+
 TOOLS = [
     {
         "name": "query_historical_extreme",
@@ -234,6 +253,21 @@ TOOLS = [
             "required": [],
         },
     },
+    {
+        "name": "query_ocean_sql",
+        "description": "Run a direct SQL bounding-box query against the argo_readings SQLite table for a lat/lon region. Use for questions asking for raw rows/records in an area rather than an aggregate trend or extreme, e.g. 'show me readings near 15,72' or 'list ocean data in this box'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "lat_min": {"type": "number"},
+                "lat_max": {"type": "number"},
+                "lon_min": {"type": "number"},
+                "lon_max": {"type": "number"},
+                "limit": {"type": "integer"},
+            },
+            "required": ["lat_min", "lat_max", "lon_min", "lon_max"],
+        },
+    },
 ]
 
 _FUNCTION_MAP = {
@@ -241,6 +275,7 @@ _FUNCTION_MAP = {
     "get_yearly_trend": get_yearly_trend,
     "plot_yearly_trend": plot_yearly_trend,
     "plot_category_distribution": plot_category_distribution,
+    "query_ocean_sql": query_ocean_sql,
 }
 
 
@@ -301,6 +336,14 @@ def _format_tool_result(fn_name: str, fn_args: dict, result: dict) -> str:
     if fn_name == "plot_category_distribution":
         breakdown = ", ".join(f"{k}: {v}" for k, v in result.get("counts", {}).items())
         return f"Generated a condition-distribution chart ({breakdown}): {result.get('url')}"
+
+    if fn_name == "query_ocean_sql":
+        rows = result.get("rows", [])
+        preview = "; ".join(
+            f"({r.get('LATITUDE')}, {r.get('LONGITUDE')}) TEMP={r.get('TEMP')} PSAL={r.get('PSAL')}"
+            for r in rows[:5]
+        )
+        return f"SQL query matched {result.get('row_count')} row(s) in argo_readings. First results: {preview}"
 
     return str(result)
 

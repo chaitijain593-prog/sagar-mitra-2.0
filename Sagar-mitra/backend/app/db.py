@@ -161,6 +161,33 @@ def insert_sos_event(event: dict) -> int:
         conn.close()
 
 
+def insert_escalation_event(event: dict) -> int:
+    """
+    Feature 13 (Maritime Boundary Violation Escalation) -- SIMULATED
+    escalation only: logs to the local ops queue (this reuses the
+    sos_events table rather than a parallel one, tagging hazard_status so
+    escalation rows are distinguishable from a real user-triggered SOS --
+    see insert_sos_event above). No real Coast Guard/VHF/satellite gateway
+    is integrated; see ROADMAP.md's Feature 13/14 gap notes.
+    """
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            f"INSERT INTO {SOS_TABLE} "
+            f"(timestamp, lat, lon, hazard_status, nearest_port, message, session_id, raw_payload) "
+            f"VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                event["timestamp"], event["lat"], event["lon"],
+                "BOUNDARY_VIOLATION_ESCALATION", event.get("nearest_port"),
+                event.get("reason"), event.get("session_id"), event.get("raw_payload"),
+            ),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        conn.close()
+
+
 def get_sos_events(limit: int = 100) -> pd.DataFrame:
     conn = get_connection()
     try:

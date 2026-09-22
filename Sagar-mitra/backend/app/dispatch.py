@@ -33,7 +33,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.boundary_toool import check_maritime_boundary
-from app.satellite_tool import get_live_ocean_conditions
+from app.marine_weather_tool import get_live_ocean_conditions
 from app.pfz_tool import get_nearest_pfz
 from app.chlorophyll_tool import get_chlorophyll_data
 from app.weather_alert_tool import get_weather_hazard_alerts

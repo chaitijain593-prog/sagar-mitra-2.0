@@ -152,6 +152,58 @@ def distance_to_nearest_boundary_km(lat: float, lon: float) -> dict:
 DEG_TO_KM = 111.0  # approx km per decimal degree, used only for the quick geofence check below
 
 
+def _bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Initial great-circle compass bearing (0-360 degrees, 0=North) from
+    point 1 to point 2."""
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dlon = math.radians(lon2 - lon1)
+    x = math.sin(dlon) * math.cos(phi2)
+    y = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(dlon)
+    theta = math.atan2(x, y)
+    return (math.degrees(theta) + 360) % 360
+
+
+def return_heading_to_safety(lat: float, lon: float) -> Optional[dict]:
+    """
+    Feature 3 polish -- return-heading vector: the compass bearing a vessel
+    that has crossed the EEZ (or entered an MPA) should steer to reach the
+    nearest safe water, plus the distance. Returns None if no EEZ data is
+    loaded (nothing to steer back toward) or if the vessel is already
+    inside the EEZ and outside every MPA (no return heading is needed).
+    """
+    if not eez_geoms:
+        return None
+    pt = Point(lon, lat)
+    inside_eez = any(geom.contains(pt) for geom in eez_geoms)
+    inside_mpa = any(geom.contains(pt) for geom in mpa_geoms) if mpa_geoms else False
+
+    if inside_eez and not inside_mpa:
+        return None  # already in safe water -- no return heading needed
+
+    if not inside_eez:
+        # Nearest point ON/INSIDE the EEZ multipolygon (not just its
+        # boundary line), so the target is the closest SAFE point.
+        target = min(
+            (nearest_points(geom, pt)[0] for geom in eez_geoms),
+            key=lambda p: _haversine_km(lat, lon, p.y, p.x),
+        )
+    else:
+        # Inside the EEZ but inside an MPA -- steer to the nearest point on
+        # that MPA polygon's boundary (i.e. just outside it).
+        target = min(
+            (nearest_points(geom.boundary, pt)[0] for geom in mpa_geoms),
+            key=lambda p: _haversine_km(lat, lon, p.y, p.x),
+        )
+
+    distance_km = _haversine_km(lat, lon, target.y, target.x)
+    bearing = _bearing_deg(lat, lon, target.y, target.x)
+    return {
+        "bearing_deg": round(bearing, 1),
+        "distance_km": round(distance_km, 3),
+        "target": [round(target.y, 5), round(target.x, 5)],
+    }
+
+
 def distance_to_boundary_km(lat: float, lon: float) -> Optional[float]:
     """
     Quick geofence distance check (Task 3 / GET /api/geofence-check):

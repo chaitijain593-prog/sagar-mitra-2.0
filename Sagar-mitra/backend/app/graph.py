@@ -31,7 +31,7 @@ from app.error_utils import safe_error_text
 # the graph already ran it -- previously ~2x the external API calls per
 # query.
 from app.boundary_toool import check_maritime_boundary
-from app.satellite_tool import get_live_ocean_conditions
+from app.marine_weather_tool import get_live_ocean_conditions
 from app.pfz_tool import get_nearest_pfz
 from app.chlorophyll_tool import get_chlorophyll_data
 from app.weather_alert_tool import get_weather_hazard_alerts
