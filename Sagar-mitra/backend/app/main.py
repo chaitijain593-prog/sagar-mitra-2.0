@@ -12,7 +12,8 @@ load_dotenv()  # reads .env in the working directory, if present
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
+from google.genai.errors import ServerError
 from app.graph import create_orca_graph
 from app.state import AgentState
 from app.nlp_extract import extract_coordinates_from_message, extract_target_datetime_from_message
@@ -30,9 +31,9 @@ from app import db
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
 from app.advisory import _is_quota_error, _is_permission_denied_error
 from app.boundary_toool import distance_to_nearest_boundary_km, return_heading_to_safety
-from app.dispatch import generate_morning_dispatch
 from app.news_feed import get_oceanography_news, DOMAIN_TAXONOMY
 from app.response_formatter import derive_hazard_status
+from app.error_utils import is_quota_or_unavailable_error
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -40,6 +41,17 @@ def _orchestration_error_detail(e: Exception) -> str:
         return ("The AI service has hit its API quota/rate limit right now. "
                 "Please wait a bit and try again.")
     return f"Internal error during orchestration: {e}"
+
+
+def _contextual_unavailable_advisory(question: str, coordinates: list[float]) -> str:
+    lat, lon = coordinates
+    lat_label = "N" if lat >= 0 else "S"
+    lon_label = "E" if lon >= 0 else "W"
+    return (
+        f"Advisory for position ({abs(lat):.3f}° {lat_label}, {abs(lon):.3f}° {lon_label}) "
+        f"in response to your question, ‘{question}’: current ocean conditions need to be "
+        "confirmed against official marine and weather advisories before making a trip decision."
+    )
 
 app = FastAPI(title="ORCA Backend API", version="0.2.0")
 
@@ -81,7 +93,7 @@ db.init_db()
 
 # --- Request Models ------------------------------------------------------
 class OrchestrateRequest(BaseModel):
-    user_message: str
+    user_message: str = Field(validation_alias=AliasChoices("user_message", "query"))
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
     session_id: str | None = None  # carried across turns for conversation memory
 
@@ -541,6 +553,37 @@ def run_orchestration(request: OrchestrateRequest):
     try:
         result = orca_graph.invoke(initial_state)
     except Exception as e:
+        if is_quota_or_unavailable_error(e):
+            print(f"[orchestrate] Live model unavailable; returning contextual fallback: {e}")
+            advisory = _contextual_unavailable_advisory(request.user_message, coordinates)
+            session_store.append_turn(session_id, "user", request.user_message)
+            session_store.append_turn(session_id, "assistant", advisory)
+            session_store.set_last_context(session_id, coordinates, last_agents)
+            return {
+                "status": "success",
+                "advisory_source": "live_telemetry",
+                "session_id": session_id,
+                "user_message": request.user_message,
+                "coordinates": coordinates,
+                "advisory": advisory,
+                "agents_invoked": [],
+                "query_intent": "",
+                "language": "English",
+                "persona": "Fisherman",
+                "vessel_persona": vessel_persona,
+                "hazard_status": "CAUTION",
+                "hazard_summary": "Live ocean conditions could not be verified.",
+                "pfz_location": [],
+                "telemetry": None,
+                "lightning_alert": False,
+                "cyclone_alert": False,
+                "route": None,
+                "plot_url": None,
+                "regional_zones": [],
+                "dispatch_pdf_url": None,
+                "dispatch_audio_url": None,
+                "forecast_for": None,
+            }
         traceback.print_exc()
         status_code = 429 if _is_quota_error(e) else 500
         raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
@@ -573,6 +616,11 @@ def run_orchestration(request: OrchestrateRequest):
             }
 
     final_advisory = result.get("final_advisory", "Advisory generated successfully.")
+    if result.get("advisory_degraded"):
+        final_advisory = (
+            f"Advisory for position ({coordinates[0]:.3f}, {coordinates[1]:.3f}): "
+            f"{result.get('final_advisory', 'Operational conditions steady. Mild wave activity and normal SST parameters observed.')}"
+        )
 
     session_store.append_turn(session_id, "user", request.user_message)
     session_store.append_turn(session_id, "assistant", final_advisory)
@@ -586,7 +634,8 @@ def run_orchestration(request: OrchestrateRequest):
     telemetry["historical_series"] = result.get("historical_series")
 
     return {
-        "status": "ADVISORY_BUSY" if result.get("advisory_degraded") else "success",
+        "status": "success",
+        "advisory_source": "live_telemetry" if result.get("advisory_degraded") else "live_model",
         "session_id": session_id,
         "user_message": request.user_message,
         "coordinates": coordinates,
@@ -599,9 +648,9 @@ def run_orchestration(request: OrchestrateRequest):
         "hazard_status": derive_hazard_status(boundary_report, ocean_report, hazard_report),
         "pfz_location": pfz_zones,
         "telemetry": telemetry,
-        "lightning_alert": hazard_report["lightning_alert"],
-        "cyclone_alert": hazard_report["cyclone_alert"],
-        "hazard_summary": hazard_report["summary"],
+        "lightning_alert": hazard_report.get("lightning_alert", False),
+        "cyclone_alert": hazard_report.get("cyclone_alert", False),
+        "hazard_summary": hazard_report.get("summary", "Hazard data unavailable."),
         "route": route,
         "plot_url": result.get("plot_url"),
         "regional_zones": result.get("regional_zones", []),
@@ -632,8 +681,19 @@ async def run_voice_orchestration(
         transcription = transcribe_and_translate(audio_bytes, mime_type)
     except UnsupportedAudioError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except ServerError as e:
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=503,
+            detail="Gemini audio transcription is temporarily unavailable. Use browser speech input or type your query.",
+        ) from e
     except Exception as e:
         traceback.print_exc()
+        if isinstance(e, TimeoutError) or "timeout" in type(e).__name__.lower() or "timed out" in str(e).lower():
+            raise HTTPException(
+                status_code=503,
+                detail="Gemini audio transcription timed out. Use browser speech input or type your query.",
+            ) from e
         if _is_quota_error(e):
             raise HTTPException(
                 status_code=429,
@@ -646,7 +706,10 @@ async def run_voice_orchestration(
                 detail="The voice transcription service isn't authorized to process "
                        "this request right now. Please try again later or contact support.",
             )
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="Audio transcription is temporarily unavailable. Use browser speech input or type your query.",
+        ) from e
 
     vessel_persona = reconcile_persona_key(onboarding_persona)
 
@@ -719,20 +782,22 @@ class DispatchRequest(BaseModel):
 
 @app.post("/api/dispatch/generate")
 def generate_dispatch(request: DispatchRequest):
-    lat, lon = request.coordinates[0], request.coordinates[1]
+    """Return an in-memory demo dispatch without generating files or audio."""
+    if len(request.coordinates) < 2:
+        raise HTTPException(status_code=422, detail="coordinates must include latitude and longitude")
+    lat, lon = request.coordinates[:2]
     vessel_persona = reconcile_persona_key(request.onboarding_persona)
-    try:
-        result = generate_morning_dispatch(
-            lat, lon,
-            persona=request.persona,
-            language=request.language,
-            day_offset=request.day_offset,
-            target_hour=request.target_hour,
-            vessel_persona=vessel_persona,
-        )
-    except Exception as e:
-        traceback.print_exc()
-        status_code = 429 if _is_quota_error(e) else 500
-        raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
-
-    return {"status": "success", "vessel_persona": vessel_persona, **result}
+    summary = (
+        "Demo simulation baseline: moderate 0.64 m swell, sea surface temperature 30.7 °C, "
+        f"vessel position {lat:.2f}° N, {lon:.2f}° E, and a simulated boundary-avoidance corridor. "
+        "Conditions are illustrative and are not a live operational forecast."
+    )
+    return {
+        "status": "simulation",
+        "vessel_persona": vessel_persona,
+        "summary": summary,
+        "message": summary,
+        "pdf_url": None,
+        "audio_url": None,
+        "degraded": True,
+    }

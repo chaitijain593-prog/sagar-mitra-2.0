@@ -15,6 +15,10 @@ import re
 _QUOTA_OR_UNAVAILABLE_PATTERNS = (
     "429", "resource_exhausted", "quota", "rate limit",
     "503", "unavailable", "high demand", "overloaded",
+    # Model-level access or lifecycle errors should also retry using the
+    # configured alternate model instead of dropping straight to fallback.
+    "404", "model not found", "not found for api version",
+    "403", "permission_denied", "permission denied",
     # A call that hit advisory.py's hard per-call timeout (see
     # LLM_CALL_TIMEOUT_S) is functionally the same "Gemini isn't answering
     # right now" situation as a 503, just detected client-side instead of
