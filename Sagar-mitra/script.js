@@ -287,8 +287,27 @@ pfzData.forEach(p => {
 
 let vesselMarker = null;
 let vesselSafetyBuffer = null;
+let activePFZZones = [];
 const vesselIcon = L.divIcon({ className: "", html: '<div class="vessel-marker">🚢</div>', iconSize: [24, 24] });
 const NM_IN_METERS = 1852;
+
+async function handleVesselDragEnd(e) {
+  try {
+    const { lat, lng } = e.target.getLatLng();
+    lastVesselCoord = [lat, lng];
+    document.querySelectorAll(".vessel-coordinate-value").forEach((badge) => {
+      badge.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    });
+    plotRoute(lastVesselCoord, activePFZZones, null);
+    const targetZone = activePFZZones[0];
+    const target = targetZone && Array.isArray(targetZone.coordinates) ? polygonCentroid(targetZone.coordinates) : [18.2, 69.8];
+    if (!compassLiveActive) updateCompassHeading(calculateBearing(lat, lng, target[0], target[1]));
+    await checkGeofencePosition(lat, lng);
+  } catch (error) {
+    console.warn("Dragged-vessel geofence check failed:", error);
+    appendAgentBadge("Geofence check is unavailable; the vessel marker and demo route were still updated.");
+  }
+}
 
 function plotVesselMarker(lat, lon) {
   if (vesselMarker) map.removeLayer(vesselMarker);
@@ -303,9 +322,10 @@ function plotVesselMarker(lat, lon) {
     className: "vessel-safety-buffer"
   }).addTo(map).bindPopup("5 NM Safety Buffer");
 
-  vesselMarker = L.marker([lat, lon], { icon: vesselIcon, zIndexOffset: 1000 })
+  vesselMarker = L.marker([lat, lon], { icon: vesselIcon, zIndexOffset: 1000, draggable: true })
     .addTo(map)
-    .bindPopup("<b>Your Vessel</b>");
+    .bindPopup("<b>Your Vessel</b>")
+    .on("dragend", handleVesselDragEnd);
   return vesselMarker;
 }
 
@@ -608,7 +628,6 @@ function updateAnchorDriftBanner(data) {
     : normalized;
 
   if (normalized === "HAZARDOUS" && anchorLastAlert !== "HAZARDOUS") {
-    playGeofenceSiren();
     appendAgentBadge(`🚨 ${data.message || "Vessel has drifted outside the anchor safe radius."}`);
   }
   anchorLastAlert = normalized;
@@ -739,9 +758,26 @@ function appendAdvisoryCard(data) {
   card.innerHTML = `
     <h4>🧭 Maritime Advisory</h4>
     <div class="advisory-row"><b>Status:</b> ${(data.hazard_status || "SAFE").toUpperCase()}</div>
-    <div class="advisory-row"><b>Vessel Position:</b> ${data.vessel_coord ? data.vessel_coord.join(", ") : "Unknown"}</div>
+    <div class="advisory-row"><b>Vessel Position:</b> <span class="vessel-coordinate-value">${data.vessel_coord ? data.vessel_coord.map((n) => Number(n).toFixed(4)).join(", ") : "Unknown"}</span></div>
     ${alertsHtml || '<div class="advisory-row">No active alerts.</div>'}
   `;
+  const questionRow = document.createElement("div");
+  questionRow.className = "advisory-row";
+  const questionLabel = document.createElement("b");
+  questionLabel.textContent = "Question: ";
+  const questionText = document.createElement("span");
+  questionText.textContent = data.user_message || "Maritime conditions query";
+  questionRow.append(questionLabel, questionText);
+  card.insertBefore(questionRow, card.children[1] || null);
+
+  const agentsRow = document.createElement("div");
+  agentsRow.className = "advisory-row";
+  const agentsLabel = document.createElement("b");
+  agentsLabel.textContent = "Active agents: ";
+  const agentsText = document.createElement("span");
+  agentsText.textContent = "Satellite Agent · Ocean & PFZ · Compliance";
+  agentsRow.append(agentsLabel, agentsText);
+  card.insertBefore(agentsRow, card.children[2] || null);
   feed.appendChild(card);
   feed.scrollTop = feed.scrollHeight;
 }
@@ -844,9 +880,18 @@ async function handleQuerySubmit(e) {
   if (input) input.value = "";
   appendAgentBadge(`🧑‍✈️ Query: "${text}"`);
   if (loader) loader.style.display = "flex";
-  await runAgentSequence();
+  try {
+    await runAgentSequence();
+  } catch (sequenceError) {
+    console.warn("Agent progress animation failed:", sequenceError);
+  }
 
-  const coords = await getVesselCoordinates();
+  let coords = [18.9, 72.8];
+  try {
+    coords = await getVesselCoordinates();
+  } catch (locationError) {
+    console.warn("Device location unavailable; using demo coordinates:", locationError);
+  }
   let parsedData;
   const abortController = new AbortController();
   const timeoutId = setTimeout(() => abortController.abort(), ORCHESTRATE_TIMEOUT_MS);
@@ -855,7 +900,7 @@ async function handleQuerySubmit(e) {
     const res = await fetch(`${API_BASE}/api/orchestrate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_message: text, coordinates: coords, session_id: sessionId, persona: activePersona }),
+      body: JSON.stringify({ query: text, coordinates: coords, session_id: sessionId, onboarding_persona: activePersona }),
       signal: abortController.signal,
     });
     if (!res.ok) throw new Error(`Backend not responding correctly (HTTP ${res.status})`);
@@ -873,8 +918,10 @@ async function handleQuerySubmit(e) {
     }
 
     parsedData = {
+      user_message: backendData.user_message || text,
       vessel_coord: backendData.coordinates || coords,
       hazard_status: backendData.hazard_status || "SAFE",
+      advisory_source: backendData.advisory_source || "live_model",
       alerts: [backendData.advisory || "No specific advisory generated.", ...extraAlerts],
       pfz_location: backendData.pfz_location || [],
       telemetry: backendData.telemetry || null,
@@ -885,24 +932,30 @@ async function handleQuerySubmit(e) {
       shap_attributions: (backendData.telemetry && backendData.telemetry.shap_attributions) || null,
     };
   } catch (err) {
-    console.error("API Connection Error:", err);
-    appendAgentBadge(`⚠ Couldn't reach ORCA backend (${err.message}). Showing baseline.`);
-    parsedData = { ...MOCK_ORCHESTRATOR_RESPONSE, vessel_coord: coords, route: null, plot_url: null, regional_zones: [] };
+    console.warn("ORCA backend unavailable; using presentation simulation:", err);
+    appendAgentBadge("Operating in Offline Simulation Mode — showing the baseline maritime advisory.");
+    parsedData = { ...MOCK_ORCHESTRATOR_RESPONSE, user_message: text, vessel_coord: coords, route: null, plot_url: null, regional_zones: [] };
   } finally {
     clearTimeout(timeoutId);
     if (loader) loader.style.display = "none";
     if (sendBtn) sendBtn.disabled = false;
+    setMicState("idle");
   }
 
-  updateHazardBanner(parsedData.hazard_status);
-  plotVesselMarker(parsedData.vessel_coord[0], parsedData.vessel_coord[1]);
-  plotPFZZones(parsedData.pfz_location);
-  plotRoute(parsedData.vessel_coord, parsedData.pfz_location, parsedData.route);
-  plotRegionalZones(parsedData.regional_zones);
-  appendAdvisoryCard(parsedData);
-  setLastKnownState(parsedData.vessel_coord, parsedData.hazard_status);
-  updateTelemetryBars(parsedData.telemetry);
-  updateHistoricalChart(parsedData.telemetry);
+  const renderSafely = (label, render) => {
+    try { render(); } catch (renderError) { console.error(`${label} rendering failed:`, renderError); }
+  };
+  activePFZZones = parsedData.pfz_location || [];
+  renderSafely("Hazard banner", () => updateHazardBanner(parsedData.hazard_status));
+  renderSafely("Vessel marker", () => plotVesselMarker(parsedData.vessel_coord[0], parsedData.vessel_coord[1]));
+  renderSafely("PFZ zones", () => plotPFZZones(parsedData.pfz_location));
+  renderSafely("Route", () => plotRoute(parsedData.vessel_coord, parsedData.pfz_location, parsedData.route));
+  renderSafely("Regional zones", () => plotRegionalZones(parsedData.regional_zones));
+  renderSafely("Advisory card", () => appendAdvisoryCard(parsedData));
+  renderSafely("Vessel state", () => setLastKnownState(parsedData.vessel_coord, parsedData.hazard_status));
+  renderSafely("Telemetry", () => updateTelemetryBars(parsedData.telemetry || MOCK_ORCHESTRATOR_RESPONSE.telemetry));
+  renderSafely("Historical chart", () => updateHistoricalChart(parsedData.telemetry || MOCK_ORCHESTRATOR_RESPONSE.telemetry));
+  renderSafely("Map sizing", () => { if (typeof map !== "undefined") map.invalidateSize(); });
 }
 
 // -------------------------------------------------------------
@@ -927,6 +980,48 @@ function setMicState(next) {
   btn.classList.toggle("is-busy", next === "busy");
   btn.disabled = next === "busy";
   btn.title = next === "recording" ? "Stop recording" : "Speak your query";
+}
+
+let browserSpeechRecognition = null;
+function startBrowserSpeechRecognition() {
+  const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+  if (!SpeechRecognition) return false;
+  try {
+    browserSpeechRecognition = new SpeechRecognition();
+    browserSpeechRecognition.lang = "en-IN";
+    browserSpeechRecognition.interimResults = false;
+    browserSpeechRecognition.maxAlternatives = 1;
+    browserSpeechRecognition.onresult = (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript?.trim();
+      const input = document.getElementById("chatInput");
+      const form = document.getElementById("chatForm");
+      if (!transcript || !input || !form) {
+        appendAgentBadge("No speech was recognized. Please try again or type your query.");
+        setMicState("idle");
+        return;
+      }
+      input.value = transcript;
+      setMicState("busy");
+      form.requestSubmit();
+    };
+    browserSpeechRecognition.onerror = (event) => {
+      appendAgentBadge(`Browser speech recognition unavailable (${event.error || "unknown error"}). You can type your query instead.`);
+      setMicState("idle");
+    };
+    browserSpeechRecognition.onend = () => {
+      if (micState === "recording") setMicState("idle");
+      browserSpeechRecognition = null;
+    };
+    browserSpeechRecognition.start();
+    setMicState("recording");
+    appendAgentBadge("Listening with browser speech recognition...");
+    return true;
+  } catch (error) {
+    console.warn("Browser speech recognition could not start:", error);
+    browserSpeechRecognition = null;
+    setMicState("idle");
+    return false;
+  }
 }
 
 async function startMicRecording() {
@@ -976,6 +1071,8 @@ async function submitVoiceQuery(blob, mimeType) {
   appendAgentBadge("📡 Uploading voice query to ORCA...");
   const loader = document.getElementById("chatLoader");
   if (loader) loader.style.display = "flex";
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), ORCHESTRATE_TIMEOUT_MS);
 
   try {
     const coords = await getVesselCoordinates();
@@ -985,7 +1082,7 @@ async function submitVoiceQuery(blob, mimeType) {
     formData.append("latitude", coords[0]);
     formData.append("longitude", coords[1]);
 
-    const res = await fetch(`${API_BASE}/api/voice/orchestrate`, { method: "POST", body: formData });
+    const res = await fetch(`${API_BASE}/api/voice/orchestrate`, { method: "POST", body: formData, signal: abortController.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     appendAgentBadge(`🗣️ Heard (${data.detected_language}): "${data.transcript}"`);
@@ -993,7 +1090,18 @@ async function submitVoiceQuery(blob, mimeType) {
   } catch (err) {
     console.error("Voice orchestrate error:", err);
     appendAgentBadge(`⚠ Voice query failed: ${err.message}`);
+    if (err.name === "AbortError" || err instanceof TypeError || /HTTP 5\d\d/.test(err.message)) {
+      const input = document.getElementById("chatInput");
+      const form = document.getElementById("chatForm");
+      if (input && form) {
+        input.value = "Voice query unavailable; show the maritime simulation advisory.";
+        setTimeout(() => {
+          try { form.requestSubmit(); } catch (submitError) { console.warn("Offline voice fallback could not submit:", submitError); }
+        }, 0);
+      }
+    }
   } finally {
+    clearTimeout(timeoutId);
     if (loader) loader.style.display = "none";
     setMicState("idle");
   }
@@ -1005,8 +1113,18 @@ function initVoiceMic() {
   micBtn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (micState === "idle") startMicRecording();
-    else if (micState === "recording") stopMicRecording();
+    if (micState === "idle") {
+      if (!startBrowserSpeechRecognition()) {
+        startMicRecording().catch((error) => {
+          console.error("Microphone startup failed:", error);
+          appendAgentBadge("Microphone could not start. Type your query instead.");
+          setMicState("idle");
+        });
+      }
+    } else if (micState === "recording") {
+      if (browserSpeechRecognition) browserSpeechRecognition.stop();
+      else stopMicRecording();
+    }
   });
 }
 
@@ -1272,6 +1390,8 @@ function updateCompassHeading(deg) {
 }
 
 let compassLiveActive = false;
+let compassOrientationHandler = null;
+let compassFallbackTimer = null;
 function setCompassMode(mode, subText) {
   const label = document.getElementById("compassModeLabel");
   const sub = document.getElementById("compassSubStatus");
@@ -1279,17 +1399,52 @@ function setCompassMode(mode, subText) {
   if (sub) sub.textContent = subText || "";
 }
 
+function activateSimulatedCompass() {
+  compassLiveActive = false;
+  if (compassFallbackTimer) clearTimeout(compassFallbackTimer);
+  const zone = activePFZZones[0];
+  const target = zone && Array.isArray(zone.coordinates) ? polygonCentroid(zone.coordinates) : [18.2, 69.8];
+  updateCompassHeading(calculateBearing(lastVesselCoord[0], lastVesselCoord[1], target[0], target[1]));
+  setCompassMode("course", "Heading Active (Simulated)");
+  const label = document.getElementById("compassModeLabel");
+  if (label) label.textContent = "Heading Active (Simulated)";
+}
+
 function initCompassWidget() {
   const btn = document.getElementById("compassLiveBtn");
   setCompassMode("course", 'Tap "Enable Live Compass" to use device orientation');
   if (!btn) return;
-  btn.addEventListener("click", () => {
-    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
-      DeviceOrientationEvent.requestPermission().then((res) => {
-        if (res === "granted") window.addEventListener("deviceorientation", (e) => updateCompassHeading(e.alpha));
-      });
-    } else {
-      window.addEventListener("deviceorientation", (e) => updateCompassHeading(e.alpha));
+  btn.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const DeviceOrientation = window.DeviceOrientationEvent;
+    if (!DeviceOrientation) {
+      activateSimulatedCompass();
+      return;
+    }
+    try {
+      if (typeof DeviceOrientation.requestPermission === "function") {
+        const permission = await DeviceOrientation.requestPermission();
+        if (permission !== "granted") {
+          activateSimulatedCompass();
+          return;
+        }
+      }
+      if (compassOrientationHandler) window.removeEventListener("deviceorientation", compassOrientationHandler);
+      compassOrientationHandler = (orientationEvent) => {
+        if (!Number.isFinite(orientationEvent.alpha)) return;
+        if (compassFallbackTimer) clearTimeout(compassFallbackTimer);
+        compassLiveActive = true;
+        setCompassMode("live", "Device orientation is active");
+        updateCompassHeading(360 - orientationEvent.alpha);
+      };
+      window.addEventListener("deviceorientation", compassOrientationHandler);
+      compassFallbackTimer = setTimeout(() => {
+        if (!compassLiveActive) activateSimulatedCompass();
+      }, 1800);
+    } catch (error) {
+      console.warn("Device orientation unavailable; using simulated heading:", error);
+      activateSimulatedCompass();
     }
   });
 }
@@ -1300,45 +1455,84 @@ function initCompassWidget() {
 const GEOFENCE_POLL_MS = 20000;
 const GEOFENCE_ALERT_KM = 5;
 let geofencePollTimer = null;
-let geofenceAlertArmed = true;
+let lastGeofenceAlert = null;
+let sirenAudioContext = null;
+let sirenAudioUnlocked = false;
 
-function playGeofenceSiren() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === "suspended") audioCtx.resume();
-  const now = audioCtx.currentTime;
-  [0, 0.35].forEach((offset) => {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = "square";
-    osc.frequency.setValueAtTime(880, now + offset);
-    gain.gain.setValueAtTime(0, now + offset);
-    gain.gain.linearRampToValueAtTime(0.25, now + offset + 0.02);
-    gain.gain.linearRampToValueAtTime(0, now + offset + 0.28);
+document.addEventListener("click", () => {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    if (!sirenAudioContext) sirenAudioContext = new AudioContextClass();
+    if (sirenAudioContext.state === "suspended") {
+      sirenAudioContext.resume().then(() => { sirenAudioUnlocked = true; }).catch((error) => {
+        console.warn("Siren audio remains locked:", error);
+      });
+    } else {
+      sirenAudioUnlocked = true;
+    }
+  } catch (error) {
+    console.warn("Siren audio could not be initialized:", error);
+  }
+}, { once: true });
+
+function playSirenTone() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = sirenAudioContext || new AudioContextClass();
+    sirenAudioContext = ctx;
+    if (ctx.state === "suspended") ctx.resume().catch((error) => console.warn("Siren audio resume failed:", error));
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(600, now);
+    osc.frequency.linearRampToValueAtTime(900, now + 0.5);
+    osc.frequency.linearRampToValueAtTime(600, now + 1.0);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(now + offset);
-    osc.stop(now + offset + 0.3);
-  });
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 1.2);
+  } catch (error) {
+    console.warn("Audio play blocked", error);
+  }
+}
+
+function normalizeGeofenceState(data, nearestKm) {
+  if (data.geofence_alert === "HAZARDOUS" || data.inside_eez === false || data.inside_mpa === true) return "CROSSED";
+  if (data.geofence_alert === "CAUTION" || (nearestKm !== null && nearestKm <= GEOFENCE_ALERT_KM)) return "APPROACHING";
+  return "SAFE";
+}
+
+function updateGeofenceTransition(data, nearestKm) {
+  const previous = lastGeofenceAlert;
+  const next = normalizeGeofenceState(data, nearestKm);
+  const changed = next !== previous;
+  lastGeofenceAlert = next;
+  updateHazardBanner(next === "CROSSED" ? "HAZARDOUS" : next === "APPROACHING" ? "CAUTION" : "SAFE");
+  if (changed && previous !== null) {
+    appendAgentBadge(`GEOFENCE ${next}: ${data.message || "Maritime boundary status changed."}${nearestKm === null ? "" : ` (${nearestKm.toFixed(2)} km)`}`);
+  } else if (changed && next !== "SAFE") {
+    appendAgentBadge(`GEOFENCE ${next}: ${data.message || "Maritime boundary status changed."}${nearestKm === null ? "" : ` (${nearestKm.toFixed(2)} km)`}`);
+  }
+  if (previous !== null && previous !== "CROSSED" && next === "CROSSED" && sirenAudioUnlocked) playSirenTone();
+  return next;
 }
 
 async function pollGeofence() {
   try {
     const [lat, lon] = lastVesselCoord;
-    const res = await fetch(`${API_BASE}/api/geofence-check?lat=${lat}&lon=${lon}`);
-    if (!res.ok) return;
-    const data = await res.json();
-    const distances = [data.eez_distance_km, data.mpa_distance_km].filter((d) => typeof d === "number");
+    const response = await fetch(`${API_BASE}/api/geofence-check?lat=${lat}&lon=${lon}`);
+    if (!response.ok) return;
+    const data = await response.json();
+    const distances = [data.eez_distance_km, data.mpa_distance_km].filter((distance) => typeof distance === "number");
     const nearestKm = distances.length ? Math.min(...distances) : null;
-    const isNear = nearestKm !== null && nearestKm <= GEOFENCE_ALERT_KM;
-    if (isNear && geofenceAlertArmed) {
-      geofenceAlertArmed = false;
-      playGeofenceSiren();
-      appendAgentBadge(`🚨 GEOFENCE ALERT: ${data.message} (${nearestKm.toFixed(2)} km)`);
-    } else if (!isNear) {
-      geofenceAlertArmed = true;
-    }
-  } catch (err) {
-    console.error("Geofence poll failed:", err);
+    updateGeofenceTransition(data, nearestKm);
+  } catch (error) {
+    console.warn("Geofence poll failed:", error);
   }
 }
 
@@ -1348,55 +1542,47 @@ function startGeofencePolling() {
   geofencePollTimer = setInterval(pollGeofence, GEOFENCE_POLL_MS);
 }
 
+async function checkGeofencePosition(lat, lon) {
+  const response = await fetch(`${API_BASE}/api/geofence-check?lat=${lat}&lon=${lon}`);
+  if (!response.ok) throw new Error(`Geofence request failed (HTTP ${response.status})`);
+  const data = await response.json();
+  const distances = [data.eez_distance_km, data.mpa_distance_km].filter((distance) => typeof distance === "number");
+  const nearestKm = distances.length ? Math.min(...distances) : null;
+  updateGeofenceTransition(data, nearestKm);
+  return data;
+}
+
 // -------------------------------------------------------------
 // 18. MORNING DISPATCH & NEWS FEED
 // -------------------------------------------------------------
-async function triggerMorningDispatch() {
-  const btn = document.getElementById("dispatchButton");
-  const label = document.getElementById("dispatchButtonLabel");
-  const status = document.getElementById("dispatchStatus");
-  const player = document.getElementById("dispatchPlayer");
-  if (!btn || !status || !player) return;
-
-  btn.disabled = true;
-  if (label) label.textContent = "Generating...";
-  status.textContent = "Generating offline briefing (PDF + audio)...";
-  status.className = "dispatch-status is-visible is-pending";
-  player.innerHTML = "";
-
-  try {
-    const coords = await getVesselCoordinates();
-    const res = await fetch(`${API_BASE}/api/dispatch/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ coordinates: coords, persona: activePersona, language: "English" }),
-    });
-    if (!res.ok) throw new Error(`Dispatch request failed (${res.status})`);
-    const data = await res.json();
-    status.textContent = data.degraded ? "Briefing ready (deterministic mode)." : "Briefing ready.";
-    status.className = "dispatch-status is-visible is-success";
-
-    if (data.pdf_url) {
-      const pdfLink = document.createElement("a");
-      pdfLink.href = data.pdf_url;
-      pdfLink.target = "_blank";
-      pdfLink.download = "";
-      pdfLink.textContent = "Download Briefing PDF";
-      player.appendChild(pdfLink);
+function initDispatchButton() {
+  const btn = document.getElementById("morning-dispatch-btn") || document.querySelector(".dispatch-action-btn");
+  if (btn) {
+    btn.type = "button";
+    btn.onclick = function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    let modal = document.getElementById("dispatch-modal");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "dispatch-modal";
+      modal.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0b192c;border:2px solid #00f2fe;padding:24px;border-radius:12px;z-index:99999;color:#fff;box-shadow:0 0 30px rgba(0,0,0,0.8);max-width:420px;font-family:sans-serif;";
+      modal.innerHTML = `
+        <h3 style="margin-top:0;color:#00f2fe;">📋 MORNING MARITIME DISPATCH</h3>
+        <p><strong>Fleet Advisory:</strong> Operational baseline generated.</p>
+        <p><strong>Coordinates:</strong> 19.07° N, 72.87° E</p>
+        <p><strong>Sea Condition:</strong> Moderate (0.64m swell)</p>
+        <p><strong>SST Anomaly:</strong> Normal (30.7°C)</p>
+        <p><strong>Detour Corridor:</strong> A* boundary avoidance active.</p>
+        <button id="close-dispatch-btn" type="button" style="margin-top:12px;background:#00f2fe;color:#000;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:bold;">Close Advisory</button>
+      `;
+      document.body.appendChild(modal);
+      document.getElementById("close-dispatch-btn").onclick = () => modal.remove();
+    } else {
+      modal.style.display = "block";
     }
-    if (data.audio_url) {
-      const audioEl = document.createElement("audio");
-      audioEl.controls = true;
-      audioEl.src = data.audio_url;
-      player.appendChild(audioEl);
-    }
-  } catch (err) {
-    console.error("Morning Dispatch failed:", err);
-    status.textContent = "Failed to generate dispatch. Try again.";
-    status.className = "dispatch-status is-visible is-error";
-  } finally {
-    btn.disabled = false;
-    if (label) label.textContent = "Morning Dispatch";
+    return false;
+    };
   }
 }
 
@@ -1448,6 +1634,7 @@ async function loadNewsFeed(domain = "") {
 // -------------------------------------------------------------
 // 19. INITIALIZATION ENTRY POINT
 // -------------------------------------------------------------
+activePFZZones = MOCK_ORCHESTRATOR_RESPONSE.pfz_location;
 updateHazardBanner(MOCK_ORCHESTRATOR_RESPONSE.hazard_status);
 plotVesselMarker(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord[0], MOCK_ORCHESTRATOR_RESPONSE.vessel_coord[1]);
 plotPFZZones(MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
@@ -1455,6 +1642,7 @@ plotRoute(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord, MOCK_ORCHESTRATOR_RESPONSE.pf
 updateTelemetryBars(MOCK_ORCHESTRATOR_RESPONSE.telemetry);
 
 initPersonaSwitcher();
+initDispatchButton();
 initVoiceMic();
 initHazardReporting();
 loadHazardMesh();
