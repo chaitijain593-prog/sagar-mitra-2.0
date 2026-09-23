@@ -1278,7 +1278,6 @@ function setCompassMode(mode, subText) {
   if (label) label.textContent = mode === "live" ? "Live Compass Heading" : "Course over Ground";
   if (sub) sub.textContent = subText || "";
 }
-
 function initCompassWidget() {
   const btn = document.getElementById("compassLiveBtn");
   setCompassMode("course", 'Tap "Enable Live Compass" to use device orientation');
