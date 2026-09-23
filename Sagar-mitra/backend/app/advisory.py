@@ -2,7 +2,7 @@
 Sagar Mitra - Ocean Intelligence NLP & Explanation Layer
 ===========================================================
 
-This module wraps Google Gemini (gemini-3.6-flash) using the official
+This module wraps Google Gemini using the official
 `google-genai` SDK to translate structured oceanographic JSON data into
 persona-aware, language-localized advisories for:
 
@@ -154,7 +154,7 @@ def require_gemini_key() -> None:
 # 1c. MODEL TIERING -- keep the synthesizer's quota free of classification traffic
 # ---------------------------------------------------------------------------
 # Gemini's free-tier quota is scoped PER PROJECT PER MODEL (confirmed live:
-# a 429 on gemini-3.6-flash did not block a call to gemini-flash-lite-latest
+# a model quota response did not block a call to gemini-flash-lite-latest
 # in the same project/key). Mechanical, structured-output tasks -- picking
 # agents, picking a data-lookup tool, extracting a lat/lon -- don't need the
 # strongest model and previously competed with the user-facing synthesis
@@ -164,27 +164,23 @@ def require_gemini_key() -> None:
 # actually has to succeed in the user's language.
 LITE_MODEL = "gemini-flash-lite-latest"
 
-# The strongest/default model for user-facing advisory generation and
+# The default model for user-facing advisory generation and
 # synthesis (generate_sagar_mitra_advisory, synthesize_advisory,
 # plain_gemini_answer, format_compliance_advisory below all default to
 # this) -- kept as one explicit constant, mirroring LITE_MODEL above, so
 # there's a single place that names it rather than four repeated literals.
 #
-# gemini-2.5-flash was used here previously but now 404s live: "This model
-# models/gemini-2.5-flash is no longer available to new users. Please
-# update your code to use models/gemini-3.6-flash for the latest features"
-# -- confirmed against the real API with the project's own key (2026-09-22).
-# gemini-3.6-flash succeeds; gemini-3.8-flash also exists but returned a
-# live 503 (high demand) in that same check, so 3.6 is the reliable choice.
-PRIMARY_MODEL = "gemini-3.6-flash"
+# Keep the requested Gemini 2.5 Flash stable model as the primary. The
+# fallback uses Google's currently recommended Flash model if 2.5 is
+# overloaded or unavailable to this project.
+PRIMARY_MODEL = "gemini-2.5-flash"
 
 # Fallback model for generate_content_with_fallback (below) when
 # PRIMARY_MODEL hits a 429/503/timeout -- a distinct, comparably-capable
 # model (not LITE_MODEL, which is reserved for cheap routing/classification
 # traffic -- see the "MODEL TIERING" note above) so a degraded synthesis
 # call still has a real shot at a good persona/language-aware answer.
-# Confirmed live/working alongside PRIMARY_MODEL in the same check above.
-FALLBACK_MODEL = "gemini-3.5-flash"
+FALLBACK_MODEL = "gemini-3.8-flash"
 
 
 # Hard ceiling on a single Gemini call ("circuit breaker"), enforced two
@@ -545,7 +541,7 @@ def generate_sagar_mitra_advisory(
             }
         persona: One of "Fisherman", "Student", "Researcher", "General Public".
         language: Target output language, e.g. "English", "Hindi", "Marathi".
-        model: Gemini model name (defaults to PRIMARY_MODEL, gemini-3.6-flash).
+        model: Gemini model name (defaults to PRIMARY_MODEL).
 
     Returns:
         A formatted advisory string, ready to display to the end user.
@@ -569,18 +565,18 @@ def generate_sagar_mitra_advisory(
         contents=user_prompt,
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
-            temperature=0.4,  # low-ish temperature: factual, consistent tone
+            temperature=0.3,
             max_output_tokens=2048,
         ),
     )
 
-    return response.text or ""
+    return (response.text or "").strip()
 
 
 def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: str = "English",
                          user_message: str = "", history_text: str = "",
 
-                         model: str = "gemini-3.6-flash", vessel_persona: str = "artisanal_coastal") -> str:
+                         model: str = PRIMARY_MODEL, vessel_persona: str = "artisanal_coastal") -> str:
 
                          
 
@@ -633,10 +629,10 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
     response = generate_content_with_fallback(
         primary_model=model, contents=user_prompt,
         config=types.GenerateContentConfig(
-            system_instruction=system_instruction, temperature=0.4, max_output_tokens=2048,
+            system_instruction=system_instruction, temperature=0.3, max_output_tokens=2048,
         ),
     )
-    return response.text or raw_report
+    return (response.text or raw_report).strip()
 
 
 def plain_gemini_answer(user_message: str, persona: str = "General Public",
@@ -664,16 +660,16 @@ def plain_gemini_answer(user_message: str, persona: str = "General Public",
         contents=user_message,
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
-            temperature=0.5,
+            temperature=0.3,
             max_output_tokens=2048,
         ),
     )
-    return response.text or ""
+    return (response.text or "").strip()
 
 
 def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
 
-                                language: str = "English", model: str = "gemini-3.6-flash",
+                                language: str = "English", model: str = PRIMARY_MODEL,
                                 vessel_persona: str = "artisanal_coastal") -> str:
 
                                 
@@ -720,10 +716,10 @@ def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
         contents=f"Compliance Report:\n{raw_report}",
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
-            temperature=0.0,  # deterministic, factual - no creative embellishment
+            temperature=0.3,
             max_output_tokens=1024,
         ),
     )
     # If Gemini returns nothing, fall back to the raw factual finding itself
     # rather than an empty response - never silently drop a compliance result.
-    return response.text or raw_report
+    return (response.text or raw_report).strip()
