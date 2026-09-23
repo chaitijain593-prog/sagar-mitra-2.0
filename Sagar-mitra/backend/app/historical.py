@@ -6,12 +6,16 @@ questions like "when was the last marine heatwave near Ratnagiri?" or
 generate trend graphs, e.g. "plot temperature over years".
 
 Adapted from the notebook: uses app.data.store.final_dataset instead of a
-bare global, and saves plots under ./static/plots (served by FastAPI's
-StaticFiles mount) instead of /tmp, returning a URL the frontend can use
-directly as an <img src>.
+bare global. Plot images are rendered straight to an in-memory buffer and
+returned as a base64 data: URI -- never written to disk -- so a query that
+generates a new chart doesn't drop a new file under the (frontend-nested)
+static/ tree on every request. That used to trigger local live-reload dev
+tooling (e.g. VS Code Live Server watching the whole workspace) into
+reloading the page mid-conversation, since backend/static/plots/ sits
+inside the same directory tree the frontend is served from.
 """
-import os
-import uuid
+import base64
+from io import BytesIO
 from typing import Optional, cast
 import matplotlib
 matplotlib.use("Agg")
@@ -21,15 +25,20 @@ from google.genai import types
 from google.genai.types import FunctionDeclaration
 
 from app.data import store
+from app.db import query_argo_bbox
+from app.db_store import get_hazard_mesh
 from app.advisory import generate_content, LITE_MODEL
 from app.llm_cache import TTLCache, normalize_key
 
-PLOTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "plots")
-os.makedirs(PLOTS_DIR, exist_ok=True)
 
-# Full base URL so plot links are directly clickable/pasteable during testing.
-# Set SAGAR_MITRA_BASE_URL in .env once deployed (e.g. https://your-app.onrender.com).
-BASE_URL = os.environ.get("SAGAR_MITRA_BASE_URL", "http://127.0.0.1:8000")
+def _fig_to_data_url() -> str:
+    """Renders the current matplotlib figure to a base64 PNG data: URI and
+    closes it -- no disk write, so nothing for a file watcher to see."""
+    buf = BytesIO()
+    plt.savefig(buf, format="png", bbox_inches="tight")
+    plt.close()
+    encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
 
 # Progressively widened search radii (degrees) for region-scoped historical
 # queries. Argo floats are open-ocean profiling instruments, not coastal
@@ -109,10 +118,10 @@ def get_yearly_trend(parameter: str, region_lat: Optional[float] = None,
 
 def plot_yearly_trend(parameter: str, region_lat: Optional[float] = None,
                        region_lon: Optional[float] = None) -> dict:
-    """Generates and saves a trend graph, returns the file path + public URL."""
+    """Generates a trend graph, returns it as a base64 data: URL (no disk write -- see _fig_to_data_url)."""
     data = get_yearly_trend(parameter, region_lat, region_lon)
     if not data["years"]:
-        # Report honestly instead of saving a blank/empty chart image -- an
+        # Report honestly instead of rendering a blank/empty chart image -- an
         # empty plot with a "chart generated" message would be worse than
         # no chart at all.
         radius = data.get("search_radius_deg")
@@ -126,11 +135,16 @@ def plot_yearly_trend(parameter: str, region_lat: Optional[float] = None,
     plt.ylabel(parameter)
     plt.grid(True)
 
-    filename = f"{parameter}_trend_{uuid.uuid4().hex[:8]}.png"
-    path = os.path.join(PLOTS_DIR, filename)
-    plt.savefig(path, bbox_inches="tight")
-    plt.close()
-    return {"file_path": path, "url": f"{BASE_URL}/static/plots/{filename}"}
+    data_url = _fig_to_data_url()
+    # Real Chart.js series alongside the image -- lets the frontend render an
+    # interactive line chart instead of only an <img> of the matplotlib plot.
+    series = {
+        "chart_type": "line",
+        "parameter": parameter,
+        "labels": [str(y) for y in data["years"]],
+        "values": data["values"],
+    }
+    return {"url": data_url, "series": series}
 
 
 def plot_category_distribution(parameter: str = "TEMP", region_lat: Optional[float] = None,
@@ -173,11 +187,97 @@ def plot_category_distribution(parameter: str = "TEMP", region_lat: Optional[flo
     plt.title(f"{parameter} Surface Condition Distribution")
     plt.tight_layout()
 
-    filename = f"{parameter}_piechart_{uuid.uuid4().hex[:8]}.png"
-    path = os.path.join(PLOTS_DIR, filename)
-    plt.savefig(path, bbox_inches="tight")
-    plt.close()
-    return {"file_path": path, "url": f"{BASE_URL}/static/plots/{filename}", "counts": dict(zip(labels, counts))}
+    data_url = _fig_to_data_url()
+    # Real Chart.js series alongside the image -- lets the frontend render an
+    # interactive pie/doughnut chart instead of only an <img> of the matplotlib plot.
+    series = {
+        "chart_type": "pie",
+        "parameter": parameter,
+        "labels": plot_labels,
+        "values": plot_counts,
+    }
+    return {"url": data_url, "counts": dict(zip(labels, counts)), "series": series}
+
+
+# Raw hazard_mesh `type` values (see db_store.insert_hazard_point / main.py's
+# HazardReportRequest) mapped to a human-readable label for the pie chart
+# legend. Anything not in this map falls back to a title-cased version of
+# the raw type instead of silently dropping it.
+_HAZARD_TYPE_LABELS = {
+    "net": "Ghost Nets",
+    "oil_slick": "Oil Slick",
+    "debris": "Floating Debris",
+}
+
+
+def plot_hazard_category_distribution() -> dict:
+    """
+    Generates a pie chart of REAL crowdsourced hazard mesh reports (Feature
+    7 -- db_store.get_hazard_mesh, TTL-filtered to the last 24h), broken
+    down by hazard type -- distinct from plot_category_distribution above,
+    which charts Argo *temperature* conditions, not hazard reports. Use
+    when the user asks about 'hazard categories'/'hazard breakdown'/'types
+    of hazards reported'.
+
+    Called directly (no parameters, no region filter -- the hazard mesh is
+    small enough to summarize in full) from _run_historical_query's
+    deterministic fast path for this exact query shape, bypassing Gemini's
+    tool-selection call entirely; also registered in TOOLS below so Gemini
+    can still pick it for a differently-phrased hazard question.
+    """
+    reports = get_hazard_mesh()
+    counts_by_type: dict = {}
+    for report in reports:
+        raw_type = report.get("type") or "unknown"
+        counts_by_type[raw_type] = counts_by_type.get(raw_type, 0) + 1
+
+    palette = ["#4A90D9", "#D0021B", "#F5A623", "#7ED957", "#a78bfa", "#f472b6"]
+    present = [
+        (_HAZARD_TYPE_LABELS.get(t, t.replace("_", " ").title()), c, palette[i % len(palette)])
+        for i, (t, c) in enumerate(counts_by_type.items())
+    ]
+    if not present:
+        present = [("No hazard reports in the last 24h", 1, "#CCCCCC")]
+    plot_labels = [p[0] for p in present]
+    plot_counts = [p[1] for p in present]
+    plot_colors = [p[2] for p in present]
+
+    plt.figure(figsize=(7, 6))
+    wedges, _, autotexts = plt.pie(
+        plot_counts, colors=plot_colors, autopct="%1.1f%%",
+        startangle=90, pctdistance=0.8,
+    )
+    plt.legend(wedges, plot_labels, title="Hazard Type", loc="center left",
+               bbox_to_anchor=(1.0, 0.5))
+    plt.title("Crowdsourced Hazard Category Breakdown (last 24h)")
+    plt.tight_layout()
+
+    data_url = _fig_to_data_url()
+    series = {
+        "chart_type": "pie",
+        "parameter": "hazard_type",
+        "labels": plot_labels,
+        "values": plot_counts,
+    }
+    return {"url": data_url, "counts": dict(zip(plot_labels, plot_counts)), "series": series}
+
+
+def query_ocean_sql(lat_min: float, lat_max: float, lon_min: float, lon_max: float,
+                     limit: int = 20) -> dict:
+    """
+    Feature 9 (Natural Language Text-to-SQL Deep Ocean Query Engine): runs a
+    real parameterized SQL query (app.db.query_argo_bbox) against the
+    SQLite argo_readings table for a lat/lon bounding box. Unlike this
+    file's other TOOLS (which filter store.final_dataset with pandas in
+    memory), this one is genuinely SQL, and was previously computed
+    (db.query_argo_bbox) but never exposed to Gemini's tool-selection layer.
+    """
+    df = query_argo_bbox(lat_min, lat_max, lon_min, lon_max, limit=limit)
+    if df.empty:
+        return {"error": f"No SQL rows found in the box lat[{lat_min},{lat_max}] lon[{lon_min},{lon_max}]."}
+    cols = [c for c in ("LATITUDE", "LONGITUDE", "PRES", "TEMP", "PSAL", "JULD") if c in df.columns]
+    rows = df[cols].head(limit).astype(object).where(df[cols].notna(), None).to_dict(orient="records")
+    return {"row_count": int(len(df)), "rows": rows}
 
 
 TOOLS = [
@@ -234,6 +334,26 @@ TOOLS = [
             "required": [],
         },
     },
+    {
+        "name": "plot_hazard_category_distribution",
+        "description": "Generate a pie chart breaking down CROWDSOURCED HAZARD reports (fishing nets, oil slicks, floating debris) by category from the live hazard mesh -- NOT ocean temperature. Use when user asks about 'hazard categories', 'hazard breakdown', or 'types of hazards reported'.",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "query_ocean_sql",
+        "description": "Run a direct SQL bounding-box query against the argo_readings SQLite table for a lat/lon region. Use for questions asking for raw rows/records in an area rather than an aggregate trend or extreme, e.g. 'show me readings near 15,72' or 'list ocean data in this box'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "lat_min": {"type": "number"},
+                "lat_max": {"type": "number"},
+                "lon_min": {"type": "number"},
+                "lon_max": {"type": "number"},
+                "limit": {"type": "integer"},
+            },
+            "required": ["lat_min", "lat_max", "lon_min", "lon_max"],
+        },
+    },
 ]
 
 _FUNCTION_MAP = {
@@ -241,6 +361,8 @@ _FUNCTION_MAP = {
     "get_yearly_trend": get_yearly_trend,
     "plot_yearly_trend": plot_yearly_trend,
     "plot_category_distribution": plot_category_distribution,
+    "plot_hazard_category_distribution": plot_hazard_category_distribution,
+    "query_ocean_sql": query_ocean_sql,
 }
 
 
@@ -302,10 +424,57 @@ def _format_tool_result(fn_name: str, fn_args: dict, result: dict) -> str:
         breakdown = ", ".join(f"{k}: {v}" for k, v in result.get("counts", {}).items())
         return f"Generated a condition-distribution chart ({breakdown}): {result.get('url')}"
 
+    if fn_name == "plot_hazard_category_distribution":
+        breakdown = ", ".join(f"{k}: {v}" for k, v in result.get("counts", {}).items())
+        return (f"Hazard category breakdown from the last 24h of crowdsourced reports: {breakdown}. "
+                f"Chart: {result.get('url')}")
+
+    if fn_name == "query_ocean_sql":
+        rows = result.get("rows", [])
+        preview = "; ".join(
+            f"({r.get('LATITUDE')}, {r.get('LONGITUDE')}) TEMP={r.get('TEMP')} PSAL={r.get('PSAL')}"
+            for r in rows[:5]
+        )
+        return f"SQL query matched {result.get('row_count')} row(s) in argo_readings. First results: {preview}"
+
     return str(result)
 
 
+# Narrow, hazard-specific phrasing -- deliberately doesn't overlap with the
+# broader generic "pie chart"/"distribution"/"breakdown" wording that
+# plot_category_distribution's TOOL description already owns, so a plain
+# "pie chart of temperature" request still goes through Gemini's normal
+# tool-selection instead of being hijacked into the hazard breakdown.
+_HAZARD_BREAKDOWN_KEYWORDS = ("hazard categories", "hazard breakdown", "hazard distribution", "hazard types")
+
+# Narrow to phrasings that specifically name temperature/SST -- NOT the
+# broader "yearly"/"trend of"/"historical" keywords planner.py routes to
+# this agent, since those could legitimately ask about salinity, pressure,
+# etc. Gemini's normal tool-selection below already picks the right
+# parameter for those; this fast path only short-circuits the unambiguous
+# temperature case.
+_SST_TREND_KEYWORDS = ("sea surface temperature", "sst", "temperature trend")
+
+
 def _run_historical_query(user_message: str, model: str) -> dict:
+    # Deterministic fast paths: these query shapes need no LLM tool
+    # selection at all -- we already know exactly which tool answers them --
+    # so skip the Gemini function-calling round trip entirely. Faster, and
+    # immune to a Gemini quota/503/timeout stall (see
+    # advisory.LLM_CALL_TIMEOUT_S), since no Gemini call happens at all.
+    text_lower = user_message.lower()
+    if any(kw in text_lower for kw in _HAZARD_BREAKDOWN_KEYWORDS):
+        result = plot_hazard_category_distribution()
+        reply = _format_tool_result("plot_hazard_category_distribution", {}, result)
+        return {"reply": reply, "mode": "historical", "plot_url": result.get("url"), "series": result.get("series")}
+
+    if any(kw in text_lower for kw in _SST_TREND_KEYWORDS):
+        # Real Argo yearly-average TEMP data (see plot_yearly_trend/
+        # get_yearly_trend above) -- not fabricated demo numbers.
+        result = plot_yearly_trend(parameter="TEMP")
+        reply = _format_tool_result("plot_yearly_trend", {"parameter": "TEMP"}, result)
+        return {"reply": reply, "mode": "historical", "plot_url": result.get("url"), "series": result.get("series")}
+
     tool = types.Tool(function_declarations=cast(list[FunctionDeclaration], TOOLS))
     config = types.GenerateContentConfig(
         tools=[tool],
@@ -318,12 +487,12 @@ def _run_historical_query(user_message: str, model: str) -> dict:
     response = generate_content(model=model, contents=user_message, config=config)
 
     if not response.candidates or not response.candidates[0].content:
-        return {"reply": response.text or "", "mode": "historical", "plot_url": None}
+        return {"reply": response.text or "", "mode": "historical", "plot_url": None, "series": None}
 
     call_content = response.candidates[0].content
     parts = call_content.parts
     if not parts:
-        return {"reply": response.text or "", "mode": "historical", "plot_url": None}
+        return {"reply": response.text or "", "mode": "historical", "plot_url": None, "series": None}
     part = parts[0]
     if part.function_call and part.function_call.name:
         fn_name = part.function_call.name
@@ -331,7 +500,9 @@ def _run_historical_query(user_message: str, model: str) -> dict:
         result = _FUNCTION_MAP[fn_name](**fn_args)
 
         reply = _format_tool_result(fn_name, fn_args, result)
-        plot_url = result.get("url") if fn_name in ("plot_yearly_trend", "plot_category_distribution") else None
-        return {"reply": reply, "mode": "historical", "plot_url": plot_url}
+        is_chart_tool = fn_name in ("plot_yearly_trend", "plot_category_distribution", "plot_hazard_category_distribution")
+        plot_url = result.get("url") if is_chart_tool else None
+        series = result.get("series") if is_chart_tool else None
+        return {"reply": reply, "mode": "historical", "plot_url": plot_url, "series": series}
 
-    return {"reply": response.text or "", "mode": "historical", "plot_url": None}
+    return {"reply": response.text or "", "mode": "historical", "plot_url": None, "series": None}

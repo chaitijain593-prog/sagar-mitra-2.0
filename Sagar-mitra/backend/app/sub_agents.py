@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from app.satellite_tool import get_live_ocean_conditions
+from app.marine_weather_tool import get_live_ocean_conditions
 from app.pfz_tool import get_nearest_pfz
 from app.chlorophyll_tool import get_chlorophyll_data
 from app.boundary_toool import check_maritime_boundary
@@ -11,7 +11,7 @@ from app.data import store as data_store
 from app.state import AgentState
 from app.dispatch import generate_morning_dispatch
 
-# 1. Navigation & Hazard Worker (Powered by satellite_tool.py)
+# 1. Navigation & Hazard Worker (Powered by marine_weather_tool.py)
 @tool
 def check_marine_hazards(lat: float, lon: float) -> str:
     """Checks wave heights, temperature, and maritime hazards for given coordinates using live NOAA/Open-Meteo data."""
@@ -107,6 +107,8 @@ def historical_node(state: AgentState) -> dict:
     if result.get("plot_url"):
         out["final_output"] += f"\n[Chart generated: {result['plot_url']}]"
         out["plot_url"] = result["plot_url"]
+    if result.get("series"):
+        out["historical_series"] = result["series"]
     return out
 
 

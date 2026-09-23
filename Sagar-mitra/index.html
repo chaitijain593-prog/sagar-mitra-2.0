@@ -4,19 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SAGAR MITRA — FloatChat Intelligence Platform</title>
-
-  <!-- Preconnect & Preload Video Assets for Immediate Playback -->
   <link rel="preconnect" href="https://www.youtube-nocookie.com" />
   <link rel="preconnect" href="https://www.google.com" />
-
-  <!-- Leaflet Map CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-
-  <!-- Google Fonts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="style.css" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<<<<<<< HEAD
 
   <style>
     /* -------------------------------------------------------------
@@ -1076,25 +1073,21 @@
       .nav-brand-container, .nav-right-controls { min-width: auto; }
     }
   </style>
+=======
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
 </head>
 <body data-theme="dark">
-
-  <!-- ============================================================
-       1. 10x10 PIXEL LOADING SCREEN (INSTANT PRELOAD VIDEO + WHITE BARS)
-       ============================================================ -->
   <div id="loading-screen">
     <div class="video-background">
-      <!-- Loading Screen Background Video (-U5_GOl4Uhc) with priority loading -->
-      <iframe 
+      <iframe
         id="loadBgVideo"
-        src="https://www.youtube-nocookie.com/embed/-U5_GOl4Uhc?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=-U5_GOl4Uhc&start=15&end=30&enablejsapi=1" 
-        allow="autoplay; encrypted-media" 
+        src="https://www.youtube-nocookie.com/embed/-U5_GOl4Uhc?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=-U5_GOl4Uhc&start=15&end=30&enablejsapi=1"
+        allow="autoplay; encrypted-media"
         loading="eager"
         allowfullscreen>
       </iframe>
     </div>
     <div class="loading-overlay"></div>
-
     <div class="loader-box">
       <div class="wave-container">
         <span class="bar bar-1"></span>
@@ -1110,54 +1103,72 @@
       <p class="loading-text" id="oceanVerbText">Surfing...</p>
     </div>
   </div>
-
-  <!-- ============================================================
-       SECTION 1: HERO HOMEPAGE (RESTORED ORIGINAL VIDEO: 1ne9Zt5kL1k)
-       ============================================================ -->
+  <div id="onboarding-screen">
+    <div class="onboarding-card">
+      <div class="onboarding-step" id="onboardStep1">
+        <span class="onboarding-eyebrow">Step 1 of 2</span>
+        <h2 class="onboarding-title">Welcome Aboard</h2>
+        <p class="onboarding-subtitle">Tell us a little about yourself before we set sail.</p>
+        <label class="onboarding-label" for="onboardName">Your Name</label>
+        <input type="text" id="onboardName" class="onboarding-input" placeholder="e.g. Aarya" autocomplete="off" />
+        <label class="onboarding-label">I am a...</label>
+        <div class="onboarding-radio-group" id="onboardPersonaGroup">
+          <label class="onboarding-radio"><input type="radio" name="persona" value="Primary Grade Student" /><span>Primary Grade Student</span></label>
+          <label class="onboarding-radio"><input type="radio" name="persona" value="High School Student" /><span>High School Student</span></label>
+          <label class="onboarding-radio"><input type="radio" name="persona" value="Researcher" /><span>Researcher</span></label>
+          <label class="onboarding-radio"><input type="radio" name="persona" value="Coastal Community" /><span>Coastal Community</span></label>
+          <label class="onboarding-radio"><input type="radio" name="persona" value="Others" /><span>Others</span></label>
+        </div>
+        <input type="text" id="onboardPersonaOther" class="onboarding-input onboarding-hidden" placeholder="Please specify your role" autocomplete="off" />
+        <p class="onboarding-error" id="onboardStep1Error"></p>
+        <div class="onboarding-actions onboarding-actions-end">
+          <button class="onboarding-btn onboarding-btn-primary" id="onboardNextBtn">Next <i data-lucide="arrow-right"></i></button>
+        </div>
+      </div>
+      <div class="onboarding-step onboarding-hidden" id="onboardStep2">
+        <span class="onboarding-eyebrow">Step 2 of 2</span>
+        <h2 class="onboarding-title">What interests you?</h2>
+        <p class="onboarding-subtitle">Pick the ocean domains you'd like Sagar Mitra to focus on.</p>
+        <div class="onboarding-checkbox-group" id="onboardDomainGroup">
+          <label class="onboarding-checkbox"><input type="checkbox" value="Abyssal Anomalies" /><span>Abyssal Anomalies</span></label>
+          <label class="onboarding-checkbox"><input type="checkbox" value="Geofencing" /><span>Geofencing</span></label>
+          <label class="onboarding-checkbox"><input type="checkbox" value="Marine Biodiversity" /><span>Marine Biodiversity</span></label>
+          <label class="onboarding-checkbox"><input type="checkbox" value="Potential Fishing Zones" /><span>Potential Fishing Zones</span></label>
+          <label class="onboarding-checkbox"><input type="checkbox" value="Weather & Hazard Alerts" /><span>Weather & Hazard Alerts</span></label>
+          <label class="onboarding-checkbox"><input type="checkbox" value="Historical Ocean Trends" /><span>Historical Ocean Trends</span></label>
+        </div>
+        <div class="onboarding-actions">
+          <button class="onboarding-btn onboarding-btn-ghost" id="onboardBackBtn"><i data-lucide="arrow-left"></i> Back</button>
+          <button class="onboarding-btn onboarding-btn-primary" id="onboardFinishBtn">Get Started <i data-lucide="check"></i></button>
+        </div>
+      </div>
+    </div>
+  </div>
   <section id="hero-slide">
     <div class="video-background">
-      <!-- Original Dolphin Video Restored -->
-      <iframe 
+      <iframe
         id="heroBgVideo"
-        src="https://www.youtube-nocookie.com/embed/IHJjbYlwPqI?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=IHJjbYlwPqI&start=27&end=60&enablejsapi=1" 
-        allow="autoplay; encrypted-media" 
+        src="https://www.youtube-nocookie.com/embed/XLY_3kYDI_g?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=XLY_3kYDI_g&start=0&end=24&enablejsapi=1&cc_load_policy=0"
+        allow="autoplay; encrypted-media"
         allowfullscreen>
       </iframe>
     </div>
     <div class="loading-overlay"></div>
-
     <div class="hero-content">
       <h1 class="hero-title" id="languageTitle">Sagar Mitra</h1>
       <p class="hero-subtitle">Conversational Ocean Data Discovery & Anomaly Intelligence</p>
     </div>
-
     <a href="#about-slide" class="scroll-indicator">
       <span>Explore Platform</span>
       <span>↓</span>
     </a>
   </section>
-
-  <!-- ============================================================
-       SECTION 2: ABOUT US (OVERLAPPING SLIDE & DUAL ALTERNATING ROWS)
-       ============================================================ -->
   <section class="overlapping-slide" id="about-slide">
-    
-    <!-- Top Sticky Navbar with Evenly Spaced Centered Links & Blue Accent Line -->
     <nav class="slide-navbar">
-      
-      <!-- Brand & Logo Container -->
       <div class="nav-brand-container" onclick="scrollToTop()">
-        <!-- 
-          ==========================================================
-          INSERT YOUR CUSTOM LOGO HERE:
-          Uncomment the <img> tag below and replace 'logo.png' with your file.
-          ==========================================================
-        -->
         <img src="logo.png" alt="Sagar Mitra Logo" class="custom-logo-img" />
         <span class="nav-brand-text">SAGAR MITRA</span>
       </div>
-
-      <!-- Evenly Spaced Centered Navigation Links -->
       <div class="nav-center-menu">
         <ul class="nav-links">
           <li><a href="#hero-slide" onclick="scrollToTop()">Home</a></li>
@@ -1166,8 +1177,6 @@
           <li><a href="#chat-slide">Chatbot</a></li>
         </ul>
       </div>
-
-      <!-- Right Nav Controls (Soundscape + Theme Toggle) -->
       <div class="nav-right-controls">
         <div class="soundscape-widget" id="soundToggle" title="Toggle Ocean Soundscape">
           <i data-lucide="waves" class="w-4 h-4 text-cyan-400"></i>
@@ -1182,20 +1191,19 @@
           <span id="themeIcon">☀️</span>
           <span id="themeLabel">Light</span>
         </button>
+        <button class="logout-btn" id="logoutBtn" title="Logout">
+          <i data-lucide="log-out"></i>
+          <span>Logout</span>
+        </button>
       </div>
-
     </nav>
-
-    <!-- Dual Alternating About Us Content (No boxes) -->
     <div class="about-sections-wrapper">
-      
-      <!-- Row 1: Video on the Left, About Us on the Right -->
       <div class="split-row">
         <div class="video-panel-frame">
-          <iframe 
-            src="https://www.youtube-nocookie.com/embed/-U5_GOl4Uhc?autoplay=1&mute=1&controls=0&rel=0&loop=1&playlist=-U5_GOl4Uhc" 
-            title="Field Demonstration 1" 
-            allow="autoplay; encrypted-media" 
+          <iframe
+            src="https://www.youtube-nocookie.com/embed/u9zMry52_z0?autoplay=0&mute=0&controls=1&rel=0&loop=0&playlist=u9zMry52_z0"
+            title="Field Demonstration 1"
+            allow="autoplay; encrypted-media"
             allowfullscreen>
           </iframe>
         </div>
@@ -1207,8 +1215,6 @@
             We run that raw signal through a statistical baseline model tuned to catch different anomalies, turning a dataset into something a fisherman, student or researcher can use.
         </div>
       </div>
-
-      <!-- Row 2: About Us on the Left, Video on the Right -->
       <div class="split-row">
         <div class="about-text-content">
           <h2>ARGO Floats</h2>
@@ -1217,17 +1223,12 @@
           </p>
         </div>
         <div class="video-panel-frame">
-          <img src="graph.png" alt="Argo Float Growth Graph" 
+          <img src="graph.png" alt="Argo Float Growth Graph"
     style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; display: block;">
         </div>
       </div>
-
     </div>
   </section>
-
-  <!-- ============================================================
-       SECTION 3: ORCA CONTROL ROOM DASHBOARD (MAP + OPERATIONS PANEL)
-       ============================================================ -->
   <section class="overlapping-slide" id="map-slide">
     <div class="dashboard-slide-container">
       <div class="dashboard-header">
@@ -1235,15 +1236,27 @@
           <h3>ORCA Control Room</h3>
           <p style="color: var(--text-sub); font-size: 0.9rem;">Live vessel telemetry, EEZ boundaries & fishing zone intelligence in the Indian Ocean Basin.</p>
         </div>
+<<<<<<< HEAD
         <button class="dispatch-export-btn" id="dispatchBtn" onclick="generateMorningDispatch(event)" title="Generate a downloadable PDF + audio pre-departure briefing">
           <i data-lucide="download" class="w-4 h-4"></i>
           <span id="dispatchBtnLabel">Morning Dispatch</span>
         </button>
+=======
+        <div class="dispatch-wrap">
+          <button type="button" class="persona-role-chip" id="switchRoleBtn" title="Switch your role">
+            <i data-lucide="user-cog" class="w-4 h-4"></i>
+            <span id="switchRoleBtnLabel">Switch Role</span>
+          </button>
+          <button class="dispatch-button" id="dispatchButton" onclick="triggerMorningDispatch()">
+            <i data-lucide="sunrise" class="w-5 h-5"></i>
+            <span id="dispatchButtonLabel">Morning Dispatch</span>
+          </button>
+          <div class="dispatch-status" id="dispatchStatus"></div>
+          <div class="dispatch-player" id="dispatchPlayer"></div>
+        </div>
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
       </div>
-
       <div class="dashboard-grid">
-
-        <!-- LEFT: Map Container (60%) -->
         <div class="dashboard-map-panel">
           <div class="map-base-controls">
             <button id="baseBtnOcean" class="active-base" onclick="setMapBase('ocean')">Ocean</button>
@@ -1252,11 +1265,7 @@
           </div>
           <div id="oceanMap"></div>
         </div>
-
-        <!-- RIGHT: Operations Panel (40%) -->
         <div class="dashboard-side-panel" id="chat-slide">
-
-          <!-- Hazard Status Banner -->
           <div class="hazard-banner hazard-safe" id="hazardBanner">
             <div>
               <span class="hazard-banner-label">Marine Safety Status</span>
@@ -1264,6 +1273,7 @@
             </div>
             <span id="hazardBannerIcon" class="hazard-banner-icon"></span>
           </div>
+<<<<<<< HEAD
 
           <!-- Anchor Drift Sentry Banner (Feature 10) -- hidden until an
                anchor is set; see toggleAnchorMode/updateAnchorDriftBanner. -->
@@ -1276,14 +1286,13 @@
           </div>
 
           <!-- Agent Operational Stream -->
+=======
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
           <div class="agent-stream-panel">
             <span class="agent-stream-header">Agent Operational Stream</span>
-
             <div class="agent-stream-feed" id="agentStreamFeed">
               <div class="agent-badge">🌊 Sagar Mitra ORCA orchestrator online. Ask about your route, weather or fishing zones.</div>
             </div>
-
-            <!-- Scaled-down Wave Processing Animation (Mini White/Cyan Wave) -->
             <div class="chat-processing-indicator" id="chatLoader">
               <div class="mini-wave">
                 <span class="mini-bar"></span>
@@ -1294,8 +1303,6 @@
               </div>
               <span class="mini-verb-text" id="miniVerbText">Surfing...</span>
             </div>
-
-            <!-- Radiating Blue Light Search Bar -->
             <form class="radiating-search-bar" id="chatForm" onsubmit="handleQuerySubmit(event)">
               <i data-lucide="search" class="w-5 h-5 text-cyan-400"></i>
               <input
@@ -1308,45 +1315,84 @@
               <button type="button" id="micBtn" class="mic-btn" title="Speak your query" aria-label="Record voice query">
                 <i data-lucide="mic" class="w-5 h-5"></i>
               </button>
-              <button type="submit" class="search-send-btn">
+              <button type="submit" id="chatSendBtn" class="search-send-btn">
                 <i data-lucide="arrow-up" class="w-5 h-5"></i>
               </button>
             </form>
           </div>
-
         </div>
-
       </div>
-
-      <!-- Prediction Telemetry & Mayday Protocol (full-width footer row) -->
       <div class="dashboard-footer-row">
         <div class="telemetry-panel">
           <span class="agent-stream-header">Prediction Telemetry</span>
-
           <div class="telemetry-metrics-row">
             <div class="telemetry-metric">
               <div class="telemetry-metric-label"><span>SST Anomaly</span><span id="telemetrySSTLabel">--</span></div>
               <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetrySST" style="background:#38bdf8;"></div></div>
             </div>
-
             <div class="telemetry-metric">
               <div class="telemetry-metric-label"><span>Chlorophyll Gradient</span><span id="telemetryChlorophyllLabel">--</span></div>
               <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetryChlorophyll" style="background:#10b981;"></div></div>
             </div>
-
             <div class="telemetry-metric">
               <div class="telemetry-metric-label"><span>ML Confidence Score</span><span id="telemetryMLLabel">--</span></div>
               <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetryML" style="background:#a78bfa;"></div></div>
             </div>
+            <div class="telemetry-metric">
+              <div class="telemetry-metric-label"><span>Sea Surface Salinity</span><span id="telemetrySalinityLabel">--</span></div>
+              <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetrySalinity" style="background:#f472b6;"></div></div>
+            </div>
+            <div class="telemetry-metric">
+              <div class="telemetry-metric-label"><span>Dissolved Oxygen</span><span id="telemetryDissolvedOxygenLabel">--</span></div>
+              <div class="telemetry-bar-track"><div class="telemetry-bar-fill" id="telemetryDissolvedOxygen" style="background:#fb923c;"></div></div>
+            </div>
           </div>
         </div>
-
-        <!-- Mayday Protocol -->
-        <button class="sos-button" id="sosButton" onclick="triggerMayday()">Initiate SOS</button>
+        <div class="sos-wrap">
+          <button class="sos-button" id="sosButton" onclick="triggerMayday()">Initiate SOS</button>
+          <div class="sos-status" id="sosStatus"></div>
+        </div>
       </div>
-
+      <div class="chart-hud-row">
+        <div class="chart-card">
+          <span class="agent-stream-header">Oceanographic Trends</span>
+          <div class="chart-container" style="position: relative; height: 180px; width: 100%;"><canvas id="historicalChart"></canvas></div>
+        </div>
+        <div class="compass-card">
+          <div class="compass-header-row">
+            <span class="agent-stream-header" id="compassModeLabel">Course over Ground</span>
+            <button type="button" class="compass-live-btn" id="compassLiveBtn" title="Use this device's orientation sensor for a live heading">Enable Live Compass</button>
+          </div>
+          <div class="compass-hud">
+            <div class="compass-dial">
+              <span class="compass-label compass-label-n">N</span>
+              <span class="compass-label compass-label-e">E</span>
+              <span class="compass-label compass-label-s">S</span>
+              <span class="compass-label compass-label-w">W</span>
+              <svg class="compass-needle" id="compassNeedle" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="12,2 16,14 12,11 8,14" fill="#f87171" />
+                <polygon points="12,22 16,14 12,17 8,14" fill="var(--accent-cyan)" />
+              </svg>
+            </div>
+            <div class="compass-readout" id="compassHeadingReadout">045° NE</div>
+            <div class="compass-sub-status" id="compassSubStatus">Tap "Enable Live Compass" to use your device's sensor</div>
+          </div>
+        </div>
+      </div>
+      <div class="news-panel">
+        <div class="news-panel-header">
+          <span class="agent-stream-header">Ocean News Feed</span>
+          <select id="newsDomainSelect" class="news-domain-select" onchange="loadNewsFeed(this.value)">
+            <option value="">All Domains</option>
+          </select>
+        </div>
+        <div class="news-articles-list" id="newsArticlesList">
+          <div class="news-article-empty">Loading ocean news...</div>
+        </div>
+      </div>
     </div>
   </section>
+<<<<<<< HEAD
 <script>
     // -------------------------------------------------------------
     // 1. OCEAN VERBS CYCLER (Every 3 seconds)
@@ -2470,5 +2516,26 @@
         lucide.createIcons();
     }
 </script>
+=======
+  <div class="hazard-modal-overlay" id="hazardModalOverlay">
+    <div class="hazard-modal">
+      <div class="hazard-modal-header">
+        <h4>Report Hazard</h4>
+        <button type="button" class="hazard-modal-close" id="hazardModalClose" aria-label="Close">&times;</button>
+      </div>
+      <form class="hazard-modal-form" id="hazardModalForm">
+        <div class="hazard-modal-coords" id="hazardModalCoords"></div>
+        <label class="hazard-modal-label" for="hazardTypeSelect">Hazard Type</label>
+        <select id="hazardTypeSelect" class="hazard-modal-select">
+          <option value="net">Fishing Net</option>
+          <option value="oil_slick">Oil Slick</option>
+          <option value="debris">Debris</option>
+        </select>
+        <button type="submit" class="hazard-modal-submit">Submit Report</button>
+      </form>
+    </div>
+  </div>
+<script src="script.js"></script>
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
 </body>
 </html>

@@ -2,12 +2,21 @@
 Sagar Mitra - Feature 1: Regional Language Voice In/Out
 ==============================================================================
 Lets a fisherman speak a query in Marathi, Tamil, Telugu, Gujarati,
+<<<<<<< HEAD
 Malayalam, Hindi, Bengali, Kannada, Punjabi, Odia, or English and get the
 advisory back as speech in that same language. Both directions go straight
 through Gemini's native multimodal audio understanding and TTS -- no
 separate STT/TTS service -- using the same key-rotation machinery
 (app.advisory.generate_content) as every other Gemini call in ORCA, so a
 quota hit here rotates keys exactly like it does for the text advisory path.
+=======
+Malayalam, English, Hindi, Bengali, Kannada, Punjabi, or Odia and get the
+advisory back as speech in that same language. Both directions go straight through Gemini's native multimodal
+audio understanding and TTS -- no separate STT/TTS service -- using the
+same key-rotation machinery (app.advisory.generate_content) as every other
+Gemini call in ORCA, so a quota hit here rotates keys exactly like it does
+for the text advisory path.
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
 
 Consumed by app/main.py's /api/voice/orchestrate endpoint.
 """
@@ -22,13 +31,16 @@ from google.genai import types
 
 from app.advisory import generate_content, LITE_MODEL
 
-# Same static directory app/main.py mounts at /static (see historical.py's
-# identical PLOTS_DIR pattern for generated plot images).
+# Same static directory app/main.py mounts at /static. Unlike historical.py's
+# chart images (in-memory base64, no disk write), audio genuinely needs a
+# real file for the frontend's <audio> element to stream/seek, and is only
+# ever written on an explicit voice query (not on every typed chat
+# message), so it isn't the live-reload trigger a chart-per-message would be.
 AUDIO_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "audio")
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
 # Full base URL so audio links are directly playable from the frontend.
-# Set SAGAR_MITRA_BASE_URL in .env once deployed (see historical.py's BASE_URL).
+# Set SAGAR_MITRA_BASE_URL in .env once deployed.
 BASE_URL = os.environ.get("SAGAR_MITRA_BASE_URL", "http://127.0.0.1:8000")
 
 # Transcription+translation is a structured extraction task, not open-ended
@@ -46,6 +58,7 @@ SUPPORTED_LANGUAGES = [
     "Marathi", "Tamil", "Telugu", "Gujarati", "Malayalam", "English",
     "Hindi", "Bengali", "Kannada", "Punjabi", "Odia",
 ]
+<<<<<<< HEAD
 
 # BCP-47 regional tags for each supported language, used by synthesize_speech
 # below to give Gemini's TTS an explicit locale hint (types.SpeechConfig.
@@ -65,19 +78,29 @@ LANGUAGE_BCP47_CODES = {
     "Punjabi": "pa-IN",
     "Odia": "or-IN",
 }
+=======
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
 
 TRANSCRIBE_SYSTEM_PROMPT = """
 You are the speech-input layer for Sagar Mitra, an ocean intelligence system
 for the Indian coast. You are given a short spoken audio clip from a
 fisherman or coastal resident, in Marathi, Tamil, Telugu, Gujarati,
+<<<<<<< HEAD
 Malayalam, Hindi, Bengali, Kannada, Punjabi, Odia, or English.
+=======
+Malayalam, English, Hindi, Bengali, Kannada, Punjabi, or Odia.
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
 
 Respond with ONLY valid JSON, no markdown, no explanation, matching this
 exact schema:
 
 {
   "transcript": "<exact transcription of the speech, in its own native script>",
+<<<<<<< HEAD
   "language": "<one of: Marathi, Tamil, Telugu, Gujarati, Malayalam, Hindi, Bengali, Kannada, Punjabi, Odia, English>",
+=======
+  "language": "<one of: Marathi, Tamil, Telugu, Gujarati, Malayalam, English, Hindi, Bengali, Kannada, Punjabi, Odia>",
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
   "english_text": "<English translation of the transcript>"
 }
 

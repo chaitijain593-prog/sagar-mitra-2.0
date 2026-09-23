@@ -3,6 +3,8 @@ from typing import Optional
 
 import requests
 
+from app.blackout_cache import cached_get
+
 
 def get_live_ocean_conditions(lat: float, lon: float, day_offset: int = 0,
                                target_hour: Optional[int] = None) -> str:
@@ -32,9 +34,7 @@ def _get_current_ocean_conditions(lat: float, lon: float) -> str:
     }
 
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        data = cached_get(url, params=params, timeout=10)
 
         current = data.get("current", {})
         wave_height = current.get("wave_height")
@@ -67,9 +67,7 @@ def _get_forecast_ocean_conditions(lat: float, lon: float, day_offset: int, hour
     }
 
     try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        hourly = response.json().get("hourly", {})
+        hourly = cached_get(url, params=params, timeout=10).get("hourly", {})
         times = hourly.get("time", [])
 
         target_date = (date.today() + timedelta(days=day_offset)).isoformat()

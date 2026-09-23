@@ -176,7 +176,7 @@ def extract_coordinates_from_message(user_message: str) -> Optional[Tuple[float,
 # ---------------------------------------------------------------------------
 # Day/time-of-day resolver for the ORCA orchestrator (/api/orchestrate)
 # ---------------------------------------------------------------------------
-# satellite_tool.py and weather_alert_tool.py previously only ever fetched
+# marine_weather_tool.py and weather_alert_tool.py previously only ever fetched
 # Open-Meteo's "current" endpoint, so "is it safe to sail tomorrow morning?"
 # was silently answered with right-now data. Regex-only (no Gemini call) so
 # it works even without an API key and never adds latency/quota cost to the
