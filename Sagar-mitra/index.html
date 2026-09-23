@@ -496,7 +496,7 @@
       cursor: pointer;
     }
 
-    .dispatch-button {
+    .dispatch-action-btn {
       display: flex;
       align-items: center;
       gap: 8px;
@@ -1089,10 +1089,7 @@
             <i data-lucide="user-cog" class="w-4 h-4"></i>
             <span id="switchRoleBtnLabel">Switch Role</span>
           </button>
-          <button class="dispatch-button" id="dispatchButton" onclick="triggerMorningDispatch()">
-            <i data-lucide="sunrise" class="w-5 h-5"></i>
-            <span id="dispatchButtonLabel">Morning Dispatch</span>
-          </button>
+          <button type="button" id="morning-dispatch-btn" class="dispatch-action-btn">Morning Dispatch</button>
           <div class="dispatch-status" id="dispatchStatus"></div>
           <div class="dispatch-player" id="dispatchPlayer"></div>
         </div>
@@ -1100,6 +1097,7 @@
 
       <div class="dashboard-grid">
         <div class="dashboard-map-panel">
+          <div class="map-simulation-hint">Interactive Simulation: Drag vessel to test real-time geofence &amp; routing</div>
           <div class="map-base-controls">
             <button id="baseBtnOcean" class="active-base" onclick="setMapBase('ocean')">Ocean</button>
             <button id="baseBtnSat" onclick="setMapBase('satellite')">Satellite</button>
