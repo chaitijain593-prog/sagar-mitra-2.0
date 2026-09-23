@@ -113,7 +113,8 @@ def _build_agent_reports(signals: dict) -> dict:
     }
 
 
-def _build_narrative(agent_reports: dict, persona: str, language: str) -> tuple[str, bool]:
+def _build_narrative(agent_reports: dict, persona: str, language: str,
+                      vessel_persona: str = "artisanal_coastal") -> tuple[str, bool]:
     """Returns (narrative_text, degraded). Tries the same Gemini synthesis
     path every live advisory uses; on any failure (quota/outage) falls back
     to the deterministic, per-section formatter instead of blocking dispatch
@@ -125,6 +126,7 @@ def _build_narrative(agent_reports: dict, persona: str, language: str) -> tuple[
             raw_report=raw_report,
             persona=persona,
             language=language,
+            vessel_persona=vessel_persona,
             user_message="Prepare my Morning Dispatch briefing before I leave port today.",
         )
         return narrative, False
@@ -237,6 +239,7 @@ def generate_morning_dispatch(
     language: str = "English",
     day_offset: int = 0,
     target_hour: Optional[int] = 8,
+    vessel_persona: str = "artisanal_coastal",
 ) -> dict:
     """
     Builds today's (or a future day's) Morning Dispatch for (lat, lon): a
@@ -245,7 +248,21 @@ def generate_morning_dispatch(
     straight to a download link / <audio> element.
 
     Meant to be called ONCE, while still online in port, before a vessel
-    loses connectivity -- see main.py's POST /api/dispatch/generate.
+    loses connectivity -- see main.py's POST /api/dispatch/generate for a
+    direct call, or sub_agents.py's morning_dispatch_node for the "give me
+    my morning dispatch" chat-triggered path.
+
+    Deliberately always fetches all six signals fresh and concurrently
+    (_fetch_dispatch_signals), rather than reusing graph.py's already-
+    fetched common_signals for the five it overlaps with: an earlier
+    version tried that reuse, but it forced this call to wait for the
+    common-signal fetch to finish before even STARTING the regional-zone
+    scan (by far the slowest of the six, ~60s here) instead of letting all
+    six run concurrently from the start -- measured end to end, that
+    "optimization" made the chat-triggered path slower overall, not
+    faster, despite five fewer live calls. Duplicating five cheap calls to
+    save ~15-60s of wall time is the right trade for a feature that's
+    invoked rarely (once per departure), not per chat turn.
 
     Returns:
         {
@@ -260,7 +277,7 @@ def generate_morning_dispatch(
     """
     signals = _fetch_dispatch_signals(lat, lon, day_offset, target_hour)
     agent_reports = _build_agent_reports(signals)
-    narrative, degraded = _build_narrative(agent_reports, persona, language)
+    narrative, degraded = _build_narrative(agent_reports, persona, language, vessel_persona)
     forecast_label = _forecast_label(day_offset, target_hour)
 
     pdf_url = _render_pdf(lat, lon, signals, narrative, forecast_label)

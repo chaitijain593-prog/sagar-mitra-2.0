@@ -36,7 +36,25 @@ from google.genai import types
 from app.advisory import generate_content, LITE_MODEL
 from app.llm_cache import TTLCache, normalize_key
 
-VALID_AGENTS = ("navigation", "fishing", "compliance", "historical", "hazard", "analytics", "regional")
+VALID_AGENTS = ("navigation", "fishing", "compliance", "historical", "hazard", "analytics", "regional", "dispatch")
+
+# The Morning Dispatch briefing (see sub_agents.py::morning_dispatch_node)
+# already bundles all five of these signals into one PDF/audio package --
+# running them again as separate agents alongside "dispatch" only repeats
+# the same live fetches for no extra information in the reply (worst case:
+# "regional" alone re-triggers the single slowest call this backend makes,
+# concurrently with dispatch's own internal copy of that same scan). The
+# planner prompt below already asks Gemini not to do this, but a prompt is
+# never a guarantee -- this filter is the deterministic backstop, applied
+# to BOTH the Gemini-parsed result and the keyword fallback.
+_DISPATCH_SUBSUMED_AGENTS = {"navigation", "fishing", "compliance", "hazard", "regional"}
+
+
+def _drop_agents_subsumed_by_dispatch(agents: List[str]) -> List[str]:
+    if "dispatch" not in agents:
+        return agents
+    return [a for a in agents if a not in _DISPATCH_SUBSUMED_AGENTS]
+
 
 _cache = TTLCache(ttl_seconds=300)  # short TTL -- routing decisions go stale fast in a live convo
 
@@ -50,7 +68,7 @@ user's language/persona/intent. Respond with ONLY valid JSON, no markdown,
 matching exactly this schema:
 
 {
-  "agents": [<subset of "navigation","fishing","compliance","historical","hazard","analytics","regional", at least one>],
+  "agents": [<subset of "navigation","fishing","compliance","historical","hazard","analytics","regional","dispatch", at least one>],
   "language": "<name of the language the user wrote in, e.g. English, Hindi, Marathi>",
   "persona": "<one of: Fisherman, Student, Researcher, General Public>",
   "query_intent": "<short phrase describing what the user wants>"
@@ -67,6 +85,20 @@ Agent responsibilities:
 - regional: compares MULTIPLE fishing zones/regions against each other by chlorophyll and
   SST -- pick this for "which regions/areas/zones show high chlorophyll and favorable SST",
   "best zones today", "compare fishing zones" style questions (plural regions, not one spot)
+- dispatch: generates a DOWNLOADABLE Morning Dispatch briefing (a PDF report plus a spoken
+  audio version) covering today's tides, nearest fishing zone, hazards, boundary/compliance
+  status, AND top favorable regions -- ALL bundled into one file -- for offline use once the
+  vessel loses connectivity. Pick this ONLY when the user explicitly asks to "prepare"/
+  "generate"/"download" a "morning dispatch", "offline briefing", "PDF report", or similar
+  "give me something to take with me before I leave port" request. This is slower than every
+  other agent (it renders a real file), so never pick it for an ordinary live question that
+  another agent above already answers on its own.
+  IMPORTANT: when you pick dispatch, do NOT also separately pick navigation, fishing,
+  compliance, hazard, or regional -- the dispatch briefing already includes all of those
+  signals internally, so adding them again only duplicates the same live data fetches (one of
+  them, the regional scan, is the single slowest call this whole system makes). Only add
+  historical or analytics alongside dispatch, and only if the user's message ALSO asks a
+  distinct trend/anomaly question those specific agents answer that dispatch does not cover.
 
 If the latest message is a REFERENTIAL follow-up ("those same conditions",
 "what about tomorrow instead", "and there?") rather than a fresh, self-
@@ -106,12 +138,18 @@ def _keyword_fallback(message: str, last_agents: Optional[List[str]] = None) -> 
                                 "compare zones", "compare regions", "best zones", "best regions",
                                 "across the coast", "multiple zones", "several zones")):
         agents.append("regional")
+    if any(k in text for k in ("morning dispatch", "dispatch report", "offline briefing",
+                                "offline report", "pdf report", "pdf briefing",
+                                "download my briefing", "download my report", "download report",
+                                "prepare my briefing", "prepare my dispatch", "before i leave port")):
+        agents.append("dispatch")
     if not agents:
         # No keyword matched -- most likely a referential follow-up
         # ("those same conditions", "and what about X instead"). Keep
         # talking about whatever the previous turn was about instead of
         # defaulting to an unrelated "compliance" guess.
         agents = list(last_agents) if last_agents else ["compliance"]
+    agents = _drop_agents_subsumed_by_dispatch(agents)
     return {"agents": agents, "language": "English", "persona": "Fisherman",
             "query_intent": "general advisory"}
 
@@ -155,6 +193,7 @@ def plan_query(user_message: str, history: Optional[List[dict]] = None,
         agents = [a for a in parsed.get("agents", []) if a in VALID_AGENTS]
         if not agents:
             raise ValueError("planner returned no valid agents")
+        agents = _drop_agents_subsumed_by_dispatch(agents)
         result = {
             "agents": agents,
             "language": parsed.get("language") or "English",

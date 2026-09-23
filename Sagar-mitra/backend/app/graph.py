@@ -6,6 +6,7 @@ from langgraph.graph import StateGraph, END
 from app.sub_agents import (
     navigation_node, fishing_node, compliance_node,
     historical_node, hazard_node, analytics_node, regional_node,
+    morning_dispatch_node,
 )
 
 # Gemini formatters that keep persona/language/grounding rules
@@ -47,11 +48,20 @@ AGENT_FUNCS = {
     "hazard": hazard_node,
     "analytics": analytics_node,
     "regional": regional_node,
+    "dispatch": morning_dispatch_node,
 }
 
 # Agents whose report is built entirely from one of the five common signals
 # fetched below -- these must wait for that fetch, but don't need to make
-# any live call of their own once it lands (see sub_agents.py).
+# any live call of their own once it lands (see sub_agents.py). "dispatch"
+# is deliberately NOT here: morning_dispatch_node runs its own full,
+# independent six-way concurrent fetch (see dispatch.py), so it belongs in
+# the independent_futures pool below and should start immediately,
+# concurrently with the common fetch, not wait on it -- an earlier version
+# put it here to reuse common_signals, but that serialized the slow
+# regional-zone scan after the common fetch instead of overlapping it,
+# making the chat-triggered dispatch path slower overall (see dispatch.py's
+# generate_morning_dispatch docstring).
 _COMMON_SIGNAL_AGENTS = {"navigation", "fishing", "compliance", "hazard"}
 
 _HAZARD_REPORT_FALLBACK = {
@@ -185,6 +195,8 @@ def create_orca_graph():
         hazard_alerts = list(state.get("hazard_alerts", []))
         plot_url = None
         regional_zones: list = []
+        dispatch_pdf_url = None
+        dispatch_audio_url = None
 
         # Merge in agents_to_run order (not completion order) so the
         # combined report text stays deterministic regardless of which
@@ -197,6 +209,8 @@ def create_orca_graph():
             hazard_alerts.extend(out.get("hazard_alerts", []))
             plot_url = out.get("plot_url", plot_url)
             regional_zones = out.get("regional_zones", regional_zones)
+            dispatch_pdf_url = out.get("dispatch_pdf_url", dispatch_pdf_url)
+            dispatch_audio_url = out.get("dispatch_audio_url", dispatch_audio_url)
 
         state["agent_reports"] = reports
         state["hazard_alerts"] = hazard_alerts
@@ -207,6 +221,8 @@ def create_orca_graph():
         # blob embedded in prose.
         state["plot_url"] = plot_url
         state["regional_zones"] = regional_zones
+        state["dispatch_pdf_url"] = dispatch_pdf_url
+        state["dispatch_audio_url"] = dispatch_audio_url
         # final_output is kept only as a plain-text join for the Gemini
         # synthesis prompt below; the FALLBACK path uses the structured
         # `agent_reports` dict directly instead, so it never has to
@@ -223,6 +239,7 @@ def create_orca_graph():
         agent_reports = state.get("agent_reports", {})
         persona = state.get("persona", "Fisherman")
         language = state.get("language", "English")
+        vessel_persona = state.get("vessel_persona", "artisanal_coastal")
         agents_run = state.get("next_steps", [])
 
         try:
@@ -233,7 +250,22 @@ def create_orca_graph():
                 # computed and never embellished.
                 polished_advisory = format_compliance_advisory(
                     raw_report=raw_output, persona=persona, language=language,
+                    vessel_persona=vessel_persona,
                 )
+            elif agents_run == ["dispatch"]:
+                # morning_dispatch_node's final_output already IS a fully
+                # synthesized, persona/language-aware narrative -- dispatch.py
+                # ran its own synthesize_advisory pass over the real fetched
+                # signals (see generate_morning_dispatch), not a placeholder.
+                # Re-synthesizing it again here would ask Gemini to rewrite
+                # an already-good answer from scratch with nothing new to add,
+                # at the cost of a second full Gemini call (measured: tens of
+                # seconds) -- and, worse, if this bypass didn't exist and
+                # final_output were ever just a short pointer sentence again,
+                # a second pass with no real grounding could invent a safety
+                # verdict not backed by data (see morning_dispatch_node's
+                # comment for what that looked like in testing).
+                polished_advisory = raw_output
             else:
                 history = state.get("history", [])
                 history_text = "\n".join(f"{t['role']}: {t['text']}" for t in history[-4:])
@@ -241,6 +273,7 @@ def create_orca_graph():
                     raw_report=raw_output,
                     persona=persona,
                     language=language,
+                    vessel_persona=vessel_persona,
                     user_message=state.get("user_message", ""),
                     history_text=history_text,
                 )

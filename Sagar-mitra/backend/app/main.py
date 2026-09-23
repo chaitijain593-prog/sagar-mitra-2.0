@@ -1,3 +1,4 @@
+import math
 import os
 import re
 import traceback
@@ -17,6 +18,7 @@ from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
 from app.route_planner import plan_safe_route
 from app.session_store import store as session_store
+from app.anchor_store import store as anchor_store
 from app.data import store
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
 from app.advisory import _is_quota_error, _is_permission_denied_error
@@ -64,6 +66,36 @@ class OrchestrateRequest(BaseModel):
     user_message: str
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
     session_id: str | None = None  # carried across turns for conversation memory
+    onboarding_persona: str | None = None  # raw vessel-type string from the onboarding UI (see reconcile_persona_key)
+
+
+# --- Task 4: Persona Vocabulary Reconciliation -----------------------------
+# The onboarding UI collects a vessel/operator category as free-text copy;
+# this reconciles it to the canonical keys advisory.py's
+# VESSEL_PERSONA_SYSTEM_PROMPTS actually understands. Kept here, at the HTTP
+# boundary, rather than in advisory.py itself, so the onboarding UI's exact
+# wording can change without touching the prompt-building module. Distinct
+# from AgentState's `persona` field (Fisherman/Student/Researcher/General
+# Public), which the planner detects live from message tone -- this is the
+# vessel-type field a user declares once at onboarding (AgentState's
+# `vessel_persona`, see state.py).
+ONBOARDING_PERSONA_MAP = {
+    "traditional artisanal fisher": "artisanal_coastal",
+    "trawler operator (mechanized)": "mechanized_trawler",
+    "deep sea longliner": "deep_sea_commercial",
+    "aquaculture / coastal worker": "coastal_allied",
+}
+DEFAULT_VESSEL_PERSONA = "artisanal_coastal"
+
+
+def reconcile_persona_key(raw_input: str | None) -> str:
+    """Case-insensitive, whitespace-trimmed lookup of the onboarding UI's
+    persona string against ONBOARDING_PERSONA_MAP; falls back to
+    DEFAULT_VESSEL_PERSONA for anything unrecognized, empty, or missing --
+    never raises, since an onboarding UI typo shouldn't 500 the request."""
+    if not raw_input:
+        return DEFAULT_VESSEL_PERSONA
+    return ONBOARDING_PERSONA_MAP.get(raw_input.strip().lower(), DEFAULT_VESSEL_PERSONA)
 
 
 # --- Dashboard signal derivation ------------------------------------------
@@ -226,6 +258,84 @@ def geofence_check(lat: float, lon: float):
     }
 
 
+# --- Feature 10: Anchor Drift Sentry --------------------------------------
+# Lets a vessel drop a virtual anchor (its position + a safe drift radius)
+# for its session; the frontend then polls the GET endpoint the same way it
+# polls /api/geofence-check, and gets back a SAFE/CAUTION/HAZARDOUS
+# drift_alert it can wire straight into the existing hazard-banner/siren UI
+# instead of inventing a new alert vocabulary.
+ANCHOR_DRIFT_DEFAULT_RADIUS_KM = 0.5  # ~500m default swing radius if the caller doesn't specify one
+ANCHOR_DRIFT_CAUTION_MULTIPLIER = 1.5  # CAUTION starts once drift exceeds the radius, HAZARDOUS past 1.5x it
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Same formula as boundary_toool.py's/route_planner.py's _haversine_km --
+    duplicated locally rather than imported, matching this codebase's
+    existing per-module convention for this one-off calculation."""
+    R = 6371.0
+    lat1_r, lon1_r = math.radians(lat1), math.radians(lon1)
+    lat2_r, lon2_r = math.radians(lat2), math.radians(lon2)
+    dlat, dlon = lat2_r - lat1_r, lon2_r - lon1_r
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def _derive_drift_alert(distance_km: float, radius_km: float) -> tuple[str, str]:
+    if distance_km <= radius_km:
+        return "SAFE", f"Within the {radius_km} km anchor radius ({distance_km} km drift)."
+    if distance_km <= radius_km * ANCHOR_DRIFT_CAUTION_MULTIPLIER:
+        return "CAUTION", f"Approaching the edge of the {radius_km} km anchor radius ({distance_km} km drift)."
+    return "HAZARDOUS", f"Vessel has drifted {distance_km} km from anchor -- outside the {radius_km} km safe radius."
+
+
+class SetAnchorRequest(BaseModel):
+    session_id: str
+    coordinates: list[float]  # [lat, lon] of the dropped anchor
+    radius_km: float = ANCHOR_DRIFT_DEFAULT_RADIUS_KM
+
+
+@app.post("/api/sentry/anchor-drift")
+def set_anchor_drift(request: SetAnchorRequest):
+    lat, lon = request.coordinates[0], request.coordinates[1]
+    anchor_store.set_anchor(request.session_id, lat, lon, request.radius_km)
+    return {
+        "status": "success",
+        "session_id": request.session_id,
+        "anchor": {"coordinates": [lat, lon], "radius_km": request.radius_km},
+    }
+
+
+@app.get("/api/sentry/anchor-drift")
+def get_anchor_drift(session_id: str, lat: float, lon: float):
+    anchor = anchor_store.get_anchor(session_id)
+    if anchor is None:
+        return {
+            "session_id": session_id,
+            "anchor_set": False,
+            "coordinates": [lat, lon],
+            "drift_alert": "SAFE",
+            "message": "No anchor is currently set for this session.",
+        }
+
+    distance_km = round(_haversine_km(lat, lon, anchor["lat"], anchor["lon"]), 3)
+    alert_level, message = _derive_drift_alert(distance_km, anchor["radius_km"])
+    return {
+        "session_id": session_id,
+        "anchor_set": True,
+        "anchor": {"coordinates": [anchor["lat"], anchor["lon"]], "radius_km": anchor["radius_km"]},
+        "coordinates": [lat, lon],
+        "distance_km": distance_km,
+        "drift_alert": alert_level,
+        "message": message,
+    }
+
+
+@app.delete("/api/sentry/anchor-drift")
+def clear_anchor_drift(session_id: str):
+    anchor_store.clear_anchor(session_id)
+    return {"status": "success", "session_id": session_id, "anchor_set": False}
+
+
 @app.post("/api/orchestrate")
 def run_orchestration(request: OrchestrateRequest):
     # Conversation memory: a session_id lets a follow-up ("and what about
@@ -260,6 +370,8 @@ def run_orchestration(request: OrchestrateRequest):
     # added (fetches "current" conditions).
     day_offset, target_hour = extract_target_datetime_from_message(request.user_message)
 
+    vessel_persona = reconcile_persona_key(request.onboarding_persona)
+
     # Package incoming request into the AgentState format
     initial_state: AgentState = {
         "user_message": request.user_message,
@@ -275,8 +387,11 @@ def run_orchestration(request: OrchestrateRequest):
         "common_signals": {},
         "plot_url": None,
         "regional_zones": [],
+        "dispatch_pdf_url": None,
+        "dispatch_audio_url": None,
         "language": "English",
         "persona": "Fisherman",
+        "vessel_persona": vessel_persona,
         "query_intent": "",
         "final_output": "",
         "final_advisory": "",
@@ -350,6 +465,7 @@ def run_orchestration(request: OrchestrateRequest):
         "query_intent": result.get("query_intent", ""),
         "language": result.get("language", "English"),
         "persona": result.get("persona", "Fisherman"),
+        "vessel_persona": vessel_persona,
         "hazard_status": _derive_hazard_status(boundary_report, ocean_report, hazard_report),
         "pfz_location": pfz_zones,
         "telemetry": _build_telemetry(lat, lon, ocean_report, chlorophyll_report),
@@ -364,6 +480,11 @@ def run_orchestration(request: OrchestrateRequest):
         # list entirely.
         "plot_url": result.get("plot_url"),
         "regional_zones": result.get("regional_zones", []),
+        # Set only when the planner routed this query to the "dispatch"
+        # agent (see planner.py/sub_agents.py::morning_dispatch_node) --
+        # None on every ordinary query, same pattern as plot_url above.
+        "dispatch_pdf_url": result.get("dispatch_pdf_url"),
+        "dispatch_audio_url": result.get("dispatch_audio_url"),
         # Tells the frontend/user which date+time the wave/weather/hazard
         # fields above actually describe -- None means "current conditions"
         # (no future date/time was mentioned in the query).
@@ -381,6 +502,7 @@ async def run_voice_orchestration(
     audio: UploadFile = File(...),
     latitude: float = Form(...),
     longitude: float = Form(...),
+    onboarding_persona: str | None = Form(None),
 ):
     """
     Accepts a spoken query (Marathi, Tamil, Telugu, Gujarati, Malayalam, or
@@ -417,6 +539,8 @@ async def run_voice_orchestration(
             )
         raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
 
+    vessel_persona = reconcile_persona_key(onboarding_persona)
+
     initial_state: AgentState = {
         # The native-script transcript, not the English translation -- the
         # planner detects language/persona/intent directly from this message
@@ -436,8 +560,11 @@ async def run_voice_orchestration(
         "common_signals": {},
         "plot_url": None,
         "regional_zones": [],
+        "dispatch_pdf_url": None,
+        "dispatch_audio_url": None,
         "language": transcription["language"],
         "persona": "Fisherman",
+        "vessel_persona": vessel_persona,
         "query_intent": "",
         "final_output": "",
         "final_advisory": "",
@@ -452,14 +579,20 @@ async def run_voice_orchestration(
 
     advisory_text = result.get("final_advisory", "Advisory generated successfully.")
 
+    # A "give me my morning dispatch" spoken request already produces its
+    # own spoken audio (the dispatch's narration, via dispatch.py) --
+    # skip synthesizing a SECOND TTS pass over the advisory text that just
+    # references that same file, to avoid two audio files that would say
+    # roughly the same thing.
     audio_url = None
-    try:
-        advisory_audio = synthesize_speech(advisory_text, language=transcription["language"])
-        audio_url = save_advisory_audio(advisory_audio)["url"]
-    except Exception as e:
-        # Voice output is on top of the text advisory - if TTS fails, still
-        # return the text result rather than failing the whole request.
-        print(f"[Voice] TTS failed, returning text-only advisory: {e}")
+    if not result.get("dispatch_audio_url"):
+        try:
+            advisory_audio = synthesize_speech(advisory_text, language=transcription["language"])
+            audio_url = save_advisory_audio(advisory_audio)["url"]
+        except Exception as e:
+            # Voice output is on top of the text advisory - if TTS fails, still
+            # return the text result rather than failing the whole request.
+            print(f"[Voice] TTS failed, returning text-only advisory: {e}")
 
     return {
         "status": "success",
@@ -469,6 +602,9 @@ async def run_voice_orchestration(
         "coordinates": [latitude, longitude],
         "advisory_text": advisory_text,
         "audio_url": audio_url,
+        "vessel_persona": vessel_persona,
+        "dispatch_pdf_url": result.get("dispatch_pdf_url"),
+        "dispatch_audio_url": result.get("dispatch_audio_url"),
     }
 
 
@@ -479,6 +615,7 @@ class DispatchRequest(BaseModel):
     language: str = "English"
     day_offset: int = 0        # 0 = today, 1 = tomorrow, ...
     target_hour: int | None = 8  # hour-of-day (24h) the briefing's conditions should describe
+    onboarding_persona: str | None = None  # raw vessel-type string from the onboarding UI (see reconcile_persona_key)
 
 
 @app.post("/api/dispatch/generate")
@@ -491,6 +628,7 @@ def generate_dispatch(request: DispatchRequest):
     app/dispatch.py for the generation pipeline.
     """
     lat, lon = request.coordinates[0], request.coordinates[1]
+    vessel_persona = reconcile_persona_key(request.onboarding_persona)
     try:
         result = generate_morning_dispatch(
             lat, lon,
@@ -498,10 +636,11 @@ def generate_dispatch(request: DispatchRequest):
             language=request.language,
             day_offset=request.day_offset,
             target_hour=request.target_hour,
+            vessel_persona=vessel_persona,
         )
     except Exception as e:
         traceback.print_exc()
         status_code = 429 if _is_quota_error(e) else 500
         raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
 
-    return {"status": "success", **result}
+    return {"status": "success", "vessel_persona": vessel_persona, **result}

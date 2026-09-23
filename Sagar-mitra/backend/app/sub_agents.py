@@ -9,6 +9,7 @@ from app.statistical_engine import ArgoStatisticalAnomalyEngine
 from app.regional_scan import scan_favorable_regions, format_regional_scan
 from app.data import store as data_store
 from app.state import AgentState
+from app.dispatch import generate_morning_dispatch
 
 # 1. Navigation & Hazard Worker (Powered by satellite_tool.py)
 @tool
@@ -162,3 +163,55 @@ def regional_node(state: AgentState) -> dict:
     # ranked zones as map markers directly, instead of only ever getting
     # them as prose inside the advisory text.
     return {"final_output": format_regional_scan(results), "regional_zones": results}
+
+
+# 8. Morning Dispatch Worker (Powered by dispatch.py -- generates the
+# downloadable PDF + audio briefing itself, rather than just describing
+# live conditions like every other agent above). Named morning_dispatch_
+# node, not dispatch_node, so it can't collide with graph.py's own
+# dispatch_node (the orchestration step that fans out to every agent below
+# -- an unrelated function that happens to share the "dispatch" word).
+def morning_dispatch_node(state: AgentState) -> dict:
+    coordinates = state.get("coordinates", [18.9, 72.8])
+    lat, lon = coordinates[0], coordinates[1]
+    persona = state.get("persona", "Fisherman")
+    language = state.get("language", "English")
+    vessel_persona = state.get("vessel_persona", "artisanal_coastal")
+    day_offset = state.get("day_offset", 0)
+    target_hour = state.get("target_hour")
+    # Deliberately does NOT reuse state["common_signals"] here -- this
+    # agent runs CONCURRENTLY with that fetch (see graph.py, where
+    # "dispatch" is NOT in _COMMON_SIGNAL_AGENTS), so generate_morning_
+    # dispatch's own full six-way concurrent fetch starts immediately
+    # instead of waiting for the common fetch to resolve first. See
+    # dispatch.py's generate_morning_dispatch docstring for why that
+    # reuse was tried and reverted -- it made this path slower overall.
+    result = generate_morning_dispatch(
+        lat, lon, persona=persona, language=language, vessel_persona=vessel_persona,
+        day_offset=day_offset, target_hour=target_hour if target_hour is not None else 8,
+    )
+
+    audio_note = (f" Spoken version: {result['audio_url']}." if result["audio_url"]
+                  else " (Spoken audio version unavailable this time -- PDF only.)")
+    # Lead with dispatch.py's OWN already-grounded narrative (it ran its own
+    # synthesize_advisory pass over the REAL fetched signals -- see
+    # generate_morning_dispatch) rather than just a bare "download your PDF"
+    # pointer sentence. An earlier version only sent the pointer sentence up
+    # through final_output, which left graph.py's top-level synthesizer with
+    # nothing real to ground a persona-formatted chat reply in -- verified
+    # live, it produced a DIFFERENT, non-deterministic safety verdict on
+    # each run ("Safe to Sail" one time, "No-Go Warning" the next, from
+    # identical input) because there was no real data for it to read, only
+    # a link. Including the real narrative here, plus graph.py's dispatch-
+    # only bypass below, keeps the chat reply consistent with what the
+    # PDF/audio actually say.
+    text = f"{result['narrative']}\n\nFull offline briefing: {result['pdf_url']}.{audio_note}"
+    return {
+        "final_output": f"Morning Dispatch: {text}",
+        # Exposed as their OWN top-level API fields (see graph.py's
+        # dispatch_node and main.py), matching the plot_url/regional_zones
+        # pattern above -- a Gemini synthesis pass could otherwise
+        # paraphrase away a raw download URL embedded only in prose.
+        "dispatch_pdf_url": result["pdf_url"],
+        "dispatch_audio_url": result["audio_url"],
+    }

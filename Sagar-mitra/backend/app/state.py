@@ -21,8 +21,16 @@ class AgentState(TypedDict):
     common_signals: Dict[str, object]
     plot_url: Optional[str]  # historical chart image URL, if the historical agent generated one
     regional_zones: List[dict]  # ranked zones from the regional agent, for map markers
+    dispatch_pdf_url: Optional[str]  # Morning Dispatch PDF, if the dispatch agent ran (see sub_agents.py)
+    dispatch_audio_url: Optional[str]  # Morning Dispatch spoken audio, if TTS succeeded
     language: str
     persona: str
+    # Vessel/operator category declared at onboarding (e.g. "artisanal_coastal",
+    # "mechanized_trawler") -- see main.py's reconcile_persona_key and
+    # advisory.py's VESSEL_PERSONA_SYSTEM_PROMPTS. Distinct from `persona`
+    # above, which is the AUDIENCE communication style (Fisherman/Student/
+    # Researcher/General Public) the planner detects live from message tone.
+    vessel_persona: str
     query_intent: str
     final_output: str
     final_advisory: str
