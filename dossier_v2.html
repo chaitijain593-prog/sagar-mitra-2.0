@@ -1,0 +1,455 @@
+<title>ORCA Feature Dossier</title>
+<style>
+:root{
+  --bg:#f6f8f7; --surface:#ffffff; --surface-2:#eef3f2;
+  --text:#0f2027; --muted:#54707a; --border:#dbe4e2;
+  --accent:#0f7a8c; --accent-ink:#ffffff;
+  --ok:#1f9d55; --ok-bg:#e5f6ec;
+  --warn:#b8780a; --warn-bg:#fbf0dc;
+  --dead:#6d4fc4; --dead-bg:#efe9fb;
+  --bad:#c53c3c; --bad-bg:#fbe7e7;
+  --code-bg:#eef3f2;
+  --shadow: 0 1px 2px rgba(15,32,39,.06), 0 8px 24px -12px rgba(15,32,39,.12);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a1416; --surface:#101d20; --surface-2:#152327;
+    --text:#e7f1ef; --muted:#8fa8ac;
+    --border:#233a3d;
+    --accent:#39c4bb; --accent-ink:#04211f;
+    --ok:#3fcf7f; --ok-bg:#12291d;
+    --warn:#f0b23d; --warn-bg:#2c2311;
+    --dead:#a98cf0; --dead-bg:#251f38;
+    --bad:#f07070; --bad-bg:#2c1717;
+    --code-bg:#152327;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1416; --surface:#101d20; --surface-2:#152327;
+  --text:#e7f1ef; --muted:#8fa8ac; --border:#233a3d;
+  --accent:#39c4bb; --accent-ink:#04211f;
+  --ok:#3fcf7f; --ok-bg:#12291d;
+  --warn:#f0b23d; --warn-bg:#2c2311;
+  --dead:#a98cf0; --dead-bg:#251f38;
+  --bad:#f07070; --bad-bg:#2c1717;
+  --code-bg:#152327;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+}
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+*{box-sizing:border-box;}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:"IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  padding-inline:16px;
+  line-height:1.55;
+}
+.wrap{max-width:900px; margin:0 auto;}
+.mono{font-family:"IBM Plex Mono","SFMono-Regular",Consolas,monospace;}
+
+header.hero{ padding-block: 40px 24px; border-bottom:1px solid var(--border); }
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--accent); font-weight:600; margin:0 0 10px;
+}
+h1{ font-size: clamp(28px, 5vw, 40px); line-height:1.1; margin:0 0 12px; letter-spacing:-.01em; text-wrap:balance; }
+.hero-sub{ color:var(--muted); max-width:640px; font-size:15.5px; margin:0 0 20px; }
+.meta-row{ display:flex; flex-wrap:wrap; gap:8px 18px; font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--muted); }
+.meta-row b{color:var(--text); font-weight:600;}
+
+.statbar{
+  display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+  background:var(--border);
+  border:1px solid var(--border); border-radius:10px; overflow:hidden;
+  margin-top:26px;
+}
+.stat{ background:var(--surface); padding:16px 14px; text-align:center; }
+.stat .n{font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:26px;}
+.stat .l{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-top:4px;}
+.stat.ok .n{color:var(--ok);}
+.stat.warn .n{color:var(--warn);}
+.stat.dead .n{color:var(--dead);}
+.stat.bad .n{color:var(--bad);}
+
+section{padding-block:36px; border-bottom:1px solid var(--border);}
+section:last-of-type{border-bottom:none;}
+h2{
+  font-size:12px; font-family:"IBM Plex Mono",monospace;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+  margin:0 0 6px; font-weight:600;
+}
+h3{font-size:22px; margin:0 0 16px; letter-spacing:-.005em;}
+p{margin:0 0 14px; max-width:74ch;}
+p.lede{font-size:16px; color:var(--text);}
+
+.pill{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600;
+  letter-spacing:.03em; text-transform:uppercase;
+  padding:3px 9px; border-radius:999px; white-space:nowrap;
+}
+.pill::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor;}
+.pill.ok{background:var(--ok-bg); color:var(--ok);}
+.pill.warn{background:var(--warn-bg); color:var(--warn);}
+.pill.dead{background:var(--dead-bg); color:var(--dead);}
+.pill.bad{background:var(--bad-bg); color:var(--bad);}
+
+.diagram-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:18px; box-shadow:var(--shadow); overflow-x:auto;
+}
+.diagram-legend{ display:flex; flex-wrap:wrap; gap:14px; margin-top:14px; font-size:12.5px; color:var(--muted); }
+.diagram-legend span{display:inline-flex; align-items:center; gap:6px;}
+.diagram-legend i{width:14px; height:3px; display:inline-block; border-radius:2px;}
+
+.card{
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:18px 20px; box-shadow:var(--shadow); margin-bottom:14px;
+}
+.card-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:8px; flex-wrap:wrap; }
+.card-head h4{margin:0; font-size:15.5px; font-weight:600; max-width:60ch;}
+.card p{margin:0 0 10px; font-size:14.5px; color:var(--text);}
+.evidence{
+  font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--muted);
+  background:var(--code-bg); border-radius:7px; padding:8px 10px;
+  margin-top:8px; overflow-x:auto;
+}
+.evidence code{color:var(--accent);}
+
+.tbl{width:100%; border-collapse:collapse; font-size:14px;}
+.tbl th{
+  text-align:left; font-family:"IBM Plex Mono",monospace; font-size:11px;
+  text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+  padding:10px 12px; border-bottom:1px solid var(--border);
+}
+.tbl td{padding:12px; border-bottom:1px solid var(--border); vertical-align:top;}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl-wrap{
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  overflow-x:auto; box-shadow:var(--shadow);
+}
+.q{font-style:normal; color:var(--text);}
+.note{color:var(--muted); font-size:13px;}
+
+.rolegrid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+@media (max-width:600px){.rolegrid{grid-template-columns:1fr;}}
+.role{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:13px 14px; }
+.role .rn{font-weight:600; font-size:14px; margin-bottom:5px; display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;}
+.role .rd{font-size:13px; color:var(--muted);}
+
+.reco{ display:flex; gap:14px; padding:14px 0; border-bottom:1px solid var(--border); }
+.reco:last-child{border-bottom:none;}
+.reco .rank{ font-family:"IBM Plex Mono",monospace; font-weight:700; color:var(--accent); font-size:20px; min-width:28px; }
+.reco h5{margin:0 0 4px; font-size:15px;}
+.reco p{margin:0; font-size:13.5px; color:var(--muted); max-width:60ch;}
+
+.chiplist{display:flex; flex-wrap:wrap; gap:8px;}
+.chip{
+  font-size:12.5px; background:var(--surface-2); border:1px solid var(--border);
+  padding:6px 11px; border-radius:8px; color:var(--text);
+}
+.chip.new{ border-color:var(--accent); color:var(--accent); font-weight:600; }
+
+.diffcard{
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:16px 18px; box-shadow:var(--shadow); margin-bottom:12px;
+  display:grid; grid-template-columns:auto 1fr; gap:6px 14px; align-items:baseline;
+}
+.diffcard .was{color:var(--muted); font-size:13px;}
+.diffcard .now{font-size:14.5px;}
+.diffcard .arrow{grid-column:1/-1; height:1px; background:var(--border); margin:2px 0;}
+
+footer{padding-block:30px 60px; color:var(--muted); font-size:12.5px;}
+footer .mono{color:var(--muted);}
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <p class="eyebrow">Implementation audit · re-check · Sagar Mitra / ORCA</p>
+  <h1>ORCA vs. the problem statement — round two</h1>
+  <p class="hero-sub">Same repo, same brief, re-audited after a work session that specifically targeted the gaps the first pass found: intent routing, language, multi-turn memory, forecasts, hazard alerts, hazard-aware routing, and regional comparison. This version also documents a real concurrency bug the new work introduced and fixed.</p>
+  <div class="meta-row">
+    <span><b>Repo:</b> Sagar-mitra/</span>
+    <span><b>Backend:</b> FastAPI + LangGraph + Gemini</span>
+    <span><b>Frontend:</b> single-page Leaflet dashboard</span>
+    <span><b>Re-audited:</b> 2026-09-20 (same day, later session)</span>
+  </div>
+
+  <div class="statbar">
+    <div class="stat ok"><div class="n">15</div><div class="l">Done / Live</div></div>
+    <div class="stat warn"><div class="n">12</div><div class="l">Partial</div></div>
+    <div class="stat dead"><div class="n">0</div><div class="l">Built, not wired</div></div>
+    <div class="stat bad"><div class="n">0</div><div class="l">Not started</div></div>
+  </div>
+</header>
+
+<section>
+  <h2>Summary</h2>
+  <h3>Every named gap from the first audit got real work. Nothing is fully missing anymore — what's left is depth and polish.</h3>
+  <p class="lede">The first audit's top finding was that a second, richer pipeline existed in the codebase but was never wired to a live route. That's no longer true: the keyword-only router was replaced with a real Gemini planner that decomposes a query into a <i>set</i> of agents, multi-turn memory is live end-to-end (backend store <i>and</i> frontend session persistence), language/persona detection now actually reaches the response, lightning/cyclone alerts exist, routing is genuinely hazard-aware, and a brand-new "regional" agent answers the one query type the platform previously couldn't touch at all — "which regions look favorable" — by ranking today's real INCOIS PFZ zones with the already-trained ML classifier.</p>
+  <p>Two things are worth flagging plainly. First, this session's own new code shipped a real bug — the ML model loader wasn't thread-safe, so the new concurrent regional scan silently returned "unavailable" confidence for most zones until it was caught and fixed (a genuine race condition, not a hypothetical one — reproduced and verified). Second, there is currently no <span class="mono">.env</span> file in this checkout, so every advisory tested here was generated by the deterministic, non-LLM fallback formatter, not Gemini's actual persona/language prose. The grounding and localization code is real and tested in isolation, but a live demo without a configured key will look flatter than the code is capable of.</p>
+</section>
+
+<section>
+  <h2>What changed since the first audit</h2>
+  <h3>Six gaps, closed in order of what was actually broken</h3>
+
+  <div class="diffcard">
+    <span class="was pill bad" style="justify-self:start">was: Not implemented</span>
+    <span class="now">Multi-turn conversations</span>
+    <div class="arrow"></div>
+    <span class="was pill ok" style="justify-self:start">now: Done</span>
+    <span class="now"><span class="mono">session_store.py</span> keeps history + last resolved location/topic per <span class="mono">session_id</span>; the frontend now persists that id in <span class="mono">localStorage</span> and sends it on every call — previously built backend-only and never reachable from the UI.</span>
+  </div>
+
+  <div class="diffcard">
+    <span class="was pill dead" style="justify-self:start">was: Built, not wired</span>
+    <span class="now">Language / persona detection</span>
+    <div class="arrow"></div>
+    <span class="was pill ok" style="justify-self:start">now: Done</span>
+    <span class="now">The planner detects language/persona/intent per turn and threads it through to <span class="mono">synthesize_advisory()</span>; even the non-LLM fallback formatter now has Hindi/Marathi section labels instead of defaulting to English.</span>
+  </div>
+
+  <div class="diffcard">
+    <span class="was pill bad" style="justify-self:start">was: Missing</span>
+    <span class="now">Lightning / cyclone alerts</span>
+    <div class="arrow"></div>
+    <span class="was pill ok" style="justify-self:start">now: Done</span>
+    <span class="now"><span class="mono">weather_alert_tool.py</span> — a keyless Open-Meteo proxy (thunderstorm codes, gale-force wind heuristic), honestly labeled as a proxy, not an official bulletin. Wired into the graph <i>and</i> the frontend advisory card.</span>
+  </div>
+
+  <div class="diffcard">
+    <span class="was pill warn" style="justify-self:start">was: Partial</span>
+    <span class="now">"Is it safe tomorrow morning?"</span>
+    <div class="arrow"></div>
+    <span class="was pill ok" style="justify-self:start">now: Done</span>
+    <span class="now">A regex-only date/time extractor (no LLM call, works with no API key) feeds a genuine hourly-forecast branch in <span class="mono">satellite_tool.py</span> and <span class="mono">weather_alert_tool.py</span> — verified live: "tomorrow morning" now returns different, correctly-labeled forecast numbers instead of silently reusing "current."</span>
+  </div>
+
+  <div class="diffcard">
+    <span class="was pill warn" style="justify-self:start">was: Partial</span>
+    <span class="now">Route optimization</span>
+    <div class="arrow"></div>
+    <span class="was pill warn" style="justify-self:start">now: Partial, real</span>
+    <span class="now"><span class="mono">route_planner.py</span> now samples live wave height and checks real MPA polygons along the path, and detours around either. Still a small 2-candidate heuristic, not a true optimizer — upgraded from a client-side straight line, not yet at "optimization."</span>
+  </div>
+
+  <div class="diffcard">
+    <span class="was pill bad" style="justify-self:start">was: Missing entirely</span>
+    <span class="now">"Which regions show high chlorophyll + favorable SST?"</span>
+    <div class="arrow"></div>
+    <span class="was pill ok" style="justify-self:start">now: Done</span>
+    <span class="now">New <span class="mono">regional_scan.py</span> agent: pulls every zone from today's live INCOIS feed (previously only the single nearest one was ever kept), fetches chlorophyll+SST for each <i>concurrently</i>, ranks by the existing trained ML classifier's confidence. First tool in the codebase that answers a "which regions" framing at all.</span>
+  </div>
+</section>
+
+<section>
+  <h2>A bug this session shipped, and caught</h2>
+  <h3>The regional scan's own concurrency exposed a real race condition</h3>
+  <p>Making per-zone lookups concurrent (via a thread pool, since each is an independent network call) is what makes the regional scan fast enough to be usable. But <span class="mono">pfz_ml.py</span>'s model loader used a "load once, cache globally" pattern that was never written to be called from multiple threads at once. Under real concurrent load, 7 of 8 threads got <span class="mono">None</span> back instead of the trained model — not because the model was broken, but because one thread had flagged "loading started" before it had actually finished assigning the loaded object, and a second thread read that flag and returned early.</p>
+  <p>This was caught by actually running the new code under a thread pool and inspecting per-thread results, not by inspection alone — the first fix attempt (a naive lock) still had the same bug, because the flag was still being set before the load completed. The corrected version only marks loading "done" after the model is fully assigned, both inside the lock. Re-verified with 8 concurrent callers all getting the real model.</p>
+  <div class="evidence">app/pfz_ml.py <code>_get_model()</code> — double-checked locking, flag set only after assignment<br/>Verified via a standalone <code>ThreadPoolExecutor(max_workers=8)</code> test against the live function</div>
+</section>
+
+<section>
+  <h2>Architecture</h2>
+  <h3>What's on the live request path now</h3>
+  <p>The router is gone — replaced by a planner that picks a <i>set</i> of agents, all of which the dispatch node now runs (sequentially, see gaps below) before synthesis. Every domain agent below is reachable from a live query; nothing sits in a dormant, unreachable cluster anymore.</p>
+  <div class="diagram-card">
+<pre class="mermaid">
+flowchart TD
+  UI["Frontend — index.html<br/>Leaflet map, chat, session_id in localStorage"] -->|"POST /api/orchestrate<br/>+ session_id"| API["FastAPI — main.py"]
+  API --> Graph["LangGraph — orca_graph"]
+  Graph --> Plan["Planner node<br/>Gemini: agent SET + language + persona + intent<br/>(regex/keyword fallback if no API key)"]
+  Plan --> Dispatch["Dispatch node<br/>runs every selected agent"]
+  Dispatch --> Nav["Navigation<br/>wave/SST/tide -- current or forecast"]
+  Dispatch --> Fish["Fishing<br/>nearest PFZ + chlorophyll"]
+  Dispatch --> Comp["Compliance<br/>EEZ / MPA check"]
+  Dispatch --> Hist["Historical<br/>Gemini fn-calling + matplotlib charts"]
+  Dispatch --> Haz["Hazard<br/>lightning / cyclone -- current or forecast"]
+  Dispatch --> Ana["Analytics<br/>4-tier statistical anomaly engine"]
+  Dispatch --> Reg["Regional (new)<br/>ranks today's PFZ zones by chlorophyll/SST/ML"]
+  Nav & Fish & Comp & Hist & Haz & Ana & Reg --> Syn["Synthesizer<br/>persona + language aware, grounded"]
+  Syn --> API --> UI
+
+  API -.-> Sess["session_store.py<br/>multi-turn memory"]
+  API -.-> Route["route_planner.py<br/>MPA + wave-aware detour"]
+  Nav -.-> SAT["satellite_tool.py<br/>Open-Meteo current/forecast"]
+  Haz -.-> WX["weather_alert_tool.py<br/>Open-Meteo current/forecast"]
+  Fish -.-> PFZT["pfz_tool.py<br/>INCOIS WFS, all zones exposed"]
+  Reg -.-> PFZT
+  Reg -.-> ML["pfz_ml.py<br/>RandomForest -- now thread-safe"]
+
+  subgraph Legacy["Superseded by planner.py -- safe to delete, not a gap"]
+    CHAT["chat.py / nlp_extract.extract_query_parameters"]
+  end
+</pre>
+  </div>
+  <div class="diagram-legend">
+    <span><i style="background:var(--accent)"></i> Live request path</span>
+    <span><i style="background:var(--muted); opacity:.6"></i> Tool call (dashed)</span>
+    <span><i style="background:var(--dead)"></i> Superseded, not a gap</span>
+  </div>
+</section>
+
+<section>
+  <h2>Capability checklist</h2>
+  <h3>Against the brief's "the platform should be capable of…" list, re-checked</h3>
+
+  <div class="card">
+    <div class="card-head"><h4>Understanding user intent expressed in natural language</h4><span class="pill ok">Done</span></div>
+    <p>The planner now decomposes a query into a <i>set</i> of agents via Gemini (a compound question correctly triggers more than one), with a regex/keyword fallback that keeps routing functional with no API key configured — degraded quality, not degraded to broken.</p>
+    <div class="evidence">app/planner.py <code>plan_query()</code>, <code>_keyword_fallback()</code> — replaces the old single-branch keyword router entirely</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h4>Auto-detect language, respond in Indian regional languages</h4><span class="pill ok">Done</span></div>
+    <p>Detected per-turn by the planner and threaded into <span class="mono">synthesize_advisory()</span>'s language directive. Even when Gemini is unavailable, <span class="mono">format_fallback_advisory()</span> now has real Hindi/Marathi section labels rather than silently defaulting to English.</p>
+    <div class="evidence">app/planner.py (language/persona/intent in the JSON schema) · app/advisory.py <code>_build_system_instruction()</code> · app/response_formatter.py <code>AGENT_DISPLAY_NAMES</code></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h4>Contextual, multi-turn conversations</h4><span class="pill ok">Done</span></div>
+    <p>Backend and frontend now agree on a <span class="mono">session_id</span>: the store keeps recent dialogue plus the last resolved location/agent-set, and the frontend persists the id across queries instead of minting a new one every request.</p>
+    <div class="evidence">app/session_store.py · app/state.py (<code>history</code>, <code>last_agents</code>) · index.html §8b</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h4>Autonomously discover / retrieve marine &amp; geospatial datasets</h4><span class="pill warn">Partial</span></div>
+    <p>Which <i>agents</i> run is now dynamic (the planner's job). Which <i>tool</i> each agent calls is still fixed per node — there's no ReAct-style loop where an agent picks a tool at runtime. The new regional agent is the first to broaden discovery beyond a single point, scanning up to 12 real zones per query.</p>
+    <div class="evidence">app/sub_agents.py — one fixed tool call per node · app/regional_scan.py — the one exception, iterates a real zone list</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h4>Spatial / temporal / contextual reasoning across sources</h4><span class="pill warn">Partial</span></div>
+    <p><b>Temporal</b> reasoning is now real for wave/weather/hazard (a genuine forecast branch, not just "today" answered twice). <b>Spatial</b> reasoning across multiple points is now real for the regional agent. What's still simple concatenation: the fishing agent just joins PFZ + chlorophyll text with no cross-referencing, and the deeper 4-tier anomaly engine only runs when a query explicitly asks "why"/"anomaly".</p>
+    <div class="evidence">app/nlp_extract.py <code>extract_target_datetime_from_message()</code> · app/regional_scan.py · app/sub_agents.py <code>fishing_node()</code> — still a plain join</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h4>Evidence-based recommendations with maps, charts, visualizations</h4><span class="pill warn">Partial</span></div>
+    <p>Live: Leaflet map, vessel marker, EEZ line, PFZ polygons, a server-computed hazard-aware route with a real tooltip, three telemetry bars off real Z-test/ML numbers. Still not live: <span class="mono">historical.py</span>'s matplotlib charts are generated by a reachable agent now, but <span class="mono">main.py</span>'s JSON response never exposes <span class="mono">plot_url</span> as its own field and no <span class="mono">&lt;img&gt;</span> ever renders it — it only surfaces as a text mention. The new regional scan's ranked zones aren't plotted as map markers either, only listed as text.</p>
+    <div class="evidence">index.html <code>plotRoute()</code>, <code>updateTelemetryBars()</code> — live<br/>app/main.py — response dict has no <code>plot_url</code> key · index.html — no chart-rendering <code>&lt;img&gt;</code> anywhere</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h4>Proactive alerts: weather, high waves, lightning, cyclone</h4><span class="pill ok">Done</span></div>
+    <p>Wave-height hazard flagging (unchanged, real) plus a new lightning/thunderstorm and gale-force-wind cyclone proxy, both current- and forecast-aware, both wired into the hazard banner logic and the frontend advisory card.</p>
+    <div class="evidence">app/weather_alert_tool.py · app/main.py <code>_derive_hazard_status()</code> now folds in <code>lightning_alert</code>/<code>cyclone_alert</code></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h4>Geofencing: EEZ, restricted waters, MPA, sensitive zones</h4><span class="pill ok">Done</span> <span class="pill warn" style="margin-left:6px">Proximity: unchanged partial</span></div>
+    <p>Unchanged from the first audit — still the strongest single piece: a real shapely point-in-polygon check with an honest <span class="mono">UNVERIFIED</span> fallback rather than a false "safe." Proximity ("12 nm from the boundary") is still binary inside/outside, not a computed distance — not addressed this round.</p>
+    <div class="evidence">app/boundary_toool.py — unchanged, still the model to point at</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h4>Route optimization, safe navigation, operational planning</h4><span class="pill warn">Partial</span></div>
+    <p>Meaningfully upgraded, not finished: the route now genuinely checks live wave height and real MPA polygons along the path and tries two lateral detours, forecast-aware for future queries. It's an honest, small-candidate heuristic (the code says so itself) — not a real path optimizer. Calling this "Done" would overclaim what a 2-candidate detour search actually is.</p>
+    <div class="evidence">app/route_planner.py <code>plan_safe_route()</code> — real hazard checks, heuristic search</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h4>Reliable recommendations with supporting evidence &amp; reasoning</h4><span class="pill ok">Done</span></div>
+    <p>The compliance agent's strict anti-hallucination grounding ("never invent a regulation, distance, or penalty not in the raw report") now extends to the general <span class="mono">synthesize_advisory()</span> path too — navigation and fishing answers are explicitly instructed to never claim missing live data or invent a number.</p>
+    <div class="evidence">app/advisory.py <code>synthesize_advisory()</code> — grounding rules now shared with <code>format_compliance_advisory()</code></div>
+  </div>
+</section>
+
+<section>
+  <h2>Typical queries from the brief</h2>
+  <h3>How each named example question resolves now</h3>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th style="width:34%">Query</th><th style="width:14%">Status</th><th>What happens</th></tr></thead>
+      <tbody>
+        <tr><td class="q">"Where is the nearest PFZ today?"</td><td><span class="pill ok">Done</span></td><td class="note">Unchanged — live INCOIS WFS lookup, CSV fallback.</td></tr>
+        <tr><td class="q">"Is it safe to venture out tomorrow morning?"</td><td><span class="pill ok">Done</span></td><td class="note">Verified live: returns a genuine hourly forecast, labeled with the resolved date/time, distinct from the "today" answer.</td></tr>
+        <tr><td class="q">"Tide, weather, sea conditions near my location"</td><td><span class="pill warn">Partial</span></td><td class="note">Now forecast-capable, but still only wave height / SST / instantaneous sea-level — no wind speed/direction, rainfall, or a high/low tide table.</td></tr>
+        <tr><td class="q">"Lightning or cyclone alerts in my area"</td><td><span class="pill ok">Done</span></td><td class="note">Was fully missing at the first audit. Now a live, honestly-labeled proxy (thunderstorm codes + gale-force wind), current- and forecast-aware.</td></tr>
+        <tr><td class="q">"High chlorophyll + favourable SST regions"</td><td><span class="pill ok">Done</span></td><td class="note">New regional agent ranks today's real PFZ zones by chlorophyll/SST/ML confidence. Scope-limited to ~12 zones from today's live feed, not an exhaustive raster scan of the whole EEZ.</td></tr>
+        <tr><td class="q">"Safest route considering weather and sea-state"</td><td><span class="pill warn">Partial</span></td><td class="note">Now genuinely hazard- and forecast-aware (MPA + wave detour), still a small heuristic search, not full path optimization.</td></tr>
+        <tr><td class="q">"Why has fish productivity declined in region X?"</td><td><span class="pill ok">Done</span></td><td class="note"><span class="mono">historical.py</span> + <span class="mono">analytics_node</span> are live in the graph and planner-routable on "why"/"decline"/"anomaly" keywords. Confirmed wired by code inspection this session; not re-run live against the API this round.</td></tr>
+        <tr><td class="q">"Which fishing zones to avoid (hazards / geofencing)"</td><td><span class="pill ok">Done</span></td><td class="note">MPA/EEZ avoidance unchanged; now also cross-referenced with live wave hazard via the route planner's detour logic.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Multi-agent architecture</h2>
+  <h3>Named specialized roles the brief asks for, re-checked</h3>
+  <p>Seven domain agents now run behind the planner (up from three): navigation, fishing, compliance, historical, hazard, analytics, and the new regional agent. Several named roles from the brief are still folded into these seven rather than existing as fully separate agents — noted per role below.</p>
+  <div class="rolegrid">
+    <div class="role"><div class="rn">Planning <span class="pill ok">Done</span></div><div class="rd">planner.py is a real LLM decomposition step now, not a keyword router.</div></div>
+    <div class="role"><div class="rn">Marine data discovery <span class="pill warn">Partial</span></div><div class="rd">Agent <i>set</i> is dynamic; tool choice within an agent is still fixed. Regional agent is the first multi-point exception.</div></div>
+    <div class="role"><div class="rn">Weather intelligence <span class="pill warn">Partial</span></div><div class="rd">Now forecast- and hazard-aware (a real upgrade), but still missing wind speed/direction and rainfall.</div></div>
+    <div class="role"><div class="rn">Ocean analytics <span class="pill warn">Partial</span></div><div class="rd">Real when triggered (analytics_node, regional_node); fishing_node itself still just concatenates.</div></div>
+    <div class="role"><div class="rn">Geospatial reasoning <span class="pill ok">Done</span></div><div class="rd">Unchanged, still the strongest piece; now also backs the route planner's MPA checks.</div></div>
+    <div class="role"><div class="rn">Risk assessment <span class="pill warn">Partial</span></div><div class="rd">Now combines boundary + wave + lightning + cyclone into one status, but still a function in main.py, not a dedicated agent.</div></div>
+    <div class="role"><div class="rn">Visualization <span class="pill warn">Partial</span></div><div class="rd">Map/telemetry/route are live; historical charts and regional rankings aren't visualized, only listed as text.</div></div>
+    <div class="role"><div class="rn">Reporting <span class="pill warn">Partial</span></div><div class="rd">historical.py is reachable and runs live now (was fully dormant); its chart output still isn't exposed to the API response or rendered anywhere.</div></div>
+    <div class="role"><div class="rn">User interaction <span class="pill ok">Done</span></div><div class="rd">Chat, session persistence, hazard/route/alert display — functional end to end.</div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Also implemented</h2>
+  <h3>Beyond the brief</h3>
+  <p>Carried forward from the first audit, plus what's new this round (marked):</p>
+  <div class="chiplist">
+    <span class="chip new">NEW — Regional multi-zone scan ranked by the existing ML classifier</span>
+    <span class="chip new">NEW — Regex-only date/time extraction, zero LLM cost, works with no API key</span>
+    <span class="chip new">NEW — Thread-safe ML model loader (fixed a real race condition, verified under load)</span>
+    <span class="chip new">NEW — Server-computed, MPA/wave-aware route detour with live sample evidence</span>
+    <span class="chip new">NEW — <code>forecast_for</code> field in the API response for transparency about what time a reading describes</span>
+    <span class="chip">Multi-key Gemini rotation on quota/rate-limit errors (advisory.py)</span>
+    <span class="chip">Synthetic-data fallback so the backend boots without the real Argo dataset (data.py)</span>
+    <span class="chip">Honest "N/A" telemetry instead of fabricated numbers when the ML model isn't trained</span>
+    <span class="chip">Statistically-grounded PFZ validator (Z-test + KS-test) as an anti-hallucination layer</span>
+    <span class="chip">Dark / light theme toggle · ambient ocean-sound toggle</span>
+    <span class="chip">5 NM pulsating vessel safety-buffer ring on the map</span>
+    <span class="chip">Mayday/SOS button (client-side alert only — not wired to a real distress channel)</span>
+  </div>
+</section>
+
+<section>
+  <h2>Where to spend effort next</h2>
+  <h3>Ranked by leverage, now that nothing is fully missing</h3>
+
+  <div class="reco">
+    <div class="rank">1</div>
+    <div><h5>Configure a real Gemini API key before any demo</h5><p>There is currently no <span class="mono">.env</span> in this checkout. Every response tested this round came from the deterministic fallback formatter ("ORCA's AI summarizer is temporarily busy"), not the actual persona/language-aware prose the grounding work was built for. This is the single highest-leverage non-code fix available.</p></div>
+  </div>
+  <div class="reco">
+    <div class="rank">2</div>
+    <div><h5>Parallelize agent dispatch and remove the duplicate fetches</h5><p><span class="mono">dispatch_node</span>'s agent loop still runs one agent at a time, and <span class="mono">main.py</span> separately re-fetches boundary/ocean/PFZ/chlorophyll/hazard data a second time for telemetry — on top of whatever the graph's agents already fetched. Measured: a single query took 23+ seconds. These are independent I/O calls; a thread pool (the same pattern <span class="mono">regional_scan.py</span> already uses, lock included) would cut this substantially.</p></div>
+  </div>
+  <div class="reco">
+    <div class="rank">3</div>
+    <div><h5>Surface historical charts and regional rankings visually</h5><p>Both are computed with real data but only reach the user as text. Add <span class="mono">plot_url</span> to the <span class="mono">/api/orchestrate</span> response and render it with an <span class="mono">&lt;img&gt;</span>; plot the regional scan's ranked zones as map markers instead of only listing them in the advisory card.</p></div>
+  </div>
+  <div class="reco">
+    <div class="rank">4</div>
+    <div><h5>Decide how to label PFZ/chlorophyll for a "tomorrow" query</h5><p>Wave/weather/hazard are now genuinely forecast-aware, but PFZ and chlorophyll intentionally stay "today only" (no free forecast product exists for either). A "tomorrow morning" answer currently mixes a real forecast with today's PFZ data silently — worth an explicit note in the advisory so it doesn't read as inconsistent.</p></div>
+  </div>
+  <div class="reco">
+    <div class="rank">5</div>
+    <div><h5>Move from route heuristic to real optimization</h5><p>The current 2-candidate detour is honest about what it is, but a real cost-grid search (even a simple A*) around known MPA/high-wave cells would be a materially stronger answer to the brief's "route optimization" language.</p></div>
+  </div>
+  <div class="reco">
+    <div class="rank">6</div>
+    <div><h5>Retrain or re-pin the PFZ ML model</h5><p>The model loads with a live sklearn version-skew warning (trained on 1.9.0, running on 1.8.0). Harmless in every test run so far, but a dependency-mismatch risk worth closing before it isn't.</p></div>
+  </div>
+</section>
+
+<footer>
+  <p class="mono">Evidence citations reference file and function names as of this re-audit. Several files were edited multiple times this session, so exact line numbers from the first audit no longer apply — function names are the stable reference point. "Partial" here always means specific, named functionality is missing, not that the feature is fake.</p>
+</footer>
+
+</div>
