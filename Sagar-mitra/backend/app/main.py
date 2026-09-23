@@ -3,27 +3,36 @@ import os
 import re
 import traceback
 import uuid
-from datetime import date, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timedelta, timezone
+from typing import Optional
 from dotenv import load_dotenv
 load_dotenv()  # reads .env in the working directory, if present
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.graph import create_orca_graph
 from app.state import AgentState
 from app.nlp_extract import extract_coordinates_from_message, extract_target_datetime_from_message
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
 from app.route_planner import plan_safe_route
+<<<<<<< HEAD
 from app.session_store import store as session_store
 from app.anchor_store import store as anchor_store
+=======
+from app.db_store import store as session_store, insert_hazard_point, get_hazard_mesh, get_anchor, set_anchor
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
 from app.data import store
+from app import db
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
 from app.advisory import _is_quota_error, _is_permission_denied_error
-from app.boundary_toool import distance_to_nearest_boundary_km
+from app.boundary_toool import distance_to_nearest_boundary_km, return_heading_to_safety
 from app.dispatch import generate_morning_dispatch
+from app.news_feed import get_oceanography_news, DOMAIN_TAXONOMY
+from app.response_formatter import derive_hazard_status
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -44,12 +53,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serves the historical-chart PNGs app/historical.py saves under
-# backend/static/plots -- the plot_url returned to the frontend (see
-# run_orchestration below) points at this mount, e.g.
-# http://127.0.0.1:8000/static/plots/TEMP_trend_xxxx.png. Also serves
-# synthesized advisory audio saved under backend/static/audio (see
-# app/voice.py's save_advisory_audio).
+# Serves synthesized advisory audio saved under backend/static/audio (see
+# app/voice.py's save_advisory_audio) and Morning Dispatch PDFs/audio saved
+# under backend/static/dispatch (see app/dispatch.py). Historical-chart
+# images (app/historical.py) are NOT served from here -- they're rendered
+# straight to an in-memory buffer and returned as a base64 data: URL, with
+# no disk write at all, so a chart-generating chat query never drops a new
+# file under this (frontend-nested) static/ tree for a live-reload dev
+# tool to notice.
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 os.makedirs(_STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
@@ -61,11 +72,19 @@ app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 # degrades every request.
 orca_graph = create_orca_graph()
 
+# Phase 0 #1: stand up the persistent SQLite store (app/db.py) -- loads
+# final_dataset.parquet into argo_readings (idempotent: a no-op after the
+# first run) and ensures sos_events exists for Task 2's mayday logging.
+# Additive only -- app/data.py's in-memory pandas `store` above is
+# untouched and still the source of truth for every existing caller.
+db.init_db()
+
 # --- Request Models ------------------------------------------------------
 class OrchestrateRequest(BaseModel):
     user_message: str
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
     session_id: str | None = None  # carried across turns for conversation memory
+<<<<<<< HEAD
     onboarding_persona: str | None = None  # raw vessel-type string from the onboarding UI (see reconcile_persona_key)
 
 
@@ -96,6 +115,16 @@ def reconcile_persona_key(raw_input: str | None) -> str:
     if not raw_input:
         return DEFAULT_VESSEL_PERSONA
     return ONBOARDING_PERSONA_MAP.get(raw_input.strip().lower(), DEFAULT_VESSEL_PERSONA)
+=======
+    # SHAP "What-If" sensitivity slider: optional perturbations applied to the
+    # ML confidence inputs before predict_pfz_confidence runs, so the
+    # frontend can ask "what if SST/chlorophyll/salinity were different here"
+    # without a second round-trip. Bounded to plausible physical swings so a
+    # bad slider value can't be passed straight into the model.
+    sst_delta: float | None = Field(default=None, ge=-10, le=10)
+    chlorophyll_delta: float | None = Field(default=None, ge=-5, le=5)
+    salinity_delta: float | None = Field(default=None, ge=-10, le=10)
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
 
 
 # --- Dashboard signal derivation ------------------------------------------
@@ -117,9 +146,10 @@ def _derive_geofence_alert(boundary: dict) -> tuple[str, str]:
     """
     Turns distance_to_nearest_boundary_km's raw proximity numbers into a
     SAFE/CAUTION/HAZARDOUS verdict + a plain-language message -- the same
-    three-tier vocabulary _derive_hazard_status already uses for the main
-    hazard banner, so the frontend can reuse its existing hazard-banner CSS
-    classes for this too instead of inventing a fourth status vocabulary.
+    three-tier vocabulary derive_hazard_status (response_formatter.py)
+    already uses for the main hazard banner, so the frontend can reuse its
+    existing hazard-banner CSS classes for this too instead of inventing a
+    fourth status vocabulary.
     """
     inside_eez = boundary["inside_eez"]
     inside_mpa = boundary["inside_mpa"]
@@ -135,20 +165,6 @@ def _derive_geofence_alert(boundary: dict) -> tuple[str, str]:
     if mpa_km is not None and mpa_km < GEOFENCE_WARNING_KM:
         return "CAUTION", f"Approaching a Marine Protected Area ({mpa_km} km away)."
     return "SAFE", "No maritime boundary within the 5 km geofence threshold."
-
-
-def _derive_hazard_status(boundary_report: str, ocean_report: str, hazard_report: dict) -> str:
-    if boundary_report.startswith("ALERT"):
-        return "HAZARDOUS"
-    if "HAZARDOUS" in ocean_report.upper():
-        return "HAZARDOUS"
-    if hazard_report.get("cyclone_alert"):
-        return "HAZARDOUS"
-    if hazard_report.get("lightning_alert"):
-        return "CAUTION"
-    if boundary_report.startswith("UNVERIFIED"):
-        return "CAUTION"
-    return "SAFE"
 
 
 def _derive_pfz_zones(pfz_report: str) -> list[dict]:
@@ -179,18 +195,45 @@ _CHLOROPHYLL_RE = re.compile(r"Chlorophyll-a:\s*([\d.]+)")
 _pfz_validator = PFZStatisticalValidator()
 
 
-def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_report: str) -> dict:
+def _build_telemetry(
+    lat: float, lon: float, ocean_report: str, chlorophyll_report: str,
+    sst_delta: Optional[float] = None, chlorophyll_delta: Optional[float] = None,
+    salinity_delta: Optional[float] = None,
+) -> dict:
     """
-    Builds the three Prediction Telemetry values from real, live-computed
-    signals instead of the frontend's old hardcoded 85%/72%/91% placeholders:
+    Builds the Prediction Telemetry values from real, live-computed signals
+    instead of the frontend's old hardcoded 85%/72%/91% placeholders:
 
       - sst_anomaly_pct: Z-Test confidence (1 - p_value) that live SST at
         this coordinate deviates from the Arabian Sea baseline.
       - chlorophyll_gradient_pct: same Z-Test confidence, for chlorophyll --
         i.e. how strong the biological-productivity gradient is here.
+      - salinity_anomaly_pct: same Z-Test confidence for salinity. No live
+        salinity feed is wired up yet, so this checks the dataset's own
+        calibrated median (store.calibrated_clim) against the
+        PFZStatisticalValidator's independent Arabian Sea baseline rather
+        than fabricating a "current" reading.
+      - ph_gradient_pct: None -- no live OR dataset-observed pH feed exists
+        anywhere in this app (see app/data.py's calibrated_clim comment:
+        "not in this dataset; kept as fallback"). Returned as None rather
+        than a fabricated synthetic signal, matching how sst/chlorophyll
+        are already None when their own regex match fails below.
       - ml_confidence_pct: the trained PFZ classifier's own predicted
         probability for this point (None if the model hasn't been trained
         yet -- see backend/scripts/train_pfz_model.py).
+      - shap_attributions: per-feature SHAP attributions explaining
+        ml_confidence_pct (Feature/Task: SHAP explainability -- see
+        pfz_ml.py's include_shap flag), None if unavailable. Only the
+        Researcher persona's advisory card renders this (see index.html's
+        appendAdvisoryCard) -- it's still computed for every request here
+        since the SST/chlorophyll/salinity signals it needs are already
+        being fetched for the other two telemetry values anyway.
+
+    The four independent checks below (sst/chlorophyll/salinity z-tests +
+    the ML/SHAP call) don't depend on each other's results, so they run
+    concurrently via a thread pool instead of one after another -- the
+    ML/SHAP call in particular does real model-inference work, so this is
+    genuine parallelism, not just bookkeeping.
     """
     sst_match = _SST_RE.search(ocean_report)
     chl_match = _CHLOROPHYLL_RE.search(chlorophyll_report)
@@ -202,24 +245,58 @@ def _build_telemetry(lat: float, lon: float, ocean_report: str, chlorophyll_repo
     # available stand-in, rather than fabricating a "current" reading.
     salinity = store.calibrated_clim["sal"]["median"]
 
-    sst_anomaly_pct = None
-    if sst is not None:
+    def _sst_anomaly() -> Optional[float]:
+        if sst is None:
+            return None
         z_check = _pfz_validator.zscore_baseline_check("sst", sst)
-        sst_anomaly_pct = round((1 - z_check["p_value"]) * 100, 1)
+        return round((1 - z_check["p_value"]) * 100, 1)
 
-    chlorophyll_gradient_pct = None
-    if chlorophyll is not None:
+    def _chlorophyll_gradient() -> Optional[float]:
+        if chlorophyll is None:
+            return None
         chl_check = _pfz_validator.zscore_baseline_check("chlorophyll", chlorophyll)
-        chlorophyll_gradient_pct = round((1 - chl_check["p_value"]) * 100, 1)
+        return round((1 - chl_check["p_value"]) * 100, 1)
 
-    ml_confidence_pct = None
-    if sst is not None and chlorophyll is not None:
-        ml_confidence_pct = predict_pfz_confidence(sst, chlorophyll, salinity, lat, lon)
+    def _salinity_anomaly() -> Optional[float]:
+        sal_check = _pfz_validator.zscore_baseline_check("salinity", salinity)
+        return round((1 - sal_check["p_value"]) * 100, 1)
+
+    def _ph_gradient() -> Optional[float]:
+        return None  # no live/observed pH signal exists to check -- see docstring above
+
+    def _ml_confidence():
+        if sst is None or chlorophyll is None:
+            return None, None
+        # What-If sliders perturb only the ML/SHAP inputs, not the z-test
+        # anomaly signals above -- those describe real observed conditions,
+        # while this branch answers "what would the model say if...".
+        what_if_sst = sst + sst_delta if sst_delta is not None else sst
+        what_if_chlorophyll = chlorophyll + chlorophyll_delta if chlorophyll_delta is not None else chlorophyll
+        what_if_salinity = salinity + salinity_delta if salinity_delta is not None else salinity
+        return predict_pfz_confidence(
+            what_if_sst, what_if_chlorophyll, what_if_salinity, lat, lon, include_shap=True
+        )
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        f_sst = pool.submit(_sst_anomaly)
+        f_chl = pool.submit(_chlorophyll_gradient)
+        f_sal = pool.submit(_salinity_anomaly)
+        f_ph = pool.submit(_ph_gradient)
+        f_ml = pool.submit(_ml_confidence)
+
+        sst_anomaly_pct = f_sst.result()
+        chlorophyll_gradient_pct = f_chl.result()
+        salinity_anomaly_pct = f_sal.result()
+        ph_gradient_pct = f_ph.result()
+        ml_confidence_pct, shap_attributions = f_ml.result()
 
     return {
         "sst_anomaly_pct": sst_anomaly_pct,
         "chlorophyll_gradient_pct": chlorophyll_gradient_pct,
+        "salinity_anomaly_pct": salinity_anomaly_pct,
+        "ph_gradient_pct": ph_gradient_pct,
         "ml_confidence_pct": ml_confidence_pct,
+        "shap_attributions": shap_attributions,
     }
 
 
@@ -250,14 +327,19 @@ def geofence_check(lat: float, lon: float):
     """
     boundary = distance_to_nearest_boundary_km(lat, lon)
     alert_level, message = _derive_geofence_alert(boundary)
+    # Feature 3 polish -- only computed (and non-None) once the vessel has
+    # actually left safe water; a SAFE verdict has no return heading to give.
+    return_heading = return_heading_to_safety(lat, lon) if alert_level != "SAFE" else None
     return {
         "coordinates": [lat, lon],
         **boundary,
         "geofence_alert": alert_level,
         "message": message,
+        "return_heading": return_heading,
     }
 
 
+<<<<<<< HEAD
 # --- Feature 10: Anchor Drift Sentry --------------------------------------
 # Lets a vessel drop a virtual anchor (its position + a safe drift radius)
 # for its session; the frontend then polls the GET endpoint the same way it
@@ -273,12 +355,37 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     duplicated locally rather than imported, matching this codebase's
     existing per-module convention for this one-off calculation."""
     R = 6371.0
+=======
+# --- Feature: Sentry / Anchor Drift Alarm ---------------------------------
+import math
+import sqlite3
+import datetime
+
+ANCHOR_DRIFT_ALERT_M = 50.0  # metres of drift before this is flagged as dragging
+
+def get_anchor(session_id: str):
+    with sqlite3.connect("data/sagar_mitra_store.db") as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS anchor_state (session_id TEXT PRIMARY KEY, lat REAL, lon REAL, set_at TEXT)")
+        row = conn.execute("SELECT lat, lon FROM anchor_state WHERE session_id = ?", (session_id,)).fetchone()
+        return {"lat": row[0], "lon": row[1]} if row else None
+
+def set_anchor(session_id: str, lat: float, lon: float):
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with sqlite3.connect("data/sagar_mitra_store.db") as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS anchor_state (session_id TEXT PRIMARY KEY, lat REAL, lon REAL, set_at TEXT)")
+        conn.execute("INSERT OR REPLACE INTO anchor_state (session_id, lat, lon, set_at) VALUES (?, ?, ?, ?)", (session_id, lat, lon, now))
+    return {"lat": lat, "lon": lon, "set_at": now}
+
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371000.0
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
     lat1_r, lon1_r = math.radians(lat1), math.radians(lon1)
     lat2_r, lon2_r = math.radians(lat2), math.radians(lon2)
     dlat, dlon = lat2_r - lat1_r, lon2_r - lon1_r
     a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
     return 2 * R * math.asin(math.sqrt(a))
 
+<<<<<<< HEAD
 
 def _derive_drift_alert(distance_km: float, radius_km: float) -> tuple[str, str]:
     if distance_km <= radius_km:
@@ -334,6 +441,181 @@ def get_anchor_drift(session_id: str, lat: float, lon: float):
 def clear_anchor_drift(session_id: str):
     anchor_store.clear_anchor(session_id)
     return {"status": "success", "session_id": session_id, "anchor_set": False}
+=======
+@app.get("/api/sentry/anchor-drift")
+def anchor_drift_check(session_id: str, lat: float, lon: float):
+    """
+    Lightweight anchor-drag check. The first call for a given session_id
+    drops the anchor at the supplied position (nothing to compare drift
+    against yet); every call after that compares the current position
+    against the stored anchor and flags dragging past
+    ANCHOR_DRIFT_ALERT_M metres. State persists in db_store.py's
+    anchor_state table (data/sagar_mitra_store.db) so a server restart
+    doesn't lose the anchor mid-watch.
+    """
+    anchor = get_anchor(session_id)
+    if anchor is None:
+        anchor = set_anchor(session_id, lat, lon)
+        return {
+            "status": "ANCHOR_SET",
+            "message": "Anchor dropped at current position.",
+            "anchor": [anchor["lat"], anchor["lon"]],
+            "current": [lat, lon],
+            "drift_m": 0.0,
+        }
+
+    drift_m = round(_haversine_m(anchor["lat"], anchor["lon"], lat, lon), 1)
+    dragging = drift_m > ANCHOR_DRIFT_ALERT_M
+    return {
+        "status": "DRAGGING" if dragging else "HOLDING",
+        "message": (
+            f"Anchor dragging -- {drift_m}m from the dropped position."
+            if dragging else
+            f"Holding -- {drift_m}m from the dropped position."
+        ),
+        "anchor": [anchor["lat"], anchor["lon"]],
+        "current": [lat, lon],
+        "drift_m": drift_m,
+        "alert_threshold_m": ANCHOR_DRIFT_ALERT_M,
+    }
+
+
+class AnchorResetRequest(BaseModel):
+    session_id: str
+    lat: float
+    lon: float
+
+
+@app.post("/api/sentry/anchor-drift/reset")
+def anchor_drift_reset(request: AnchorResetRequest):
+    """Re-drops the anchor at the given position, replacing any previous
+    reference point for this session (e.g. after deliberately repositioning)."""
+    anchor = set_anchor(request.session_id, request.lat, request.lon)
+    return {"status": "ANCHOR_SET", "anchor": [anchor["lat"], anchor["lon"]], "set_at": anchor["set_at"]}
+
+
+# --- Feature: Real SOS / Mayday logging (Phase 1 #5) ----------------------
+class SOSRequest(BaseModel):
+    lat: float
+    lon: float
+    hazard_status: str | None = None
+    nearest_port: str | None = None
+    message: str | None = None
+    session_id: str | None = None
+
+
+@app.post("/api/sos")
+def report_sos(request: SOSRequest):
+    """
+    Logs a mayday/SOS event to the persistent store (app/db.py's sos_events
+    table -- see Task 1) instead of only ever showing a local alert() in the
+    browser (see index.html's triggerMayday). Every field here mirrors what
+    triggerMayday's payload sends: the vessel's last known coordinates, the
+    last known hazard status, and the (currently hardcoded) nearest-port
+    text shown in its mayday message.
+    """
+    timestamp = datetime.now(timezone.utc).isoformat()
+    event = {
+        "timestamp": timestamp,
+        "lat": request.lat,
+        "lon": request.lon,
+        "hazard_status": request.hazard_status,
+        "nearest_port": request.nearest_port,
+        "message": request.message,
+        "session_id": request.session_id,
+        "raw_payload": request.model_dump_json(),
+    }
+    event_id = db.insert_sos_event(event)
+    return {
+        "status": "success",
+        "id": event_id,
+        "timestamp": timestamp,
+        "coordinates": [request.lat, request.lon],
+    }
+
+
+class EscalationRequest(BaseModel):
+    lat: float
+    lon: float
+    reason: str | None = None
+    nearest_port: str | None = None
+    session_id: str | None = None
+
+
+@app.post("/api/escalate")
+def escalate_boundary_violation(request: EscalationRequest):
+    """
+    Feature 13: SIMULATED maritime boundary violation escalation. Logs a
+    telemetry event to the local ops queue (db.insert_escalation_event) so
+    a confirmed EEZ/MPA breach has an auditable trail. This does NOT
+    dispatch to a real Coast Guard system -- no such integration exists
+    (see ROADMAP.md's Non-Goals) -- and the response says so plainly rather
+    than implying a live dispatch happened.
+    """
+    timestamp = datetime.now(timezone.utc).isoformat()
+    event = {
+        "timestamp": timestamp,
+        "lat": request.lat,
+        "lon": request.lon,
+        "reason": request.reason or "Maritime boundary violation detected.",
+        "nearest_port": request.nearest_port,
+        "session_id": request.session_id,
+        "raw_payload": request.model_dump_json(),
+    }
+    event_id = db.insert_escalation_event(event)
+    return {
+        "status": "simulated_escalation_logged",
+        "id": event_id,
+        "timestamp": timestamp,
+        "coordinates": [request.lat, request.lon],
+        "note": ("This is a simulated escalation logged to the local ops queue. "
+                 "No live Coast Guard/VHF/satellite dispatch is integrated."),
+    }
+
+
+class HazardReportRequest(BaseModel):
+    lat: float
+    lon: float
+    hazard_type: str  # e.g. "net", "oil_slick", "debris"
+    status: str | None = None
+
+
+@app.post("/api/hazard")
+def report_hazard(request: HazardReportRequest):
+    """
+    Feature 7 (Crowdsourced Hazard Mesh Network): logs a geocoded hazard
+    report to app/db_store.py's hazard_mesh table (previously a dead
+    schema -- insert_hazard_point/get_hazard_mesh existed but nothing
+    called them). See GET /api/hazard/mesh for the 24h-TTL read side.
+    """
+    point_id = insert_hazard_point(request.lat, request.lon, request.hazard_type, request.status)
+    return {"status": "success", "id": point_id}
+
+
+@app.get("/api/hazard/mesh")
+def get_hazard_mesh_endpoint(ttl_hours: float = 24.0, limit: int = 1000):
+    """Reports from the last `ttl_hours` only (default 24h) -- see
+    db_store.get_hazard_mesh's TTL filter."""
+    return {"points": get_hazard_mesh(limit=limit, ttl_hours=ttl_hours)}
+
+
+@app.get("/api/news")
+def get_news(domain: str | None = None):
+    """
+    Task 3: top 5 ScienceDaily Oceanography RSS headlines, 1-hour cached
+    (see app/news_feed.py). Optional `?domain=` filters to articles tagged
+    with that domain slug (see app/news_feed.py's DOMAIN_TAXONOMY); an
+    unrecognized/omitted domain returns the full unfiltered set.
+    """
+    return {"articles": get_oceanography_news(limit=5, domain=domain)}
+
+
+@app.get("/api/news/domains")
+def get_news_domains():
+    """Ocean domain taxonomy slugs, for the frontend's news domain selector
+    (see app/news_feed.py's DOMAIN_TAXONOMY)."""
+    return {"domains": list(DOMAIN_TAXONOMY.keys())}
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
 
 
 @app.post("/api/orchestrate")
@@ -386,6 +668,7 @@ def run_orchestration(request: OrchestrateRequest):
         "hazard_alerts": [],
         "common_signals": {},
         "plot_url": None,
+        "historical_series": None,
         "regional_zones": [],
         "dispatch_pdf_url": None,
         "dispatch_audio_url": None,
@@ -395,6 +678,7 @@ def run_orchestration(request: OrchestrateRequest):
         "query_intent": "",
         "final_output": "",
         "final_advisory": "",
+        "advisory_degraded": False,
     }
 
     try:
@@ -454,9 +738,27 @@ def run_orchestration(request: OrchestrateRequest):
     session_store.append_turn(session_id, "assistant", final_advisory)
     session_store.set_last_context(session_id, coordinates, result.get("next_steps", []))
 
+    # Feature 18: real Chart.js series (line for a trend, pie for a
+    # distribution) from whichever plot tool the historical agent ran this
+    # turn, if any -- attached onto telemetry so the frontend's existing
+    # `updateHistoricalChart(parsedData.telemetry)` call (see script.js) can
+    # render it directly instead of only linking the matplotlib PNG.
+    telemetry = _build_telemetry(
+        lat, lon, ocean_report, chlorophyll_report,
+        sst_delta=request.sst_delta, chlorophyll_delta=request.chlorophyll_delta,
+        salinity_delta=request.salinity_delta,
+    )
+    telemetry["historical_series"] = result.get("historical_series")
+
     # Return the final synthesized response as JSON to the frontend
     return {
-        "status": "success",
+        # "ADVISORY_BUSY" when synthesizer_node (graph.py) had to fall back
+        # to the deterministic formatter after Gemini synthesis failed
+        # (503/high-demand/timeout on both the primary and fallback model --
+        # see advisory.LLM_CALL_TIMEOUT_S) -- the request still succeeded
+        # end-to-end, "advisory" below just contains the busy-notice plus
+        # real live agent data instead of a Gemini-polished narrative.
+        "status": "ADVISORY_BUSY" if result.get("advisory_degraded") else "success",
         "session_id": session_id,
         "user_message": request.user_message,
         "coordinates": coordinates,
@@ -465,10 +767,14 @@ def run_orchestration(request: OrchestrateRequest):
         "query_intent": result.get("query_intent", ""),
         "language": result.get("language", "English"),
         "persona": result.get("persona", "Fisherman"),
+<<<<<<< HEAD
         "vessel_persona": vessel_persona,
         "hazard_status": _derive_hazard_status(boundary_report, ocean_report, hazard_report),
+=======
+        "hazard_status": derive_hazard_status(boundary_report, ocean_report, hazard_report),
+>>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
         "pfz_location": pfz_zones,
-        "telemetry": _build_telemetry(lat, lon, ocean_report, chlorophyll_report),
+        "telemetry": telemetry,
         "lightning_alert": hazard_report["lightning_alert"],
         "cyclone_alert": hazard_report["cyclone_alert"],
         "hazard_summary": hazard_report["summary"],
@@ -559,6 +865,7 @@ async def run_voice_orchestration(
         "hazard_alerts": [],
         "common_signals": {},
         "plot_url": None,
+        "historical_series": None,
         "regional_zones": [],
         "dispatch_pdf_url": None,
         "dispatch_audio_url": None,
@@ -568,6 +875,7 @@ async def run_voice_orchestration(
         "query_intent": "",
         "final_output": "",
         "final_advisory": "",
+        "advisory_degraded": False,
     }
 
     try:
