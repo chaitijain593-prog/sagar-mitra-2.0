@@ -743,6 +743,65 @@
       color: var(--accent-cyan);
     }
 
+    /* 5c-2. Morning Dispatch export button + download card */
+    .dispatch-export-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent-cyan);
+      color: #020914;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 24px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
+      transition: transform 0.15s ease, opacity 0.2s ease;
+    }
+
+    .dispatch-export-btn:hover { transform: scale(1.03); }
+
+    .dispatch-export-btn:disabled {
+      opacity: 0.6;
+      cursor: wait;
+      transform: none;
+    }
+
+    .dispatch-card { border-color: #10b981; }
+
+    .dispatch-download-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid #10b981;
+      color: var(--text-main);
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-decoration: none;
+      margin-top: 8px;
+      margin-right: 8px;
+      transition: background 0.2s ease;
+    }
+
+    .dispatch-download-link:hover { background: rgba(16, 185, 129, 0.3); }
+
+    .dispatch-audio-player {
+      display: block;
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    .dispatch-degraded-note {
+      display: block;
+      margin-top: 8px;
+      font-size: 0.8rem;
+      color: var(--text-sub);
+    }
+
     /* 5d. Vessel Safety Buffer (pulsating 5 NM ring) */
     .vessel-safety-buffer {
       animation: safetyBufferPulse 2.4s ease-in-out infinite;
@@ -1176,6 +1235,10 @@
           <h3>ORCA Control Room</h3>
           <p style="color: var(--text-sub); font-size: 0.9rem;">Live vessel telemetry, EEZ boundaries & fishing zone intelligence in the Indian Ocean Basin.</p>
         </div>
+        <button class="dispatch-export-btn" id="dispatchBtn" onclick="generateMorningDispatch(event)" title="Generate a downloadable PDF + audio pre-departure briefing">
+          <i data-lucide="download" class="w-4 h-4"></i>
+          <span id="dispatchBtnLabel">Morning Dispatch</span>
+        </button>
       </div>
 
       <div class="dashboard-grid">
@@ -1185,6 +1248,7 @@
           <div class="map-base-controls">
             <button id="baseBtnOcean" class="active-base" onclick="setMapBase('ocean')">Ocean</button>
             <button id="baseBtnSat" onclick="setMapBase('satellite')">Satellite</button>
+            <button id="setAnchorBtn" onclick="toggleAnchorMode()" title="Drop a virtual anchor and get warned if the vessel drifts outside its safe radius">Set Anchor</button>
           </div>
           <div id="oceanMap"></div>
         </div>
@@ -1199,6 +1263,16 @@
               <span class="hazard-banner-status" id="hazardBannerStatus">SAFE</span>
             </div>
             <span id="hazardBannerIcon" class="hazard-banner-icon"></span>
+          </div>
+
+          <!-- Anchor Drift Sentry Banner (Feature 10) -- hidden until an
+               anchor is set; see toggleAnchorMode/updateAnchorDriftBanner. -->
+          <div class="hazard-banner hazard-safe" id="anchorDriftBanner" style="display: none;">
+            <div>
+              <span class="hazard-banner-label">Anchor Drift Sentry</span>
+              <span class="hazard-banner-status" id="anchorDriftBannerStatus">NO ANCHOR</span>
+            </div>
+            <span id="anchorDriftBannerIcon" class="hazard-banner-icon"></span>
           </div>
 
           <!-- Agent Operational Stream -->
@@ -1720,6 +1794,39 @@
       feed.scrollTop = feed.scrollHeight;
     }
 
+    // -------------------------------------------------------------
+    // 8c. MORNING DISPATCH DOWNLOAD CARD (/api/dispatch/generate)
+    // -------------------------------------------------------------
+    // Renders the PDF/audio download links for a completed dispatch --
+    // called both from generateMorningDispatch (export button) and from
+    // handleQuerySubmit when a chat query routes to the dispatch agent
+    // (backend/app/sub_agents.py::morning_dispatch_node).
+    function appendDispatchCard(data) {
+      const feed = document.getElementById("agentStreamFeed");
+      const card = document.createElement("div");
+      card.className = "advisory-card dispatch-card";
+
+      const audioHtml = data.dispatch_audio_url
+        ? `<a class="dispatch-download-link" href="${data.dispatch_audio_url}" download target="_blank" rel="noopener">⬇ Download Audio Briefing</a>
+           <audio class="dispatch-audio-player" controls src="${data.dispatch_audio_url}"></audio>`
+        : `<span class="dispatch-degraded-note">Audio briefing unavailable this time -- PDF only.</span>`;
+
+      const degradedHtml = data.degraded
+        ? `<span class="dispatch-degraded-note">⚠ Generated in offline/deterministic mode (AI narration service was unavailable) -- data is still accurate.</span>`
+        : "";
+
+      card.innerHTML = `
+        <h4>📥 Morning Dispatch Ready</h4>
+        <div class="advisory-row"><b>Covers:</b> ${data.forecast_for || "Current conditions"}</div>
+        <a class="dispatch-download-link" href="${data.dispatch_pdf_url}" download target="_blank" rel="noopener">⬇ Download PDF Report</a>
+        ${audioHtml}
+        ${degradedHtml}
+      `;
+
+      feed.appendChild(card);
+      feed.scrollTop = feed.scrollHeight;
+    }
+
     // Point to your local FastAPI server running on port 8000. Shared by
     // both the text query flow (handleQuerySubmit) and the mic voice flow
     // (initVoiceMic) below.
@@ -1846,6 +1953,13 @@
           // back from the API and never reach the UI.
           plot_url: backendData.plot_url || null,
           regional_zones: backendData.regional_zones || [],
+          // Set only when the planner routed this query to the dispatch
+          // agent (see backend/app/planner.py's "morning dispatch"/"dispatch
+          // report" keyword trigger) -- null on every ordinary query.
+          dispatch_pdf_url: backendData.dispatch_pdf_url || null,
+          dispatch_audio_url: backendData.dispatch_audio_url || null,
+          dispatch_degraded: backendData.degraded || false,
+          forecast_for: backendData.forecast_for || null,
         };
       } catch (err) {
         console.error("API Connection Error:", err);
@@ -1860,8 +1974,62 @@
       plotRoute(parsedData.vessel_coord, parsedData.pfz_location, parsedData.route);
       plotRegionalZones(parsedData.regional_zones);
       appendAdvisoryCard(parsedData);
+      if (parsedData.dispatch_pdf_url) {
+        appendDispatchCard({
+          dispatch_pdf_url: parsedData.dispatch_pdf_url,
+          dispatch_audio_url: parsedData.dispatch_audio_url,
+          degraded: parsedData.dispatch_degraded,
+          forecast_for: parsedData.forecast_for,
+        });
+      }
       setLastKnownState(parsedData.vessel_coord, parsedData.hazard_status);
       updateTelemetryBars(parsedData.telemetry);
+    }
+
+    // -------------------------------------------------------------
+    // 10c. MORNING DISPATCH EXPORT BUTTON (/api/dispatch/generate)
+    // -------------------------------------------------------------
+    // Directly hits the dedicated dispatch endpoint (backend/app/main.py's
+    // POST /api/dispatch/generate) instead of routing through the chat
+    // planner -- a one-click export path independent of the chat flow.
+    async function generateMorningDispatch(e) {
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+
+      const btn = document.getElementById("dispatchBtn");
+      const label = document.getElementById("dispatchBtnLabel");
+      if (!btn || btn.disabled) return; // guard against duplicate concurrent requests
+      const originalLabel = label.textContent;
+
+      btn.disabled = true;
+      label.textContent = "Generating...";
+      appendAgentBadge("📥 Preparing your Morning Dispatch (PDF + audio briefing)...");
+
+      const loader = document.getElementById("chatLoader");
+      loader.style.display = "flex";
+
+      try {
+        const coords = await getVesselCoordinates();
+        const res = await fetch(`${API_BASE}/api/dispatch/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ coordinates: coords, persona: "Fisherman", language: "English" }),
+        });
+
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.detail || `Dispatch generation failed (status ${res.status})`);
+        }
+
+        const data = await res.json();
+        appendDispatchCard(data);
+      } catch (err) {
+        console.error("Morning Dispatch generation failed:", err);
+        appendAgentBadge(`⚠ Morning Dispatch failed: ${err.message}`);
+      } finally {
+        loader.style.display = "none";
+        btn.disabled = false;
+        label.textContent = originalLabel;
+      }
     }
 
     // -------------------------------------------------------------
@@ -2078,6 +2246,217 @@
         if (label) label.textContent = hasValue ? `${pct}%` : "N/A";
       });
     }
+
+    // -------------------------------------------------------------
+    // 13. FEATURE 10: ANCHOR DRIFT SENTRY (/api/sentry/anchor-drift)
+    // -------------------------------------------------------------
+    // Lets the crew drop a virtual anchor on the map (click "Set Anchor",
+    // then click the map) and polls the backend on an interval for how far
+    // the vessel has drifted from it -- same poll-then-react shape as the
+    // rest of this dashboard's live checks, reusing the hazard-banner's
+    // SAFE/CAUTION/HAZARDOUS classes/icons so this reads as part of the
+    // same alert system instead of a new one.
+    const ANCHOR_POLL_MS = 10000;
+    const ANCHOR_RADIUS_KM = 0.5; // mirrors backend/app/main.py's ANCHOR_DRIFT_DEFAULT_RADIUS_KM
+
+    let anchorActive = false;
+    let anchorPlacementMode = false;
+    let anchorMarker = null;
+    let anchorCircle = null;
+    let anchorPollTimer = null;
+    let anchorLastAlert = "SAFE";
+
+    // Reuses the .vessel-marker CSS class (just an emoji + glow, not
+    // vessel-specific) instead of adding a new marker style.
+    const anchorIcon = L.divIcon({ className: "", html: '<div class="vessel-marker">⚓</div>', iconSize: [24, 24] });
+
+    // The anchor endpoints key state off the same session_id the chat flow
+    // already persists to localStorage (see section 8b) -- this only mints
+    // one if the crew sets an anchor before ever sending a chat query.
+    function ensureSessionId() {
+      if (!sessionId) {
+        try {
+          sessionId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `sess-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+          localStorage.setItem("orca_session_id", sessionId);
+        } catch (e) {
+          sessionId = sessionId || `sess-${Date.now()}`;
+        }
+      }
+      return sessionId;
+    }
+
+    function drawAnchor(lat, lon, radiusKm) {
+      if (anchorMarker) map.removeLayer(anchorMarker);
+      if (anchorCircle) map.removeLayer(anchorCircle);
+
+      anchorCircle = L.circle([lat, lon], {
+        radius: radiusKm * 1000,
+        color: "#38bdf8",
+        weight: 1.5,
+        fillColor: "#38bdf8",
+        fillOpacity: 0.16
+      }).addTo(map).bindPopup(`Anchor safe radius: ${radiusKm} km`);
+
+      anchorMarker = L.marker([lat, lon], { icon: anchorIcon, zIndexOffset: 900 })
+        .addTo(map)
+        .bindPopup('<b>Anchor Point</b><br><a href="#" onclick="disengageAnchor(event)">Disengage Anchor</a>');
+    }
+
+    function clearAnchorLayers() {
+      if (anchorMarker) { map.removeLayer(anchorMarker); anchorMarker = null; }
+      if (anchorCircle) { map.removeLayer(anchorCircle); anchorCircle = null; }
+    }
+
+    function startAnchorPolling() {
+      stopAnchorPolling();
+      anchorPollTimer = setInterval(pollAnchorDrift, ANCHOR_POLL_MS);
+      pollAnchorDrift();
+    }
+
+    function stopAnchorPolling() {
+      if (anchorPollTimer) {
+        clearInterval(anchorPollTimer);
+        anchorPollTimer = null;
+      }
+    }
+
+    async function pollAnchorDrift() {
+      if (!anchorActive || !sessionId) return;
+      const [lat, lon] = lastVesselCoord;
+      try {
+        const res = await fetch(`${API_BASE}/api/sentry/anchor-drift?session_id=${encodeURIComponent(sessionId)}&lat=${lat}&lon=${lon}`);
+        if (!res.ok) throw new Error("Anchor drift check failed");
+        const data = await res.json();
+        updateAnchorDriftBanner(data);
+      } catch (e) {
+        console.error("Anchor drift poll failed:", e);
+      }
+    }
+
+    function updateAnchorDriftBanner(data) {
+      const banner = document.getElementById("anchorDriftBanner");
+      const statusEl = document.getElementById("anchorDriftBannerStatus");
+      const iconEl = document.getElementById("anchorDriftBannerIcon");
+      if (!banner || !statusEl || !iconEl) return;
+
+      if (!data.anchor_set) {
+        banner.style.display = "none";
+        anchorLastAlert = "SAFE";
+        return;
+      }
+
+      banner.style.display = "flex";
+      const normalized = (data.drift_alert || "SAFE").toUpperCase();
+      banner.classList.remove("hazard-safe", "hazard-caution", "hazard-hazardous");
+      if (normalized === "HAZARDOUS") banner.classList.add("hazard-hazardous");
+      else if (normalized === "CAUTION") banner.classList.add("hazard-caution");
+      else banner.classList.add("hazard-safe");
+      iconEl.innerHTML = HAZARD_ICONS[normalized] || HAZARD_ICONS.SAFE;
+      statusEl.textContent = typeof data.distance_km === "number"
+        ? `${normalized} (${data.distance_km} km drift)`
+        : normalized;
+
+      // Only fire the siren/log line on the transition INTO hazardous, not
+      // on every poll tick while it stays hazardous.
+      if (normalized === "HAZARDOUS" && anchorLastAlert !== "HAZARDOUS") {
+        playAnchorDriftSiren();
+        appendAgentBadge(`🚨 ${data.message || "Vessel has drifted outside the anchor's safe radius."}`);
+      }
+      anchorLastAlert = normalized;
+    }
+
+    // Short two-tone alarm beep via the Web Audio API -- reuses the same
+    // audioCtx the Ocean Soundscape synthesizer (section 5f) lazily creates,
+    // rather than opening a second AudioContext.
+    function playAnchorDriftSiren() {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "square";
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(600, audioCtx.currentTime + 0.25);
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.5);
+        gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.75);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.8);
+      } catch (e) {
+        console.error("Anchor drift siren failed:", e);
+      }
+    }
+
+    async function setAnchorAt(lat, lon) {
+      ensureSessionId();
+      try {
+        const res = await fetch(`${API_BASE}/api/sentry/anchor-drift`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, coordinates: [lat, lon], radius_km: ANCHOR_RADIUS_KM }),
+        });
+        if (!res.ok) throw new Error("Failed to set anchor");
+        const data = await res.json();
+        drawAnchor(lat, lon, data.anchor.radius_km);
+        anchorActive = true;
+        anchorLastAlert = "SAFE";
+        updateAnchorDriftBanner({
+          anchor_set: true,
+          drift_alert: "SAFE",
+          distance_km: 0,
+          message: `Anchor set -- within the ${data.anchor.radius_km} km safe radius.`,
+        });
+        startAnchorPolling();
+        appendAgentBadge(`⚓ Anchor set at [${lat.toFixed(3)}, ${lon.toFixed(3)}] (${data.anchor.radius_km} km safe radius).`);
+      } catch (e) {
+        console.error("Set anchor failed:", e);
+        appendAgentBadge("⚠️ Failed to set anchor -- backend unreachable.");
+      }
+    }
+
+    async function disengageAnchor(e) {
+      if (e && typeof e.preventDefault === "function") e.preventDefault();
+      stopAnchorPolling();
+      clearAnchorLayers();
+      anchorActive = false;
+      anchorLastAlert = "SAFE";
+      const banner = document.getElementById("anchorDriftBanner");
+      if (banner) banner.style.display = "none";
+      const btn = document.getElementById("setAnchorBtn");
+      if (btn) btn.classList.remove("active-base");
+      if (sessionId) {
+        try {
+          await fetch(`${API_BASE}/api/sentry/anchor-drift?session_id=${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+        } catch (err) {
+          console.error("Clear anchor failed:", err);
+        }
+      }
+      appendAgentBadge("⚓ Anchor disengaged.");
+    }
+
+    function toggleAnchorMode() {
+      const btn = document.getElementById("setAnchorBtn");
+      if (anchorActive) {
+        disengageAnchor();
+        if (btn) btn.textContent = "Set Anchor";
+        return;
+      }
+      anchorPlacementMode = !anchorPlacementMode;
+      if (btn) btn.textContent = anchorPlacementMode ? "Click Map..." : "Set Anchor";
+      map.getContainer().style.cursor = anchorPlacementMode ? "crosshair" : "";
+    }
+
+    map.on("click", (e) => {
+      if (!anchorPlacementMode) return;
+      anchorPlacementMode = false;
+      map.getContainer().style.cursor = "";
+      setAnchorAt(e.latlng.lat, e.latlng.lng);
+      const btn = document.getElementById("setAnchorBtn");
+      if (btn) { btn.textContent = "Set Anchor"; btn.classList.add("active-base"); }
+    });
 
     // Seed the dashboard with the mock payload on load so it isn't empty before the first query.
     updateHazardBanner(MOCK_ORCHESTRATOR_RESPONSE.hazard_status);

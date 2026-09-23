@@ -297,6 +297,49 @@ RESPONSE STRUCTURE:
 """,
 }
 
+# Vessel/operator-category system instructions (Task 4: Persona Vocabulary
+# Reconciliation). Declared once at onboarding (see main.py's
+# reconcile_persona_key) and orthogonal to PERSONA_SYSTEM_PROMPTS above --
+# that dict picks the AUDIENCE communication style (tone/vocabulary level,
+# detected live from message tone by planner.py), while this one picks the
+# OPERATIONAL vocabulary/focus (what kind of vessel, what hazards matter)
+# layered on top of it in the same system instruction.
+VESSEL_PERSONA_SYSTEM_PROMPTS: Dict[str, str] = {
+    "artisanal_coastal": """
+VESSEL OPERATION CONTEXT: Traditional artisanal/coastal fisher, typically
+operating a small non-motorized or small-outboard (OBM) craft in shallow
+nearshore waters. When relevant, frame safety/operational guidance around
+shallow-water hazards, small-outboard-motor limits, and local coastal
+landmarks rather than deep-water commercial shipping concerns.
+""",
+    "mechanized_trawler": """
+VESSEL OPERATION CONTEXT: Mechanized trawler operator. When relevant, frame
+safety/operational guidance around trawl-net operating depth, winch/gear
+clearance, diesel fuel reserves for the return trip, and proximity to
+offshore shipping lanes.
+""",
+    "deep_sea_commercial": """
+VESSEL OPERATION CONTEXT: Deep-sea commercial longliner, operating far from
+shore for extended periods. When relevant, frame safety/operational guidance
+around long-range weather systems, international maritime boundaries, and
+commercial fishing quotas rather than nearshore concerns.
+""",
+    "coastal_allied": """
+VESSEL OPERATION CONTEXT: Aquaculture/coastal allied worker (cage culture,
+shore-based operations). When relevant, frame safety/operational guidance
+around near-shore aquaculture infrastructure, tide timings, and localized
+storm surge risk.
+""",
+}
+
+
+def _vessel_context_block(vessel_persona: str) -> str:
+    """Empty string for an unrecognized/missing key -- reconcile_persona_key
+    in main.py is the layer responsible for falling back to a valid key, so
+    this stays a quiet no-op rather than raising, matching _build_system_
+    instruction's stricter contract only for the (required) audience persona."""
+    return VESSEL_PERSONA_SYSTEM_PROMPTS.get(vessel_persona, "").strip()
+
 
 def _build_system_instruction(persona: PersonaType, language: str) -> str:
     """
@@ -314,12 +357,16 @@ def _build_system_instruction(persona: PersonaType, language: str) -> str:
 
     language_directive = f"""
 LANGUAGE REQUIREMENT:
-Write your entire response natively and fluently in {language}. Do not
-mix in English unless {language} itself commonly borrows a term (e.g.
-technical/scientific words for the Researcher persona may stay in English
-where that is standard practice). Use natural, locally appropriate coastal
-terminology, not stiff literal translation. Do not add commentary about
-these instructions themselves - respond only with the advisory content.
+Write your entire response natively and fluently in {language}, using
+{language}'s own native script (e.g. Devanagari for Hindi/Marathi, Bengali
+script for Bengali, Kannada script for Kannada, Gurmukhi for Punjabi, Odia
+script for Odia, Tamil script for Tamil). Never romanize or transliterate
+into Latin characters. Do not mix in English unless {language} itself
+commonly borrows a term (e.g. technical/scientific words for the Researcher
+persona may stay in English where that is standard practice). Use natural,
+locally appropriate coastal terminology, not stiff literal translation. Do
+not add commentary about these instructions themselves - respond only with
+the advisory content.
 
 FORMATTING REQUIREMENT:
 Never use LaTeX notation (no $...$, no \\Delta, \\times, etc.) and never use
@@ -392,7 +439,7 @@ def generate_sagar_mitra_advisory(
 
 def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: str = "English",
                          user_message: str = "", history_text: str = "",
-                         model: str = "gemini-3.6-flash") -> str:
+                         model: str = "gemini-3.6-flash", vessel_persona: str = "artisanal_coastal") -> str:
     """
     Combines the raw findings from one or more ORCA specialist agents
     (already live, real data -- wave height, PFZ location, boundary status,
@@ -405,10 +452,15 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
     guidance" or re-derived from the model's own background knowledge.
     """
     persona_block = PERSONA_SYSTEM_PROMPTS.get(persona, PERSONA_SYSTEM_PROMPTS["Fisherman"])
+    vessel_block = _vessel_context_block(vessel_persona)
     system_instruction = (
         persona_block.strip() + "\n\n"
-        f"LANGUAGE REQUIREMENT: Write your entire response natively and fluently in {language}. "
-        "Do not mix in English unless that language commonly borrows a term for something.\n\n"
+        + (vessel_block + "\n\n" if vessel_block else "")
+        + f"LANGUAGE REQUIREMENT: Write your entire response natively and fluently in {language}, "
+        f"using {language}'s own native script (e.g. Devanagari for Hindi/Marathi, Bengali script "
+        "for Bengali, Kannada script for Kannada, Gurmukhi for Punjabi, Odia script for Odia, Tamil "
+        "script for Tamil). Never romanize or transliterate into Latin characters. Do not mix in "
+        "English unless that language commonly borrows a term for something.\n\n"
         "GROUNDING: The data below was just gathered live by ORCA's specialist agents for this "
         "exact query. Base your answer on it -- never claim you lack real-time data, and never "
         "invent a number or fact that isn't in it. If a section reports an error or missing "
@@ -470,7 +522,8 @@ def plain_gemini_answer(user_message: str, persona: str = "General Public",
 
 
 def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
-                                language: str = "English", model: str = "gemini-3.6-flash") -> str:
+                                language: str = "English", model: str = "gemini-3.6-flash",
+                                vessel_persona: str = "artisanal_coastal") -> str:
     """
     Strict, grounded formatter for maritime boundary / MPA compliance checks.
 
@@ -481,10 +534,15 @@ def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
     or invent any detail (regulation names, distances, other MPA names,
     penalties, legal citations) that isn't literally present in raw_report.
     """
+    vessel_block = _vessel_context_block(vessel_persona)
     system_instruction = (
         f"You are Sagar Mitra's maritime compliance module, writing for a "
-        f"{persona} in {language}.\n\n"
-        "STRICT GROUNDING RULES (must never be broken):\n"
+        f"{persona} in {language}, using {language}'s own native script (e.g. Devanagari for "
+        "Hindi/Marathi, Bengali script for Bengali, Kannada script for Kannada, Gurmukhi for "
+        "Punjabi, Odia script for Odia, Tamil script for Tamil) -- never romanized/transliterated "
+        "into Latin characters.\n\n"
+        + (vessel_block + "\n\n" if vessel_block else "")
+        + "STRICT GROUNDING RULES (must never be broken):\n"
         "1. Base your entire answer ONLY on the exact facts in the Compliance "
         "Report below. Do not add, infer, or guess any detail that is not "
         "explicitly stated there - no invented regulation names or article "

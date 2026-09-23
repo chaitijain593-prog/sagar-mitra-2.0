@@ -2,12 +2,12 @@
 Sagar Mitra - Feature 1: Regional Language Voice In/Out
 ==============================================================================
 Lets a fisherman speak a query in Marathi, Tamil, Telugu, Gujarati,
-Malayalam, or English and get the advisory back as speech in that same
-language. Both directions go straight through Gemini's native multimodal
-audio understanding and TTS -- no separate STT/TTS service -- using the
-same key-rotation machinery (app.advisory.generate_content) as every other
-Gemini call in ORCA, so a quota hit here rotates keys exactly like it does
-for the text advisory path.
+Malayalam, Hindi, Bengali, Kannada, Punjabi, Odia, or English and get the
+advisory back as speech in that same language. Both directions go straight
+through Gemini's native multimodal audio understanding and TTS -- no
+separate STT/TTS service -- using the same key-rotation machinery
+(app.advisory.generate_content) as every other Gemini call in ORCA, so a
+quota hit here rotates keys exactly like it does for the text advisory path.
 
 Consumed by app/main.py's /api/voice/orchestrate endpoint.
 """
@@ -42,20 +42,42 @@ TRANSCRIBE_MODEL = LITE_MODEL
 TTS_MODEL = "gemini-2.5-flash-preview-tts"
 TTS_VOICE = "Kore"
 
-SUPPORTED_LANGUAGES = ["Marathi", "Tamil", "Telugu", "Gujarati", "Malayalam", "English"]
+SUPPORTED_LANGUAGES = [
+    "Marathi", "Tamil", "Telugu", "Gujarati", "Malayalam", "English",
+    "Hindi", "Bengali", "Kannada", "Punjabi", "Odia",
+]
+
+# BCP-47 regional tags for each supported language, used by synthesize_speech
+# below to give Gemini's TTS an explicit locale hint (types.SpeechConfig.
+# language_code) on top of the natural-language "Say this in {language}"
+# instruction, so the generated audio uses the correct regional dialect
+# instead of relying on the prompt text alone.
+LANGUAGE_BCP47_CODES = {
+    "Marathi": "mr-IN",
+    "Tamil": "ta-IN",
+    "Telugu": "te-IN",
+    "Gujarati": "gu-IN",
+    "Malayalam": "ml-IN",
+    "English": "en-IN",
+    "Hindi": "hi-IN",
+    "Bengali": "bn-IN",
+    "Kannada": "kn-IN",
+    "Punjabi": "pa-IN",
+    "Odia": "or-IN",
+}
 
 TRANSCRIBE_SYSTEM_PROMPT = """
 You are the speech-input layer for Sagar Mitra, an ocean intelligence system
 for the Indian coast. You are given a short spoken audio clip from a
 fisherman or coastal resident, in Marathi, Tamil, Telugu, Gujarati,
-Malayalam, or English.
+Malayalam, Hindi, Bengali, Kannada, Punjabi, Odia, or English.
 
 Respond with ONLY valid JSON, no markdown, no explanation, matching this
 exact schema:
 
 {
   "transcript": "<exact transcription of the speech, in its own native script>",
-  "language": "<one of: Marathi, Tamil, Telugu, Gujarati, Malayalam, English>",
+  "language": "<one of: Marathi, Tamil, Telugu, Gujarati, Malayalam, Hindi, Bengali, Kannada, Punjabi, Odia, English>",
   "english_text": "<English translation of the transcript>"
 }
 
@@ -116,16 +138,26 @@ def synthesize_speech(text: str, language: str = "English") -> bytes:
     Turns advisory text into spoken audio via Gemini's native TTS, reading
     it fluently in `language`. Returns WAV-encoded audio bytes.
     """
+    # Give the TTS call an explicit regional locale hint (LANGUAGE_BCP47_
+    # CODES) in addition to the natural-language instruction below --
+    # unmapped/unrecognized language strings just omit language_code rather
+    # than failing the call, so this never breaks a caller passing a
+    # language outside SUPPORTED_LANGUAGES.
+    language_code = LANGUAGE_BCP47_CODES.get(language)
+    speech_config_kwargs = {
+        "voice_config": types.VoiceConfig(
+            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=TTS_VOICE)
+        )
+    }
+    if language_code:
+        speech_config_kwargs["language_code"] = language_code
+
     response = generate_content(
         model=TTS_MODEL,
         contents=f"Say the following naturally in {language}, in a calm, clear voice:\n\n{text}",
         config=types.GenerateContentConfig(
             response_modalities=["AUDIO"],
-            speech_config=types.SpeechConfig(
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=TTS_VOICE)
-                )
-            ),
+            speech_config=types.SpeechConfig(**speech_config_kwargs),
         ),
     )
 
