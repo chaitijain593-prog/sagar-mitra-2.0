@@ -2,21 +2,15 @@
 Sagar Mitra - Feature 1: Regional Language Voice In/Out
 ==============================================================================
 Lets a fisherman speak a query in Marathi, Tamil, Telugu, Gujarati,
-<<<<<<< HEAD
+
 Malayalam, Hindi, Bengali, Kannada, Punjabi, Odia, or English and get the
 advisory back as speech in that same language. Both directions go straight
 through Gemini's native multimodal audio understanding and TTS -- no
 separate STT/TTS service -- using the same key-rotation machinery
 (app.advisory.generate_content) as every other Gemini call in ORCA, so a
 quota hit here rotates keys exactly like it does for the text advisory path.
-=======
-Malayalam, English, Hindi, Bengali, Kannada, Punjabi, or Odia and get the
-advisory back as speech in that same language. Both directions go straight through Gemini's native multimodal
-audio understanding and TTS -- no separate STT/TTS service -- using the
-same key-rotation machinery (app.advisory.generate_content) as every other
-Gemini call in ORCA, so a quota hit here rotates keys exactly like it does
-for the text advisory path.
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
+
 
 Consumed by app/main.py's /api/voice/orchestrate endpoint.
 """
@@ -58,7 +52,7 @@ SUPPORTED_LANGUAGES = [
     "Marathi", "Tamil", "Telugu", "Gujarati", "Malayalam", "English",
     "Hindi", "Bengali", "Kannada", "Punjabi", "Odia",
 ]
-<<<<<<< HEAD
+
 
 # BCP-47 regional tags for each supported language, used by synthesize_speech
 # below to give Gemini's TTS an explicit locale hint (types.SpeechConfig.
@@ -78,29 +72,28 @@ LANGUAGE_BCP47_CODES = {
     "Punjabi": "pa-IN",
     "Odia": "or-IN",
 }
-=======
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
 
 TRANSCRIBE_SYSTEM_PROMPT = """
 You are the speech-input layer for Sagar Mitra, an ocean intelligence system
 for the Indian coast. You are given a short spoken audio clip from a
 fisherman or coastal resident, in Marathi, Tamil, Telugu, Gujarati,
-<<<<<<< HEAD
+
 Malayalam, Hindi, Bengali, Kannada, Punjabi, Odia, or English.
-=======
+
 Malayalam, English, Hindi, Bengali, Kannada, Punjabi, or Odia.
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
 
 Respond with ONLY valid JSON, no markdown, no explanation, matching this
 exact schema:
 
 {
   "transcript": "<exact transcription of the speech, in its own native script>",
-<<<<<<< HEAD
+
   "language": "<one of: Marathi, Tamil, Telugu, Gujarati, Malayalam, Hindi, Bengali, Kannada, Punjabi, Odia, English>",
-=======
+
   "language": "<one of: Marathi, Tamil, Telugu, Gujarati, Malayalam, English, Hindi, Bengali, Kannada, Punjabi, Odia>",
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
   "english_text": "<English translation of the transcript>"
 }
 

@@ -19,12 +19,12 @@ from app.nlp_extract import extract_coordinates_from_message, extract_target_dat
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
 from app.route_planner import plan_safe_route
-<<<<<<< HEAD
+
 from app.session_store import store as session_store
 from app.anchor_store import store as anchor_store
-=======
+
 from app.db_store import store as session_store, insert_hazard_point, get_hazard_mesh, get_anchor, set_anchor
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
 from app.data import store
 from app import db
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
@@ -84,7 +84,7 @@ class OrchestrateRequest(BaseModel):
     user_message: str
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
     session_id: str | None = None  # carried across turns for conversation memory
-<<<<<<< HEAD
+
     onboarding_persona: str | None = None  # raw vessel-type string from the onboarding UI (see reconcile_persona_key)
 
 
@@ -115,7 +115,7 @@ def reconcile_persona_key(raw_input: str | None) -> str:
     if not raw_input:
         return DEFAULT_VESSEL_PERSONA
     return ONBOARDING_PERSONA_MAP.get(raw_input.strip().lower(), DEFAULT_VESSEL_PERSONA)
-=======
+
     # SHAP "What-If" sensitivity slider: optional perturbations applied to the
     # ML confidence inputs before predict_pfz_confidence runs, so the
     # frontend can ask "what if SST/chlorophyll/salinity were different here"
@@ -124,7 +124,7 @@ def reconcile_persona_key(raw_input: str | None) -> str:
     sst_delta: float | None = Field(default=None, ge=-10, le=10)
     chlorophyll_delta: float | None = Field(default=None, ge=-5, le=5)
     salinity_delta: float | None = Field(default=None, ge=-10, le=10)
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
 
 
 # --- Dashboard signal derivation ------------------------------------------
@@ -339,7 +339,7 @@ def geofence_check(lat: float, lon: float):
     }
 
 
-<<<<<<< HEAD
+
 # --- Feature 10: Anchor Drift Sentry --------------------------------------
 # Lets a vessel drop a virtual anchor (its position + a safe drift radius)
 # for its session; the frontend then polls the GET endpoint the same way it
@@ -355,7 +355,7 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     duplicated locally rather than imported, matching this codebase's
     existing per-module convention for this one-off calculation."""
     R = 6371.0
-=======
+
 # --- Feature: Sentry / Anchor Drift Alarm ---------------------------------
 import math
 import sqlite3
@@ -378,14 +378,14 @@ def set_anchor(session_id: str, lat: float, lon: float):
 
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 6371000.0
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
     lat1_r, lon1_r = math.radians(lat1), math.radians(lon1)
     lat2_r, lon2_r = math.radians(lat2), math.radians(lon2)
     dlat, dlon = lat2_r - lat1_r, lon2_r - lon1_r
     a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
     return 2 * R * math.asin(math.sqrt(a))
 
-<<<<<<< HEAD
+
 
 def _derive_drift_alert(distance_km: float, radius_km: float) -> tuple[str, str]:
     if distance_km <= radius_km:
@@ -441,7 +441,7 @@ def get_anchor_drift(session_id: str, lat: float, lon: float):
 def clear_anchor_drift(session_id: str):
     anchor_store.clear_anchor(session_id)
     return {"status": "success", "session_id": session_id, "anchor_set": False}
-=======
+
 @app.get("/api/sentry/anchor-drift")
 def anchor_drift_check(session_id: str, lat: float, lon: float):
     """
@@ -615,7 +615,7 @@ def get_news_domains():
     """Ocean domain taxonomy slugs, for the frontend's news domain selector
     (see app/news_feed.py's DOMAIN_TAXONOMY)."""
     return {"domains": list(DOMAIN_TAXONOMY.keys())}
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
 
 
 @app.post("/api/orchestrate")
@@ -767,12 +767,12 @@ def run_orchestration(request: OrchestrateRequest):
         "query_intent": result.get("query_intent", ""),
         "language": result.get("language", "English"),
         "persona": result.get("persona", "Fisherman"),
-<<<<<<< HEAD
+
         "vessel_persona": vessel_persona,
         "hazard_status": _derive_hazard_status(boundary_report, ocean_report, hazard_report),
-=======
+
         "hazard_status": derive_hazard_status(boundary_report, ocean_report, hazard_report),
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
         "pfz_location": pfz_zones,
         "telemetry": telemetry,
         "lightning_alert": hazard_report["lightning_alert"],

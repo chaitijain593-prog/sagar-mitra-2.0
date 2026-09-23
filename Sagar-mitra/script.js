@@ -665,6 +665,7 @@
       const feed = document.getElementById("agentStreamFeed");
       const card = document.createElement("div");
       card.className = "advisory-card";
+
       const alertsHtml = (data.alerts || []).map(a => `<span class="advisory-alert">⚠ ${a}</span>`).join("");
       const shapData = data.shap_attributions;
       const showShapChart = data.persona === "Researcher" && shapData && shapData.feature_attributions &&
@@ -673,30 +674,96 @@
       const hasMiniMap = Array.isArray(data.vessel_coord) && data.vessel_coord.length === 2 &&
         typeof L !== "undefined";
       const miniMapId = hasMiniMap ? `mini-map-${++miniMapCounter}` : null;
+
+      const isResearcher = data.persona === "Researcher";
+      const cardId = `advisoryCard_${++shapChartCounter}`;
+      card.id = cardId;
+
       card.innerHTML = `
         <h4>🧭 Maritime Advisory</h4>
         <div class="advisory-row"><b>Status:</b> ${(data.hazard_status || "SAFE").toUpperCase()}</div>
         <div class="advisory-row"><b>Vessel Position:</b> ${data.vessel_coord ? data.vessel_coord.join(", ") : "Unknown"}</div>
         ${alertsHtml || '<div class="advisory-row">No active alerts.</div>'}
         ${hasMiniMap ? `<div id="${miniMapId}" class="advisory-minimap"></div>` : ""}
+        ${isResearcher ? `
+          <div class="shap-slider-wrap" style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(148, 163, 184, 0.18);">
+            <div class="advisory-row"><b>🔬 Sensitivity Analysis (What-If Perturbation on Real Model)</b></div>
+            <div style="display:flex; gap:12px; margin-top:8px; font-size:0.82rem;">
+              <label style="flex:1;">SST Offset (°C): <span id="val_sst_${cardId}">0.0</span>
+                <input type="range" id="slider_sst_${cardId}" min="-5" max="5" step="0.5" value="0" style="width:100%;">
+              </label>
+              <label style="flex:1;">Chl Offset (mg/m³): <span id="val_chl_${cardId}">0.0</span>
+                <input type="range" id="slider_chl_${cardId}" min="-2" max="2" step="0.2" value="0" style="width:100%;">
+              </label>
+            </div>
+            <button type="button" id="btn_perturb_${cardId}" class="dispatch-export-btn" style="margin-top:8px; font-size:0.75rem; padding:6px 12px;">Apply Perturbation & Re-run SHAP</button>
+          </div>
+        ` : ""}
         ${showShapChart ? `
           <div class="shap-chart-wrap">
-            <div class="advisory-row"><b>🔬 PFZ Model Explainability (SHAP)</b></div>
+            <div class="advisory-row" style="margin-top:8px;"><b>🔬 PFZ Model Explainability (SHAP)</b></div>
             <div style="height:160px;"><canvas id="${chartId}"></canvas></div>
           </div>
         ` : ""}
       `;
+
       feed.appendChild(card);
       feed.scrollTop = feed.scrollHeight;
+
       if (hasMiniMap) {
         const miniMap = initAdvisoryMiniMap(miniMapId, data.vessel_coord);
-        // The card was just inserted into a scrolling feed, so Leaflet's initial size
-        // measurement can race the browser's layout pass -- without this, tiles can be
-        // requested against a stale (often zero-height) box and render as solid black.
         setTimeout(() => { miniMap.invalidateSize(); }, 250);
       }
       if (showShapChart) {
         renderShapChart(chartId, shapData.feature_attributions, shapData.base_value);
+      }
+
+      // Wire up interactive SHAP perturbation triggers for Researcher cards
+      if (isResearcher) {
+        const sstSlider = card.querySelector(`#slider_sst_${cardId}`);
+        const chlSlider = card.querySelector(`#slider_chl_${cardId}`);
+        const sstVal = card.querySelector(`#val_sst_${cardId}`);
+        const chlVal = card.querySelector(`#val_chl_${cardId}`);
+        const btn = card.querySelector(`#btn_perturb_${cardId}`);
+
+        sstSlider.addEventListener('input', () => { sstVal.textContent = parseFloat(sstSlider.value).toFixed(1); });
+        chlSlider.addEventListener('input', () => { chlVal.textContent = parseFloat(chlSlider.value).toFixed(1); });
+
+        btn.addEventListener('click', async () => {
+          const sstDelta = parseFloat(sstSlider.value);
+          const chlDelta = parseFloat(chlSlider.value);
+          btn.disabled = true;
+          btn.textContent = "Re-computing SHAP...";
+          try {
+            const res = await fetch(`${API_BASE}/api/orchestrate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                user_message: "Give me a statistical confidence breakdown and Z-score analysis",
+                coordinates: data.vessel_coord || [18.9, 72.8],
+                session_id: sessionId,
+                persona: "Researcher",
+                sst_delta: sstDelta,
+                chlorophyll_delta: chlDelta
+              })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const updatedData = await res.json();
+            appendAdvisoryCard({
+              vessel_coord: updatedData.coordinates || data.vessel_coord,
+              hazard_status: updatedData.hazard_status || data.hazard_status,
+              alerts: [`Perturbed run: SST offset ${sstDelta}°C, Chlorophyll offset ${chlDelta} mg/m³`, updatedData.advisory],
+              persona: "Researcher",
+              shap_attributions: (updatedData.telemetry && updatedData.telemetry.shap_attributions) || null,
+            });
+          } catch (err) {
+            console.error("Perturbation request failed:", err);
+            appendAgentBadge(` Perturbation request failed!: ${err.message}`);
+          } finally {
+            btn.disabled = false;
+            btn.textContent = "Apply Perturbation & Re-run SHAP";
+          }
+        });
       }
     }
     // --- Persona Runtime Switcher (Feature 15) ---

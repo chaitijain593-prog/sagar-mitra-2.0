@@ -579,11 +579,11 @@ def generate_sagar_mitra_advisory(
 
 def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: str = "English",
                          user_message: str = "", history_text: str = "",
-<<<<<<< HEAD
+
                          model: str = "gemini-3.6-flash", vessel_persona: str = "artisanal_coastal") -> str:
-=======
-                         model: str = PRIMARY_MODEL) -> str:
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
+                         
+
     """
     Combines the raw findings from one or more ORCA specialist agents
     (already live, real data -- wave height, PFZ location, boundary status,
@@ -595,13 +595,13 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
     dispatch step and must be reflected honestly, not hedged as "general
     guidance" or re-derived from the model's own background knowledge.
     """
-<<<<<<< HEAD
+
     persona_block = PERSONA_SYSTEM_PROMPTS.get(persona, PERSONA_SYSTEM_PROMPTS["Fisherman"])
     vessel_block = _vessel_context_block(vessel_persona)
-=======
+
     persona = normalize_persona(persona)
     persona_block = PERSONA_SYSTEM_PROMPTS[persona]
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
     system_instruction = (
         persona_block.strip() + "\n\n"
         + (vessel_block + "\n\n" if vessel_block else "")
@@ -672,12 +672,12 @@ def plain_gemini_answer(user_message: str, persona: str = "General Public",
 
 
 def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
-<<<<<<< HEAD
+
                                 language: str = "English", model: str = "gemini-3.6-flash",
                                 vessel_persona: str = "artisanal_coastal") -> str:
-=======
-                                language: str = "English", model: str = PRIMARY_MODEL) -> str:
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
+
+                                
+
     """
     Strict, grounded formatter for maritime boundary / MPA compliance checks.
 
@@ -688,11 +688,10 @@ def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
     or invent any detail (regulation names, distances, other MPA names,
     penalties, legal citations) that isn't literally present in raw_report.
     """
-<<<<<<< HEAD
+
     vessel_block = _vessel_context_block(vessel_persona)
-=======
+
     persona = normalize_persona(persona)
->>>>>>> b20d251e1c07dfb1e93c6a790f52eb790ced2ea5
     system_instruction = (
         f"You are Sagar Mitra's maritime compliance module, writing for a "
         f"{persona} in {language}, using {language}'s own native script (e.g. Devanagari for "
