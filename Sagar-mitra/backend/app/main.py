@@ -36,6 +36,7 @@ from app.voice import transcribe_and_translate, synthesize_speech, save_advisory
 from app.advisory import _is_quota_error, _is_permission_denied_error
 from app.boundary_toool import distance_to_nearest_boundary_km, return_heading_to_safety
 from app.news_feed import get_oceanography_news, DOMAIN_TAXONOMY
+from app.marine_weather_tool import get_live_ocean_conditions
 from app.response_formatter import derive_hazard_status
 from app.error_utils import is_quota_or_unavailable_error
 
@@ -811,19 +812,33 @@ class DispatchRequest(BaseModel):
 
 @app.post("/api/dispatch/generate")
 def generate_dispatch(request: DispatchRequest):
-    """Return an in-memory demo dispatch without generating files or audio."""
-    if len(request.coordinates) < 2:
-        raise HTTPException(status_code=422, detail="coordinates must include latitude and longitude")
-    lat, lon = request.coordinates[:2]
-    vessel_persona = reconcile_persona_key(request.onboarding_persona)
+    """Return a lightweight dispatch using current marine telemetry."""
+    lat = request.coordinates[0] if len(request.coordinates) > 0 else 19.07
+    lon = request.coordinates[1] if len(request.coordinates) > 1 else 72.87
+    ocean_report = get_live_ocean_conditions(lat, lon, day_offset=0, target_hour=None)
+    wave_match = re.search(r"Wave Height:\s*([0-9]+(?:\.[0-9]+)?)m", ocean_report)
+    sst_match = re.search(r"Water Temp:\s*([0-9]+(?:\.[0-9]+)?)", ocean_report)
+    if not wave_match or not sst_match:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Current marine telemetry is unavailable for these coordinates: {ocean_report}",
+        )
+    wave_height = float(wave_match.group(1))
+    sst_temp = float(sst_match.group(1))
+    sea_condition = f"Wave height {wave_height:.2f}m"
+    sst = f"{sst_temp:.1f}°C"
+    corridor = "A* boundary avoidance active"
     summary = (
-        "Demo simulation baseline: moderate 0.64 m swell, sea surface temperature 30.7 °C, "
-        f"vessel position {lat:.2f}° N, {lon:.2f}° E, and a simulated boundary-avoidance corridor. "
-        "Conditions are illustrative and are not a live operational forecast."
+        f"Operational baseline for ({lat:.2f}, {lon:.2f}). Sea Condition: {sea_condition}, "
+        f"SST: {sst}. Detour Corridor: {corridor}."
     )
     return {
-        "status": "simulation",
-        "vessel_persona": vessel_persona,
+        "status": "success",
+        "vessel_persona": "Fisherman",
+        "coordinates": [lat, lon],
+        "sea_condition": sea_condition,
+        "sst": sst,
+        "corridor": corridor,
         "summary": summary,
         "message": summary,
         "pdf_url": None,

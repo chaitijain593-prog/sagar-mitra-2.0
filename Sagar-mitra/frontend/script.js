@@ -1557,33 +1557,80 @@ async function checkGeofencePosition(lat, lon) {
 // -------------------------------------------------------------
 function initDispatchButton() {
   const btn = document.getElementById("morning-dispatch-btn") || document.querySelector(".dispatch-action-btn");
-  if (btn) {
-    btn.type = "button";
-    btn.onclick = function (e) {
+  if (!btn) return;
+  btn.type = "button";
+  btn.onclick = async function (e) {
     e.preventDefault();
     e.stopPropagation();
-    let modal = document.getElementById("dispatch-modal");
-    if (!modal) {
-      modal = document.createElement("div");
-      modal.id = "dispatch-modal";
-      modal.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0b192c;border:2px solid #00f2fe;padding:24px;border-radius:12px;z-index:99999;color:#fff;box-shadow:0 0 30px rgba(0,0,0,0.8);max-width:420px;font-family:sans-serif;";
+    btn.disabled = true;
+    const previousText = btn.textContent;
+    btn.textContent = "Generating dispatch...";
+    try {
+      const res = await fetch(`${API_BASE}/api/dispatch/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          coordinates: [window.currentVesselLat || (lastVesselCoord && lastVesselCoord[0]) || 19.07, window.currentVesselLon || (lastVesselCoord && lastVesselCoord[1]) || 72.87],
+          onboarding_persona: "Fisherman",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `Dispatch request failed (HTTP ${res.status})`);
+
+      document.getElementById("morning-dispatch-card")?.remove();
+      const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      })[char]);
+      const [lat, lon] = data.coordinates;
+      const modal = document.createElement("div");
+      modal.id = "morning-dispatch-card";
+      modal.setAttribute("role", "dialog");
+      modal.setAttribute("aria-modal", "true");
+      modal.style.cssText = "position:fixed;inset:0;z-index:99999;color:#fff;font-family:sans-serif;background:rgba(0,0,0,0.45);";
       modal.innerHTML = `
-        <h3 style="margin-top:0;color:#00f2fe;">📋 MORNING MARITIME DISPATCH</h3>
-        <p><strong>Fleet Advisory:</strong> Operational baseline generated.</p>
-        <p><strong>Coordinates:</strong> 19.07° N, 72.87° E</p>
-        <p><strong>Sea Condition:</strong> Moderate (0.64m swell)</p>
-        <p><strong>SST Anomaly:</strong> Normal (30.7°C)</p>
-        <p><strong>Detour Corridor:</strong> A* boundary avoidance active.</p>
-        <button id="close-dispatch-btn" type="button" style="margin-top:12px;background:#00f2fe;color:#000;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:bold;">Close Advisory</button>
-      `;
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%, -50%);background:rgba(10, 25, 47, 0.95);border:1.5px solid #00d2ff;border-radius:12px;padding:20px;z-index:9999;color:#fff;width:380px;max-width:calc(100% - 40px);box-shadow:0 0 25px rgba(0, 210, 255, 0.35);box-sizing:border-box;">
+          <h3 style="margin-top:0;color:#00d2ff;font-size:16px;">📋 Morning Maritime Dispatch</h3>
+          <p style="margin:6px 0;font-size:13px;"><strong>Position:</strong> ${lat.toFixed(2)}° N, ${lon.toFixed(2)}° E</p>
+          <p style="margin:6px 0;font-size:13px;"><strong>Sea Condition:</strong> ${escapeHtml(data.sea_condition)}</p>
+          <p style="margin:6px 0;font-size:13px;"><strong>SST:</strong> ${escapeHtml(data.sst)}</p>
+          <p style="margin:6px 0;font-size:13px;"><strong>Routing:</strong> ${escapeHtml(data.corridor)}</p>
+          <div style="margin-top:16px;display:flex;gap:10px;">
+            <button id="close-dispatch-modal" type="button" style="flex:1;background:#00d2ff;color:#051329;border:none;padding:8px;border-radius:6px;font-weight:bold;cursor:pointer;">Close</button>
+            <button id="download-dispatch-pdf-btn" type="button" style="flex:1;background:#22c55e;color:#fff;border:none;padding:8px;border-radius:6px;font-weight:bold;cursor:pointer;">📥 Download PDF</button>
+          </div>
+        </div>`;
       document.body.appendChild(modal);
-      document.getElementById("close-dispatch-btn").onclick = () => modal.remove();
-    } else {
-      modal.style.display = "block";
+      document.getElementById("close-dispatch-modal").onclick = () => modal.remove();
+      document.getElementById("download-dispatch-pdf-btn").onclick = (event) => {
+        event.preventDefault();
+        const printWindow = window.open("", "_blank", "width=750,height=800");
+        if (!printWindow) {
+          window.alert("Allow pop-ups to print or save the dispatch as a PDF.");
+          return;
+        }
+        printWindow.document.write(`
+          <!doctype html><html><head><title>Sagar Mitra Dispatch</title>
+          <style>body{font-family:Arial,sans-serif;padding:32px;color:#10243b}h2{color:#075985}p{line-height:1.5}</style>
+          </head><body>
+          <h2>SAGAR MITRA · PRE-SAIL MARITIME DISPATCH</h2>
+          <p><strong>Issued:</strong> ${escapeHtml(new Date().toLocaleString())}</p>
+          <p><strong>Position:</strong> ${lat.toFixed(3)}° N, ${lon.toFixed(3)}° E</p>
+          <p><strong>Sea Condition:</strong> ${escapeHtml(data.sea_condition)}</p>
+          <p><strong>SST:</strong> ${escapeHtml(data.sst)}</p>
+          <p><strong>Summary:</strong> ${escapeHtml(data.summary)}</p>
+          <script>window.onload = function() { window.print(); }<\/script>
+          </body></html>`);
+        printWindow.document.close();
+      };
+    } catch (error) {
+      console.error("Morning dispatch generation failed:", error);
+      window.alert(`Unable to generate Morning Dispatch: ${error.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = previousText;
     }
     return false;
-    };
-  }
+  };
 }
 
 async function loadNewsDomains() {
