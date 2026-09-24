@@ -200,6 +200,14 @@ body {
 .advisory-card {
   align-self: stretch; background: var(--card-bg); border: 1px solid var(--accent-cyan); border-radius: 14px; padding: 16px 18px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); opacity: 0; animation: badgeFadeIn 0.5s ease forwards;
+  min-height: fit-content; height: auto !important; max-height: none; overflow: visible;
+  color: #e2e8f0 !important; font-size: 14px; line-height: 1.6; visibility: visible !important;
+}
+.advisory-card .advisory-body,
+.advisory-card .advisory-body-row,
+.advisory-card .advisory-body p {
+  display: block !important; height: auto !important; max-height: none; overflow: visible;
+  color: #e2e8f0 !important; font-size: 14px; line-height: 1.6; word-break: break-word; visibility: visible !important;
 }
 .advisory-card h4 { font-size: 1rem; font-weight: 800; color: var(--accent-cyan); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
 .advisory-card .advisory-row { font-size: 0.88rem; color: var(--text-sub); margin-bottom: 6px; line-height: 1.5; }

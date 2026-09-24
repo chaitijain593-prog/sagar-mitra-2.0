@@ -88,6 +88,11 @@ const onboardNextBtn = document.getElementById("onboardNextBtn");
 const onboardBackBtn = document.getElementById("onboardBackBtn");
 const onboardFinishBtn = document.getElementById("onboardFinishBtn");
 const logoutBtn = document.getElementById("logoutBtn");
+const authUserBadge = document.getElementById("authUserBadge");
+if (authUserBadge) {
+  const authenticatedName = localStorage.getItem("orcaName") || localStorage.getItem("orcaUser");
+  if (authenticatedName) authUserBadge.textContent = authenticatedName;
+}
 
 function checkOnboarding() {
   const profile = localStorage.getItem(ONBOARD_KEY);
@@ -108,10 +113,6 @@ if (onboardNextBtn) {
   onboardNextBtn.addEventListener("click", () => {
     const name = onboardName ? onboardName.value.trim() : "";
     const personaInput = onboardPersonaGroup ? onboardPersonaGroup.querySelector('input[name="persona"]:checked') : null;
-    if (!name) {
-      if (onboardStep1Error) onboardStep1Error.textContent = "Please enter your name.";
-      return;
-    }
     if (!personaInput) {
       if (onboardStep1Error) onboardStep1Error.textContent = "Please select who you are.";
       return;
@@ -148,8 +149,15 @@ if (onboardFinishBtn) {
 
 if (logoutBtn) {
   logoutBtn.addEventListener("click", () => {
+    const username = localStorage.getItem("orcaUser");
+    localStorage.removeItem("orcaAuth");
+    localStorage.removeItem("orcaUser");
+    localStorage.removeItem("orcaName");
     localStorage.removeItem(ONBOARD_KEY);
-    window.location.reload();
+    localStorage.removeItem("orcaUserProfile");
+    if (username) localStorage.removeItem("orcaUserProfile_" + username);
+    sessionStorage.clear();
+    window.location.replace("auth.html");
   });
 }
 
@@ -294,6 +302,9 @@ const NM_IN_METERS = 1852;
 async function handleVesselDragEnd(e) {
   try {
     const { lat, lng } = e.target.getLatLng();
+    window.currentVesselLat = lat;
+    window.currentVesselLon = lng;
+    window.vesselMarker = e.target;
     lastVesselCoord = [lat, lng];
     document.querySelectorAll(".vessel-coordinate-value").forEach((badge) => {
       badge.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
@@ -326,6 +337,9 @@ function plotVesselMarker(lat, lon) {
     .addTo(map)
     .bindPopup("<b>Your Vessel</b>")
     .on("dragend", handleVesselDragEnd);
+  window.vesselMarker = vesselMarker;
+  window.currentVesselLat = lat;
+  window.currentVesselLon = lon;
   return vesselMarker;
 }
 
@@ -402,7 +416,8 @@ function plotRoute(vesselCoords, pfzCoords, routeInfo) {
     const hoursTotal = distanceNM / 10;
     const hours = Math.floor(hoursTotal);
     const minutes = Math.round((hoursTotal - hours) * 60);
-    const waveText = routeInfo.max_wave_m != null ? ` | Max wave: ${routeInfo.max_wave_m}m` : "";
+    const maxWave = Number.parseFloat(routeInfo.max_wave_m);
+    const waveText = Number.isFinite(maxWave) ? ` | Max wave: ${maxWave.toFixed(2)} m` : "";
     tooltipText = `${hazardAvoided ? "Detour" : "Direct"}: ${distanceNM.toFixed(0)} NM | Est. Time: ${hours}h ${minutes}m${waveText}`;
   } else if (pfzCoords && pfzCoords.length > 0) {
     const firstZone = pfzCoords[0];
@@ -619,7 +634,7 @@ function updateAnchorDriftBanner(data) {
   banner.style.display = "flex";
   const normalized = (data.drift_alert || "SAFE").toUpperCase();
   banner.classList.remove("hazard-safe", "hazard-caution", "hazard-hazardous");
-  if (normalized === "HAZARDOUS") banner.classList.add("hazard-hazardous");
+  if (normalized === "HAZARDOUS" || normalized === "WARNING") banner.classList.add("hazard-hazardous");
   else if (normalized === "CAUTION") banner.classList.add("hazard-caution");
   else banner.classList.add("hazard-safe");
   iconEl.innerHTML = HAZARD_ICONS[normalized] || HAZARD_ICONS.SAFE;
@@ -710,30 +725,51 @@ const HAZARD_ICONS = {
   HAZARDOUS: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16h.01"/><path d="M12 8v4"/><path d="M15.312 2a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586l-4.688-4.688A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2z"/></svg>'
 };
 
-function updateHazardBanner(status) {
+let lastMarineStatus = "SAFE";
+function updateHazardBanner(status, context = {}) {
   const banner = document.getElementById("hazardBanner");
   const statusEl = document.getElementById("hazardBannerStatus");
   const iconEl = document.getElementById("hazardBannerIcon");
-  const normalized = (status || "SAFE").toUpperCase();
+  const rawStatus = (status || "SAFE").toUpperCase();
+  const marineStatus = (context.marineStatus || "").toUpperCase();
+  if (marineStatus) lastMarineStatus = marineStatus;
+  const marineIsDangerous = ["HAZARDOUS", "WARNING"].includes(marineStatus)
+    || (!marineStatus && ["HAZARDOUS", "WARNING"].includes(rawStatus));
+  const normalized = context.boundaryAlert
+    ? (marineIsDangerous ? marineStatus : (context.boundaryLabel || "EEZ BORDER ALERT"))
+    : rawStatus;
   if (!banner || !statusEl || !iconEl) return;
 
   banner.classList.remove("hazard-safe", "hazard-caution", "hazard-hazardous");
-  if (normalized === "HAZARDOUS") banner.classList.add("hazard-hazardous");
-  else if (normalized === "CAUTION") banner.classList.add("hazard-caution");
+  banner.style.background = "";
+  if (normalized === "HAZARDOUS" || normalized === "WARNING") banner.classList.add("hazard-hazardous");
+  else if (normalized === "EEZ BORDER ALERT") banner.classList.add("hazard-hazardous");
+  else if (normalized === "CAUTION" || normalized === "REGULATORY CAUTION") banner.classList.add("hazard-caution");
   else banner.classList.add("hazard-safe");
-  iconEl.innerHTML = HAZARD_ICONS[normalized] || HAZARD_ICONS.SAFE;
+  const iconStatus = normalized === "WARNING" ? "HAZARDOUS" : normalized;
+  iconEl.innerHTML = HAZARD_ICONS[iconStatus] || HAZARD_ICONS[marineIsDangerous ? "HAZARDOUS" : "CAUTION"] || HAZARD_ICONS.SAFE;
   statusEl.textContent = normalized;
 }
 
 function appendAgentBadge(text) {
-  const feed = document.getElementById("agentStreamFeed");
+  const feed = document.querySelector(".agent-stream-feed") || document.getElementById("agentStreamFeed");
   if (!feed) return;
   const badge = document.createElement("div");
   badge.className = "agent-badge";
   badge.textContent = text;
   feed.appendChild(badge);
-  feed.scrollTop = feed.scrollHeight;
+  scrollAgentStreamToBottom(feed);
   return badge;
+}
+
+function scrollAgentStreamToBottom(feed) {
+  const streamContainer = feed || document.querySelector(".agent-stream-feed") || document.getElementById("agentStreamFeed");
+  if (!streamContainer) return;
+  const scrollToBottom = () => {
+    streamContainer.scrollTop = streamContainer.scrollHeight;
+  };
+  if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(scrollToBottom);
+  else scrollToBottom();
 }
 
 function runAgentSequence() {
@@ -749,37 +785,116 @@ function runAgentSequence() {
 }
 
 function appendAdvisoryCard(data) {
-  const feed = document.getElementById("agentStreamFeed");
+  console.log("Chat response data received:", data);
+  const feed = document.querySelector(".agent-stream-feed") || document.getElementById("agentStreamFeed");
   if (!feed) return;
   const card = document.createElement("div");
   card.className = "advisory-card";
+  card.style.cssText = "max-width:100%;min-width:0;overflow-wrap:anywhere;line-height:1.6;";
 
-  const alertsHtml = (data.alerts || []).map(a => `<span class="advisory-alert">⚠ ${a}</span>`).join("");
-  card.innerHTML = `
-    <h4>🧭 Maritime Advisory</h4>
-    <div class="advisory-row"><b>Status:</b> ${(data.hazard_status || "SAFE").toUpperCase()}</div>
-    <div class="advisory-row"><b>Vessel Position:</b> <span class="vessel-coordinate-value">${data.vessel_coord ? data.vessel_coord.map((n) => Number(n).toFixed(4)).join(", ") : "Unknown"}</span></div>
-    ${alertsHtml || '<div class="advisory-row">No active alerts.</div>'}
-  `;
-  const questionRow = document.createElement("div");
-  questionRow.className = "advisory-row";
-  const questionLabel = document.createElement("b");
-  questionLabel.textContent = "Question: ";
-  const questionText = document.createElement("span");
-  questionText.textContent = data.user_message || "Maritime conditions query";
-  questionRow.append(questionLabel, questionText);
-  card.insertBefore(questionRow, card.children[1] || null);
+  const advisoryText = (data && typeof data === "object" && (
+    data.advisory || data.response || data.summary || data.message
+  )) || (typeof data === "string" ? data : "");
 
+  const heading = document.createElement("h4");
+  heading.textContent = "Maritime Advisory";
+  card.appendChild(heading);
+
+  const addRow = (label, value) => {
+    const row = document.createElement("div");
+    row.className = "advisory-row";
+    row.style.cssText = "margin-bottom:8px;line-height:1.5;overflow-wrap:anywhere;";
+    if (label) {
+      const strong = document.createElement("b");
+      strong.textContent = label;
+      row.appendChild(strong);
+    }
+    const content = document.createElement("span");
+    content.textContent = value == null ? "" : String(value);
+    row.appendChild(content);
+    card.appendChild(row);
+    return row;
+  };
+
+  addRow("Status: ", (data.display_status || data.hazard_status || "SAFE").toUpperCase());
+  addRow("Question: ", data.user_message || "Maritime conditions query");
+  addRow("Vessel Position: ", data.vessel_coord
+    ? data.vessel_coord.map((n) => Number(n).toFixed(4)).join(", ") : "Unknown");
+
+  const agentNames = {
+    navigation: "Satellite Agent", fishing: "Ocean & PFZ", compliance: "Compliance Agent",
+    hazard: "Weather & Hazards", historical: "Ocean History", analytics: "Analytics",
+    regional: "Regional Scan", dispatch: "Morning Dispatch",
+  };
   const agentsRow = document.createElement("div");
-  agentsRow.className = "advisory-row";
+  agentsRow.className = "advisory-row advisory-agents-row";
+  agentsRow.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px;line-height:1.5;";
   const agentsLabel = document.createElement("b");
-  agentsLabel.textContent = "Active agents: ";
-  const agentsText = document.createElement("span");
-  agentsText.textContent = "Satellite Agent · Ocean & PFZ · Compliance";
-  agentsRow.append(agentsLabel, agentsText);
-  card.insertBefore(agentsRow, card.children[2] || null);
+  agentsLabel.textContent = "Active agents:";
+  agentsRow.appendChild(agentsLabel);
+  const agents = Array.isArray(data.agents_invoked) && data.agents_invoked.length
+    ? data.agents_invoked : ["navigation", "fishing", "compliance"];
+  agents.forEach((agent) => {
+    const chip = document.createElement("span");
+    chip.className = "advisory-agent-chip";
+    chip.textContent = agentNames[agent] || String(agent);
+    chip.style.cssText = "display:inline-flex;max-width:100%;padding:3px 8px;border:1px solid rgba(56,189,248,.35);border-radius:999px;background:rgba(8,145,178,.12);color:var(--text-main);font-size:.75rem;overflow-wrap:anywhere;";
+    agentsRow.appendChild(chip);
+  });
+  card.appendChild(agentsRow);
+
+  const alerts = Array.isArray(data?.alerts) ? data.alerts.map((alert) => String(alert)) : [];
+  const advisory = String(advisoryText || alerts.find((alert) => !/A\* cost-grid route applied|route detour applied/i.test(alert)) || "");
+  const body = document.createElement("div");
+  body.className = "advisory-body";
+  body.style.cssText = "margin:4px 0 8px;line-height:1.5;overflow-wrap:anywhere;white-space:normal;unicode-bidi:plaintext;";
+  const cleanAdvisory = advisory
+    .replace(/A\* cost-grid route applied to avoid:[^\n.!?\u0964\u0965]*/giu, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  cleanAdvisory.split(/\n\s*\n/).filter(Boolean).forEach((paragraph) => {
+    paragraph.split(/(?<=[.!?।॥])\s+(?=\S)/u).filter(Boolean).forEach((sentence) => {
+      const p = document.createElement("p");
+      p.textContent = sentence.trim();
+      p.style.cssText = "margin:0 0 8px;line-height:1.6;overflow-wrap:anywhere;word-break:break-word;unicode-bidi:plaintext;";
+      body.appendChild(p);
+    });
+  });
+  const advisoryRow = document.createElement("div");
+  advisoryRow.className = "advisory-row advisory-body-row";
+  advisoryRow.style.cssText = "margin-bottom:8px;line-height:1.5;overflow-wrap:anywhere;";
+  const advisoryLabel = document.createElement("b");
+  advisoryLabel.textContent = "Advisory: ";
+  advisoryRow.append(advisoryLabel, body);
+  card.appendChild(advisoryRow);
+
+  const routeNote = data.route && data.route.note ? String(data.route.note) : "";
+  const hasDetour = Boolean(data.route && (data.route.hazard_avoided
+    || /A\* cost-grid route applied|route detour applied/i.test(routeNote)));
+  if (hasDetour) {
+    let detourText;
+    if (/exits? the Indian EEZ|international waters/i.test(routeNote)) {
+      detourText = "\u{1F4CD} Detour Advisory: A* route applied to avoid exiting the Indian EEZ.";
+    } else {
+      const cleaned = routeNote.replace(/^A\* cost-grid route applied to avoid:\s*/i, "")
+        .replace(/^direct line\s+/i, "").replace(/[.\s]+$/, "");
+      detourText = `\u{1F4CD} Detour Advisory: A* route applied to avoid ${cleaned || "a navigation hazard"}.`;
+    }
+    const callout = document.createElement("div");
+    callout.className = "advisory-navigation-callout";
+    callout.textContent = detourText;
+    callout.style.cssText = "margin:4px 0 8px;padding:9px 11px;border-left:3px solid #f59e0b;border-radius:5px;background:rgba(245,158,11,.1);line-height:1.5;overflow-wrap:anywhere;unicode-bidi:plaintext;";
+    card.appendChild(callout);
+  }
+
+  alerts.filter((alert) => alert !== advisory && !/A\* cost-grid route applied|route detour applied/i.test(alert))
+    .forEach((alert) => {
+      const alertRow = addRow("", alert);
+      alertRow.classList.add("advisory-alert");
+    });
   feed.appendChild(card);
-  feed.scrollTop = feed.scrollHeight;
+  scrollAgentStreamToBottom(feed);
+  window.setTimeout(() => scrollAgentStreamToBottom(feed), 50);
 }
 
 // -------------------------------------------------------------
@@ -855,22 +970,34 @@ const MOCK_ORCHESTRATOR_RESPONSE = {
 };
 
 function getVesselCoordinates() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      resolve([18.9, 72.8]);
+      reject(new Error("Browser geolocation is unavailable."));
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve([pos.coords.latitude, pos.coords.longitude]),
-      () => resolve([18.9, 72.8]),
+      (error) => reject(new Error(`Browser geolocation failed: ${error.message}`)),
       { timeout: 4000 }
     );
   });
 }
 
+let chatQueryInFlight = false;
+
+function handleSendMessage() {
+  return handleQuerySubmit();
+}
+
 async function handleQuerySubmit(e) {
-  e.preventDefault();
-  e.stopPropagation();
+  try {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+  }
+  if (chatQueryInFlight) return;
+  chatQueryInFlight = true;
   const input = document.getElementById("chatInput");
   const text = input ? input.value.trim() : "";
   if (!text) return;
@@ -886,11 +1013,15 @@ async function handleQuerySubmit(e) {
     console.warn("Agent progress animation failed:", sequenceError);
   }
 
-  let coords = [18.9, 72.8];
-  try {
-    coords = await getVesselCoordinates();
-  } catch (locationError) {
-    console.warn("Device location unavailable; using demo coordinates:", locationError);
+  const activePosition = window.vesselMarker && typeof window.vesselMarker.getLatLng === "function"
+    ? window.vesselMarker.getLatLng()
+    : null;
+  const coords = activePosition
+    ? [Number(activePosition.lat), Number(activePosition.lng)]
+    : Array.isArray(lastVesselCoord) ? lastVesselCoord.map(Number) : null;
+  if (!coords || coords.length !== 2 || !coords.every(Number.isFinite)) {
+    appendAgentBadge("Live vessel position is unavailable; position the vessel marker before requesting an advisory.");
+    return;
   }
   let parsedData;
   const abortController = new AbortController();
@@ -917,24 +1048,38 @@ async function handleQuerySubmit(e) {
       extraAlerts.push(`🧭 ${backendData.route.note || "Route detour applied to avoid a hazard."}`);
     }
 
+    const boundaryEvidence = `${backendData.route?.note || ""} ${backendData.advisory || ""}`;
+    const boundaryAlert = Boolean(backendData.boundary_alert)
+      || /(?:crossed?|exit(?:ing)?|outside).{0,48}(?:EEZ|international waters)|(?:EEZ|international waters).{0,48}(?:crossed?|exit|boundary)/i.test(boundaryEvidence);
+    const marineStatus = backendData.marine_status || (backendData.cyclone_alert
+      ? "WARNING" : boundaryAlert ? "SAFE" : backendData.hazard_status || "SAFE");
+    const displayStatus = boundaryAlert && !["HAZARDOUS", "WARNING"].includes(String(marineStatus).toUpperCase())
+      ? (backendData.boundary_status || "EEZ BORDER ALERT")
+      : (marineStatus || backendData.hazard_status || "SAFE");
+
     parsedData = {
       user_message: backendData.user_message || text,
       vessel_coord: backendData.coordinates || coords,
-      hazard_status: backendData.hazard_status || "SAFE",
+      hazard_status: backendData.hazard_status || "UNKNOWN",
+      display_status: displayStatus,
+      marine_status: marineStatus,
+      boundary_alert: boundaryAlert,
+      boundary_status: backendData.boundary_status || "EEZ BORDER ALERT",
       advisory_source: backendData.advisory_source || "live_model",
-      alerts: [backendData.advisory || "No specific advisory generated.", ...extraAlerts],
+      alerts: [...(backendData.advisory ? [backendData.advisory] : []), ...extraAlerts],
       pfz_location: backendData.pfz_location || [],
       telemetry: backendData.telemetry || null,
       route: backendData.route || null,
       plot_url: backendData.plot_url || null,
       regional_zones: backendData.regional_zones || [],
       persona: backendData.persona || "Fisherman",
+      agents_invoked: backendData.agents_invoked || [],
       shap_attributions: (backendData.telemetry && backendData.telemetry.shap_attributions) || null,
     };
   } catch (err) {
-    console.warn("ORCA backend unavailable; using presentation simulation:", err);
-    appendAgentBadge("Operating in Offline Simulation Mode — showing the baseline maritime advisory.");
-    parsedData = { ...MOCK_ORCHESTRATOR_RESPONSE, user_message: text, vessel_coord: coords, route: null, plot_url: null, regional_zones: [] };
+    console.error("Live ORCA advisory request failed:", err);
+    appendAgentBadge(`Live advisory unavailable: ${err.message}`);
+    return;
   } finally {
     clearTimeout(timeoutId);
     if (loader) loader.style.display = "none";
@@ -946,16 +1091,67 @@ async function handleQuerySubmit(e) {
     try { render(); } catch (renderError) { console.error(`${label} rendering failed:`, renderError); }
   };
   activePFZZones = parsedData.pfz_location || [];
-  renderSafely("Hazard banner", () => updateHazardBanner(parsedData.hazard_status));
+  renderSafely("Hazard banner", () => updateHazardBanner(parsedData.display_status || parsedData.hazard_status, {
+    boundaryAlert: parsedData.boundary_alert,
+    boundaryLabel: parsedData.boundary_status,
+    marineStatus: parsedData.marine_status,
+  }));
   renderSafely("Vessel marker", () => plotVesselMarker(parsedData.vessel_coord[0], parsedData.vessel_coord[1]));
   renderSafely("PFZ zones", () => plotPFZZones(parsedData.pfz_location));
   renderSafely("Route", () => plotRoute(parsedData.vessel_coord, parsedData.pfz_location, parsedData.route));
   renderSafely("Regional zones", () => plotRegionalZones(parsedData.regional_zones));
   renderSafely("Advisory card", () => appendAdvisoryCard(parsedData));
   renderSafely("Vessel state", () => setLastKnownState(parsedData.vessel_coord, parsedData.hazard_status));
-  renderSafely("Telemetry", () => updateTelemetryBars(parsedData.telemetry || MOCK_ORCHESTRATOR_RESPONSE.telemetry));
-  renderSafely("Historical chart", () => updateHistoricalChart(parsedData.telemetry || MOCK_ORCHESTRATOR_RESPONSE.telemetry));
+  if (parsedData.telemetry) {
+    renderSafely("Telemetry", () => updateTelemetryBars(parsedData.telemetry));
+    renderSafely("Historical chart", () => updateHistoricalChart(parsedData.telemetry));
+  }
   renderSafely("Map sizing", () => { if (typeof map !== "undefined") map.invalidateSize(); });
+  } catch (err) {
+    console.error("Chat request or rendering failed:", err);
+  } finally {
+    chatQueryInFlight = false;
+    const sendBtn = document.getElementById("chatSendBtn");
+    if (sendBtn) sendBtn.disabled = false;
+    const loader = document.getElementById("chatLoader");
+    if (loader) loader.style.display = "none";
+  }
+}
+
+function initChatInterface() {
+  const form = document.getElementById("chatForm");
+  const chatInput = document.getElementById("chatInput");
+  const sendBtn = document.getElementById("chatSendBtn");
+
+  if (form) {
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+      handleSendMessage();
+      return false;
+    };
+  }
+  if (chatInput) {
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      handleSendMessage();
+      return false;
+    });
+  }
+  if (sendBtn) {
+    sendBtn.type = "button";
+    sendBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      handleSendMessage();
+      return false;
+    });
+  }
 }
 
 // -------------------------------------------------------------
@@ -1502,7 +1698,11 @@ function playSirenTone() {
 }
 
 function normalizeGeofenceState(data, nearestKm) {
-  if (data.geofence_alert === "HAZARDOUS" || data.inside_eez === false || data.inside_mpa === true) return "CROSSED";
+  const insideEez = data.inside_eez === true || data.breached === false;
+  const outsideEez = data.inside_eez === false || data.breached === true;
+  if (outsideEez || data.inside_mpa === true) return "CROSSED";
+  if (insideEez) return "SAFE";
+  if (data.geofence_alert === "HAZARDOUS") return "CROSSED";
   if (data.geofence_alert === "CAUTION" || (nearestKm !== null && nearestKm <= GEOFENCE_ALERT_KM)) return "APPROACHING";
   return "SAFE";
 }
@@ -1512,7 +1712,23 @@ function updateGeofenceTransition(data, nearestKm) {
   const next = normalizeGeofenceState(data, nearestKm);
   const changed = next !== previous;
   lastGeofenceAlert = next;
-  updateHazardBanner(next === "CROSSED" ? "HAZARDOUS" : next === "APPROACHING" ? "CAUTION" : "SAFE");
+  updateHazardBanner(next === "CROSSED" ? "HAZARDOUS" : next === "APPROACHING" ? "CAUTION" : "SAFE", {
+    boundaryAlert: data.inside_eez === false || data.breached === true || data.inside_mpa === true,
+    boundaryLabel: next === "CROSSED" && data.inside_eez === false ? "EEZ BORDER ALERT" : "REGULATORY CAUTION",
+    marineStatus: lastMarineStatus,
+  });
+  const badge = document.querySelector('.marine-safety-status')
+    || document.getElementById('marine-status-badge')
+    || document.getElementById('hazardBanner');
+  const badgeText = badge
+    ? (badge.querySelector('#hazardBannerStatus') || badge.querySelector('span') || badge)
+    : null;
+  if (badge && (typeof data.breached === 'boolean' || typeof data.inside_eez === 'boolean')) {
+    const isInside = data.breached === false || data.inside_eez === true;
+    badge.style.backgroundColor = isInside ? '#16a34a' : '#dc2626';
+    badge.style.color = '#ffffff';
+    if (badgeText) badgeText.textContent = isInside ? 'SAFE' : 'EEZ BORDER ALERT';
+  }
   if (changed && previous !== null) {
     appendAgentBadge(`GEOFENCE ${next}: ${data.message || "Maritime boundary status changed."}${nearestKm === null ? "" : ` (${nearestKm.toFixed(2)} km)`}`);
   } else if (changed && next !== "SAFE") {
@@ -1562,15 +1778,41 @@ function initDispatchButton() {
   btn.onclick = async function (e) {
     e.preventDefault();
     e.stopPropagation();
-    btn.disabled = true;
+    e.stopImmediatePropagation();
     const previousText = btn.textContent;
-    btn.textContent = "Generating dispatch...";
+    const showDispatchWarning = (message) => {
+      try {
+        document.getElementById("dispatch-warning-toast")?.remove();
+        const toast = document.createElement("div");
+        toast.id = "dispatch-warning-toast";
+        toast.setAttribute("role", "status");
+        toast.textContent = message;
+        toast.style.cssText = "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:100000;max-width:min(560px,calc(100vw - 32px));padding:14px 18px;border:1px solid #f59e0b;border-radius:10px;background:#172033;color:#fff;font:14px/1.5 sans-serif;box-shadow:0 8px 28px #0008;";
+        document.body.appendChild(toast);
+        window.setTimeout(() => toast.remove(), 7000);
+      } catch (_) { /* A warning display failure must not escape the click handler. */ }
+    };
     try {
+    btn.disabled = true;
+    btn.textContent = "Generating dispatch...";
+      let lat = 18.95;
+      let lon = 72.75;
+      if (window.vesselMarker && typeof window.vesselMarker.getLatLng === "function") {
+        const pos = window.vesselMarker.getLatLng();
+        lat = Number(pos.lat);
+        lon = Number(pos.lng);
+      } else if (window.currentVesselLat && window.currentVesselLon) {
+        lat = Number(window.currentVesselLat);
+        lon = Number(window.currentVesselLon);
+      }
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error("Invalid vessel coordinates.");
       const res = await fetch(`${API_BASE}/api/dispatch/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          coordinates: [window.currentVesselLat || (lastVesselCoord && lastVesselCoord[0]) || 19.07, window.currentVesselLon || (lastVesselCoord && lastVesselCoord[1]) || 72.87],
+          coordinates: [lat, lon],
+          lat,
+          lon,
           onboarding_persona: "Fisherman",
         }),
       });
@@ -1581,7 +1823,32 @@ function initDispatchButton() {
       const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
       })[char]);
-      const [lat, lon] = data.coordinates;
+      const [dispatchLat, dispatchLon] = data.coordinates;
+      const telemetry = data.telemetry || {};
+      const pfz = data.pfz_advisory || {};
+      const safety = data.safety_and_routing || {};
+      const routing = data.routing && typeof data.routing === "object" ? data.routing : safety;
+      let routingDisplay = "Safe (Inside Indian EEZ)";
+      let borderDist = "";
+      if (routing && typeof routing === "object") {
+        const breached = routing.breached === true || routing.inside_eez === false ||
+          routing.alert_level === "EEZ BORDER ALERT";
+        routingDisplay = breached ? "Border Alert (Outside EEZ)" : "Safe (Inside Indian EEZ)";
+        const rawDistance = routing.eez_distance_km ?? routing.distance_km ?? safety.eez_distance_km;
+        const distance = Number.parseFloat(rawDistance);
+        if (Number.isFinite(distance)) borderDist = ` - ${distance.toFixed(2)} km to boundary`;
+      } else if (typeof routing === "string") {
+        const breached = /['\"]breached['\"]\s*:\s*True/i.test(routing) ||
+          /['\"]alert_level['\"]\s*:\s*['\"]EEZ BORDER ALERT['\"]/i.test(routing);
+        const distMatch = routing.match(/['\"]eez_distance_km['\"]\s*:\s*([\d.]+)/i) ||
+          routing.match(/['\"]distance_km['\"]\s*:\s*([\d.]+)/i);
+        routingDisplay = breached ? "Border Alert (Outside EEZ)" : "Safe (Inside Indian EEZ)";
+        if (distMatch) {
+          const distance = Number.parseFloat(distMatch[1]);
+          if (Number.isFinite(distance)) borderDist = ` - ${distance.toFixed(2)} km to boundary`;
+        }
+      }
+      const formattedRouting = `${routingDisplay}${borderDist}`;
       const modal = document.createElement("div");
       modal.id = "morning-dispatch-card";
       modal.setAttribute("role", "dialog");
@@ -1590,10 +1857,12 @@ function initDispatchButton() {
       modal.innerHTML = `
         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%, -50%);background:rgba(10, 25, 47, 0.95);border:1.5px solid #00d2ff;border-radius:12px;padding:20px;z-index:9999;color:#fff;width:380px;max-width:calc(100% - 40px);box-shadow:0 0 25px rgba(0, 210, 255, 0.35);box-sizing:border-box;">
           <h3 style="margin-top:0;color:#00d2ff;font-size:16px;">📋 Morning Maritime Dispatch</h3>
-          <p style="margin:6px 0;font-size:13px;"><strong>Position:</strong> ${lat.toFixed(2)}° N, ${lon.toFixed(2)}° E</p>
-          <p style="margin:6px 0;font-size:13px;"><strong>Sea Condition:</strong> ${escapeHtml(data.sea_condition)}</p>
-          <p style="margin:6px 0;font-size:13px;"><strong>SST:</strong> ${escapeHtml(data.sst)}</p>
-          <p style="margin:6px 0;font-size:13px;"><strong>Routing:</strong> ${escapeHtml(data.corridor)}</p>
+          <p style="margin:6px 0;font-size:13px;"><strong>Position:</strong> ${dispatchLat.toFixed(2)}° N, ${dispatchLon.toFixed(2)}° E</p>
+          <p style="margin:6px 0;font-size:13px;"><strong>Sea Condition:</strong> ${escapeHtml(data.sea_condition || safety.status)}</p>
+          <p style="margin:6px 0;font-size:13px;"><strong>SST:</strong> ${escapeHtml(telemetry.sst || data.sst)}</p>
+          <p style="margin:6px 0;font-size:13px;"><strong>Nearest PFZ:</strong> ${escapeHtml(pfz.status || "Unavailable")} · ${escapeHtml(pfz.distance_nm || "Unavailable")}</p>
+          <p style="margin:6px 0;font-size:13px;"><strong>Heading:</strong> ${escapeHtml(pfz.recommended_heading || "Unavailable")}</p>
+          <p style="margin:6px 0;font-size:13px;"><strong>Routing Status:</strong> ${escapeHtml(formattedRouting)}</p>
           <div style="margin-top:16px;display:flex;gap:10px;">
             <button id="close-dispatch-modal" type="button" style="flex:1;background:#00d2ff;color:#051329;border:none;padding:8px;border-radius:6px;font-weight:bold;cursor:pointer;">Close</button>
             <button id="download-dispatch-pdf-btn" type="button" style="flex:1;background:#22c55e;color:#fff;border:none;padding:8px;border-radius:6px;font-weight:bold;cursor:pointer;">📥 Download PDF</button>
@@ -1610,24 +1879,42 @@ function initDispatchButton() {
         }
         printWindow.document.write(`
           <!doctype html><html><head><title>Sagar Mitra Dispatch</title>
-          <style>body{font-family:Arial,sans-serif;padding:32px;color:#10243b}h2{color:#075985}p{line-height:1.5}</style>
+          <style>@page{size:A4;margin:18mm}*{box-sizing:border-box}body{font:14px/1.5 Arial,sans-serif;color:#10243b;margin:0}header{border-bottom:4px solid #087e9b;padding-bottom:14px;margin-bottom:20px}h1{font-size:21px;color:#075985;margin:0 0 10px}h2{font-size:16px;color:#075985;margin:22px 0 8px}table{width:100%;border-collapse:collapse;margin:8px 0 16px}th,td{text-align:left;border:1px solid #9aafbd;padding:9px;vertical-align:top}th{background:#e8f4f7;width:34%}.summary{padding:12px;background:#eff7fa;border-left:4px solid #087e9b}footer{margin-top:25px;color:#526577;font-size:11px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
           </head><body>
-          <h2>SAGAR MITRA · PRE-SAIL MARITIME DISPATCH</h2>
-          <p><strong>Issued:</strong> ${escapeHtml(new Date().toLocaleString())}</p>
-          <p><strong>Position:</strong> ${lat.toFixed(3)}° N, ${lon.toFixed(3)}° E</p>
-          <p><strong>Sea Condition:</strong> ${escapeHtml(data.sea_condition)}</p>
-          <p><strong>SST:</strong> ${escapeHtml(data.sst)}</p>
-          <p><strong>Summary:</strong> ${escapeHtml(data.summary)}</p>
+          <header><h1>SAGAR MITRA ? OPERATIONAL MARITIME CLEARANCE &amp; FISHING DISPATCH</h1>
+          <div><strong>Issued:</strong> ${escapeHtml(data.timestamp || new Date().toLocaleString())} &nbsp; <strong>Vessel:</strong> ${escapeHtml(data.vessel_persona || "Fisherman")}</div>
+          <div><strong>Coordinates:</strong> ${dispatchLat.toFixed(4)}°, ${dispatchLon.toFixed(4)}°</div></header>
+          <h2>1. Sea State &amp; Oceanographic Conditions</h2><table>
+          <tr><th>Sea safety level</th><td>${escapeHtml(safety.status || "ADVISORY")}</td></tr>
+          <tr><th>Wave height</th><td>${escapeHtml(telemetry.wave_height || data.sea_condition)}</td></tr>
+          <tr><th>Swell</th><td>${escapeHtml(telemetry.swell || "Unavailable")}</td></tr>
+          <tr><th>Wind speed</th><td>${escapeHtml(telemetry.wind_speed || "Unavailable")}</td></tr>
+          <tr><th>Sea surface temperature</th><td>${escapeHtml(telemetry.sst || data.sst)}</td></tr>
+          <tr><th>Chlorophyll-a</th><td>${escapeHtml(telemetry.chlorophyll || "Unavailable")}</td></tr>
+          <tr><th>Salinity</th><td>${escapeHtml(telemetry.salinity || "Unavailable")}</td></tr></table>
+          <h2>2. Potential Fishing Zone (PFZ) Opportunity</h2><table>
+          <tr><th>Nearest zone</th><td>${escapeHtml(pfz.status || "Unavailable")}</td></tr>
+          <tr><th>Recommended heading</th><td>${escapeHtml(pfz.recommended_heading || "Unavailable")}</td></tr>
+          <tr><th>Distance to target</th><td>${escapeHtml(pfz.distance_nm || "Unavailable")}</td></tr>
+          <tr><th>Front intelligence</th><td>${escapeHtml(pfz.target_opportunity || "No PFZ intelligence available")}</td></tr></table>
+          <h2>3. Navigation &amp; Maritime Boundaries</h2><table>
+          <tr><th>EEZ distance</th><td>${escapeHtml(safety.eez_distance || "Unavailable")}</td></tr>
+          <tr><th>Routing status</th><td>${escapeHtml(formattedRouting)}</td></tr>
+          <tr><th>Safety advisory</th><td>${escapeHtml(safety.status || "ADVISORY")} ? ${escapeHtml(data.summary || "Check official marine notices before departure.")}</td></tr></table>
+          <p class="summary"><strong>Pre-sail summary:</strong> ${escapeHtml(data.summary || "Consult official marine and fisheries advisories before departure.")}</p>
+          <footer>Confirm current Coast Guard, IMD and INCOIS notices before sailing.</footer>
           <script>window.onload = function() { window.print(); }<\/script>
           </body></html>`);
         printWindow.document.close();
       };
     } catch (error) {
       console.error("Morning dispatch generation failed:", error);
-      window.alert(`Unable to generate Morning Dispatch: ${error.message}`);
+      showDispatchWarning("Telemetry unavailable for selected out-of-bounds coordinates. Reposition vessel closer to coastal waters.");
     } finally {
-      btn.disabled = false;
-      btn.textContent = previousText;
+      try {
+        btn.disabled = false;
+        btn.textContent = previousText;
+      } catch (_) { /* Avoid propagating DOM cleanup errors from finally. */ }
     }
     return false;
   };
@@ -1689,6 +1976,7 @@ plotRoute(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord, MOCK_ORCHESTRATOR_RESPONSE.pf
 updateTelemetryBars(MOCK_ORCHESTRATOR_RESPONSE.telemetry);
 
 initPersonaSwitcher();
+initChatInterface();
 initDispatchButton();
 initVoiceMic();
 initHazardReporting();

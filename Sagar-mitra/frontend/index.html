@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script>
+    if (!localStorage.getItem("orcaAuth")) {
+      window.location.replace("auth.html");
+    }
+  </script>
+  <script>
+    // Prevent rapid accidental reloads during chat interactions
+    window._lastChatTime = 0;
+  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SAGAR MITRA — FloatChat Intelligence Platform</title>
@@ -1035,6 +1044,7 @@
           <span id="themeIcon">☀️</span>
           <span id="themeLabel">Light</span>
         </button>
+        <span id="authUserBadge" class="auth-user-badge" aria-live="polite"></span>
         <button class="logout-btn" id="logoutBtn" title="Logout">
           <i data-lucide="log-out"></i>
           <span>Logout</span>
@@ -1138,7 +1148,7 @@
               </div>
               <span class="mini-verb-text" id="miniVerbText">Surfing...</span>
             </div>
-            <form class="radiating-search-bar" id="chatForm" onsubmit="handleQuerySubmit(event)">
+            <form class="radiating-search-bar" id="chatForm" onsubmit="event.preventDefault(); return false;">
               <i data-lucide="search" class="w-5 h-5 text-cyan-400"></i>
               <input
                 type="text"
@@ -1150,7 +1160,7 @@
               <button type="button" id="micBtn" class="mic-btn" title="Speak your query" aria-label="Record voice query">
                 <i data-lucide="mic" class="w-5 h-5"></i>
               </button>
-              <button type="submit" id="chatSendBtn" class="search-send-btn">
+              <button type="button" id="chatSendBtn" class="search-send-btn">
                 <i data-lucide="arrow-up" class="w-5 h-5"></i>
               </button>
             </form>
