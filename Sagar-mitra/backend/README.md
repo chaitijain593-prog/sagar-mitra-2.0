@@ -3,7 +3,7 @@
 ## Setup
 ```
 pip install -r requirements.txt
-cp .env.example .env   # then paste your GEMINI_API_KEY inside
+cp .env.example .env   # then set GROQ_API_KEY
 ```
 Cache real data once: save your notebook's `final_dataset` as
 `data/final_dataset.parquet` (see app/data.py). Without it, boots on

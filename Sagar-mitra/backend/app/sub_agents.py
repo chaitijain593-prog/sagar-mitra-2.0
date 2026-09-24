@@ -1,4 +1,4 @@
-from langchain_core.tools import tool
+﻿from langchain_core.tools import tool
 from app.marine_weather_tool import get_live_ocean_conditions
 from app.pfz_tool import get_nearest_pfz
 from app.chlorophyll_tool import get_chlorophyll_data
@@ -9,7 +9,6 @@ from app.statistical_engine import ArgoStatisticalAnomalyEngine
 from app.regional_scan import scan_favorable_regions, format_regional_scan
 from app.data import store as data_store
 from app.state import AgentState
-from app.dispatch import generate_morning_dispatch
 
 # 1. Navigation & Hazard Worker (Powered by marine_weather_tool.py)
 @tool
@@ -18,7 +17,7 @@ def check_marine_hazards(lat: float, lon: float) -> str:
     return get_live_ocean_conditions(lat, lon)
 
 def navigation_node(state: AgentState) -> dict:
-    coordinates = state.get("coordinates", [18.9, 72.8])
+    coordinates = state["coordinates"]
     lat, lon = coordinates[0], coordinates[1]
     # graph.py's dispatch_node fetches this exact signal for EVERY request
     # (the dashboard needs it regardless of which agents were selected) and
@@ -44,7 +43,7 @@ def check_pfz_and_chlorophyll(lat: float, lon: float) -> str:
     return f"{pfz_result} | {chlorophyll_result}"
 
 def fishing_node(state: AgentState) -> dict:
-    coordinates = state.get("coordinates", [18.9, 72.8])
+    coordinates = state["coordinates"]
     lat, lon = coordinates[0], coordinates[1]
     # Reuse the PFZ/chlorophyll reads graph.py's dispatch_node already
     # fetched for the dashboard (see navigation_node's comment above) rather
@@ -83,7 +82,7 @@ def check_legal_boundaries(lat: float, lon: float) -> str:
     return check_maritime_boundary(lat, lon)
 
 def compliance_node(state: AgentState) -> dict:
-    coordinates = state.get("coordinates", [18.9, 72.8])
+    coordinates = state["coordinates"]
     lat, lon = coordinates[0], coordinates[1]
     common = state.get("common_signals") or {}
     result = common.get("boundary_report") or check_legal_boundaries.invoke({"lat": lat, "lon": lon})
@@ -92,7 +91,7 @@ def compliance_node(state: AgentState) -> dict:
     }
 
 
-# 4. Historical & Trend Worker (Powered by historical.py's Gemini
+# 4. Historical & Trend Worker (Powered by historical.py's OpenAI
 # function-calling agent -- was fully built but had no live route pointing
 # at it; wired in here so "why did X decline" / trend / chart questions
 # actually reach it instead of falling through to a generic answer.)
@@ -102,8 +101,8 @@ def historical_node(state: AgentState) -> dict:
         persona=state.get("persona", "Fisherman"),
         language=state.get("language", "English"),
     )
-    text = result.get("reply") or "No historical data available for that query."
-    out = {"final_output": f"Historical Analysis: {text}"}
+    text = result.get("reply") or ""
+    out = {"final_output": f"Historical Analysis: {text}" if text else ""}
     if result.get("plot_url"):
         out["final_output"] += f"\n[Chart generated: {result['plot_url']}]"
         out["plot_url"] = result["plot_url"]
@@ -114,7 +113,7 @@ def historical_node(state: AgentState) -> dict:
 
 # 5. Hazard Worker (lightning / cyclone proxy, powered by weather_alert_tool.py)
 def hazard_node(state: AgentState) -> dict:
-    coordinates = state.get("coordinates", [18.9, 72.8])
+    coordinates = state["coordinates"]
     lat, lon = coordinates[0], coordinates[1]
     common = state.get("common_signals") or {}
     result = common.get("hazard_report") or get_weather_hazard_alerts(
@@ -130,7 +129,7 @@ def hazard_node(state: AgentState) -> dict:
 # anomaly engine + real Argo data -- was fully built but had no live route;
 # wired in here for "why is this unusual" / anomaly-style questions.)
 def analytics_node(state: AgentState) -> dict:
-    coordinates = state.get("coordinates", [18.9, 72.8])
+    coordinates = state["coordinates"]
     lat, lon = coordinates[0], coordinates[1]
     profile_df = data_store.get_real_profile_near(lat, lon)
     if profile_df is None:
@@ -167,53 +166,29 @@ def regional_node(state: AgentState) -> dict:
     return {"final_output": format_regional_scan(results), "regional_zones": results}
 
 
-# 8. Morning Dispatch Worker (Powered by dispatch.py -- generates the
-# downloadable PDF + audio briefing itself, rather than just describing
-# live conditions like every other agent above). Named morning_dispatch_
+# 8. Morning Dispatch Worker. The chat request returns text only; the
+# explicit dispatch endpoint is responsible for interactive printable output.
+# Named morning_dispatch_
 # node, not dispatch_node, so it can't collide with graph.py's own
 # dispatch_node (the orchestration step that fans out to every agent below
 # -- an unrelated function that happens to share the "dispatch" word).
 def morning_dispatch_node(state: AgentState) -> dict:
-    coordinates = state.get("coordinates", [18.9, 72.8])
-    lat, lon = coordinates[0], coordinates[1]
-    persona = state.get("persona", "Fisherman")
-    language = state.get("language", "English")
-    vessel_persona = state.get("vessel_persona", "artisanal_coastal")
-    day_offset = state.get("day_offset", 0)
-    target_hour = state.get("target_hour")
-    # Deliberately does NOT reuse state["common_signals"] here -- this
-    # agent runs CONCURRENTLY with that fetch (see graph.py, where
-    # "dispatch" is NOT in _COMMON_SIGNAL_AGENTS), so generate_morning_
-    # dispatch's own full six-way concurrent fetch starts immediately
-    # instead of waiting for the common fetch to resolve first. See
-    # dispatch.py's generate_morning_dispatch docstring for why that
-    # reuse was tried and reverted -- it made this path slower overall.
-    result = generate_morning_dispatch(
-        lat, lon, persona=persona, language=language, vessel_persona=vessel_persona,
-        day_offset=day_offset, target_hour=target_hour if target_hour is not None else 8,
-    )
-
-    audio_note = (f" Spoken version: {result['audio_url']}." if result["audio_url"]
-                  else " (Spoken audio version unavailable this time -- PDF only.)")
-    # Lead with dispatch.py's OWN already-grounded narrative (it ran its own
-    # synthesize_advisory pass over the REAL fetched signals -- see
-    # generate_morning_dispatch) rather than just a bare "download your PDF"
-    # pointer sentence. An earlier version only sent the pointer sentence up
-    # through final_output, which left graph.py's top-level synthesizer with
-    # nothing real to ground a persona-formatted chat reply in -- verified
-    # live, it produced a DIFFERENT, non-deterministic safety verdict on
-    # each run ("Safe to Sail" one time, "No-Go Warning" the next, from
-    # identical input) because there was no real data for it to read, only
-    # a link. Including the real narrative here, plus graph.py's dispatch-
-    # only bypass below, keeps the chat reply consistent with what the
-    # PDF/audio actually say.
-    text = f"{result['narrative']}\n\nFull offline briefing: {result['pdf_url']}.{audio_note}"
+    signals = state.get("common_signals") or {}
+    hazard = signals.get("hazard_report")
+    reports = [
+        str(signals.get("ocean_report") or ""),
+        str(signals.get("pfz_report") or ""),
+        str(signals.get("chlorophyll_report") or ""),
+        str(signals.get("boundary_report") or ""),
+        (" ".join(str(hazard.get(key) or "") for key in
+                   ("lightning_detail", "cyclone_detail", "summary"))
+         if isinstance(hazard, dict) else str(hazard or "")),
+    ]
+    text = "\n\n".join(report for report in reports if report)
+    if not text:
+        raise RuntimeError("Live dispatch telemetry is unavailable for the requested position.")
     return {
-        "final_output": f"Morning Dispatch: {text}",
-        # Exposed as their OWN top-level API fields (see graph.py's
-        # dispatch_node and main.py), matching the plot_url/regional_zones
-        # pattern above -- a Gemini synthesis pass could otherwise
-        # paraphrase away a raw download URL embedded only in prose.
-        "dispatch_pdf_url": result["pdf_url"],
-        "dispatch_audio_url": result["audio_url"],
+        "final_output": text,
+        "dispatch_pdf_url": None,
+        "dispatch_audio_url": None,
     }

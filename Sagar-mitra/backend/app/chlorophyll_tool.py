@@ -19,17 +19,16 @@ def get_chlorophyll_data(lat: float, lon: float) -> str:
         valid_pixels = [row[3] for row in rows if len(row) >= 4 and row[3] is not None]
         
         if not valid_pixels:
-             # Ultimate fallback if the entire 50km grid is clouded during monsoon season
-             return f"[Historical Proxy] Chlorophyll-a: 0.38 mg/m³. High PFZ Potential."
-             
+            raise RuntimeError("NOAA CoastWatch returned no unclouded chlorophyll pixels for the requested area.")
+
         # Average the clear pixels
         avg_chl = sum(valid_pixels) / len(valid_pixels)
         status = "High PFZ Potential" if avg_chl > 0.2 else "Low biological activity"
         
         return f"[Live NOAA Spatial Average] Chlorophyll-a: {round(avg_chl, 3)} mg/m³. {status}."
         
-    except Exception:
-        return "[Historical Proxy] Chlorophyll-a: 0.38 mg/m³. High PFZ Potential."
+    except Exception as exc:
+        raise RuntimeError(f"NOAA CoastWatch chlorophyll lookup failed: {exc}") from exc
 
 if __name__ == "__main__":
     print(get_chlorophyll_data(15.5, 72.5))

@@ -21,7 +21,7 @@ def _query_local_csv(user_lat: float, user_lon: float) -> str:
     csv_path = os.path.join(base_dir, '..', 'data', 'pfz_today.csv')
     
     if not os.path.exists(csv_path):
-        return "Both live WebGIS and local pfz_today.csv are unavailable."
+        raise RuntimeError("INCOIS PFZ service failed and pfz_today.csv is unavailable.")
     
     df = pd.read_csv(csv_path)
     min_dist = float('inf')
@@ -37,7 +37,7 @@ def _query_local_csv(user_lat: float, user_lon: float) -> str:
         return (f"[Offline Archive Alert] Nearest PFZ is near {best_row.get('Landing Center', 'Coast')} "
                 f"({best_row.get('State_Sector', 'Region')}). Coordinates: [{best_row['Latitude']}, {best_row['Longitude']}]. "
                 f"Distance: {round(min_dist, 2)} km away.")
-    return "No records found in local PFZ dataset."
+    raise RuntimeError("INCOIS PFZ service and pfz_today.csv returned no PFZ records.")
 
 def get_all_pfz_zones() -> list:
     """
@@ -83,6 +83,32 @@ def get_all_pfz_zones() -> list:
             "lon": float(cast(float, row['Longitude'])),
         })
     return zones
+
+
+def get_nearest_pfz_details(user_lat: float, user_lon: float) -> dict | None:
+    """Return the nearest current INCOIS/CSV PFZ record with range and bearing."""
+    zones = get_all_pfz_zones()
+    zones = [zone for zone in zones
+             if all(isinstance(zone.get(key), (int, float)) and math.isfinite(zone[key])
+                    for key in ("lat", "lon"))
+             and -90 <= zone["lat"] <= 90 and -180 <= zone["lon"] <= 180]
+    if not zones:
+        raise RuntimeError("No current PFZ records are available from INCOIS or pfz_today.csv.")
+    zone = min(zones, key=lambda item: calculate_distance(
+        user_lat, user_lon, item["lat"], item["lon"]
+    ))
+    distance_km = calculate_distance(user_lat, user_lon, zone["lat"], zone["lon"])
+    phi1, phi2 = math.radians(user_lat), math.radians(zone["lat"])
+    delta_lon = math.radians(zone["lon"] - user_lon)
+    y = math.sin(delta_lon) * math.cos(phi2)
+    x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(delta_lon)
+    bearing = (math.degrees(math.atan2(y, x)) + 360) % 360
+    return {
+        **zone,
+        "distance_km": round(distance_km, 2),
+        "distance_nm": round(distance_km / 1.852, 2),
+        "bearing_deg": round(bearing, 1),
+    }
 
 
 def get_nearest_pfz(user_lat: float, user_lon: float) -> str:

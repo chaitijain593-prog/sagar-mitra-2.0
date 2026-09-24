@@ -1,7 +1,7 @@
-"""
-Sagar Mitra - Phase 3: Historical Data Query Agent (Gemini Function Calling)
+﻿"""
+Sagar Mitra - Phase 3: Historical Data Query Agent (OpenAI Function Calling)
 ==============================================================================
-Lets Gemini query the real historical Argo dataset directly and answer
+Lets OpenAI query the real historical Argo dataset directly and answer
 questions like "when was the last marine heatwave near Ratnagiri?" or
 generate trend graphs, e.g. "plot temperature over years".
 
@@ -15,19 +15,17 @@ reloading the page mid-conversation, since backend/static/plots/ sits
 inside the same directory tree the frontend is served from.
 """
 import base64
+import json
 from io import BytesIO
 from typing import Optional, cast
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
-from google.genai import types
-from google.genai.types import FunctionDeclaration
-
 from app.data import store
 from app.db import query_argo_bbox
 from app.db_store import get_hazard_mesh
-from app.advisory import generate_content, LITE_MODEL
+from app.advisory import get_openai_client, LITE_MODEL
 from app.llm_cache import TTLCache, normalize_key
 
 
@@ -76,7 +74,7 @@ def _region_filtered(df: pd.DataFrame, region_lat: Optional[float],
 
 
 # ---------------------------------------------------------------------------
-# TOOL FUNCTIONS (Gemini calls these automatically when needed)
+# TOOL FUNCTIONS (OpenAI calls these automatically when needed)
 # ---------------------------------------------------------------------------
 
 def query_historical_extreme(parameter: str, mode: str, region_lat: Optional[float] = None,
@@ -221,8 +219,8 @@ def plot_hazard_category_distribution() -> dict:
 
     Called directly (no parameters, no region filter -- the hazard mesh is
     small enough to summarize in full) from _run_historical_query's
-    deterministic fast path for this exact query shape, bypassing Gemini's
-    tool-selection call entirely; also registered in TOOLS below so Gemini
+            deterministic fast path for this exact query shape, bypassing OpenAI's
+    tool-selection call entirely; also registered in TOOLS below so OpenAI
     can still pick it for a differently-phrased hazard question.
     """
     reports = get_hazard_mesh()
@@ -270,7 +268,7 @@ def query_ocean_sql(lat_min: float, lat_max: float, lon_min: float, lon_max: flo
     SQLite argo_readings table for a lat/lon bounding box. Unlike this
     file's other TOOLS (which filter store.final_dataset with pandas in
     memory), this one is genuinely SQL, and was previously computed
-    (db.query_argo_bbox) but never exposed to Gemini's tool-selection layer.
+    (db.query_argo_bbox) but never exposed to OpenAI's tool-selection layer.
     """
     df = query_argo_bbox(lat_min, lat_max, lon_min, lon_max, limit=limit)
     if df.empty:
@@ -377,7 +375,7 @@ def sagar_mitra_historical_query(user_message: str, persona: str = "Researcher",
 
     Cached by (message, persona, language): identical/near-identical
     questions against data that hasn't changed are served from cache
-    instead of spending another call. Only ONE Gemini call per question now
+    instead of spending another call. Only ONE OpenAI call per question now
     (tool selection, on the lite model -- see advisory.LITE_MODEL): the
     numeric result is formatted into plain text in Python rather than with a
     second "phrase this nicely" call, since app/graph.py's top-level
@@ -443,25 +441,20 @@ def _format_tool_result(fn_name: str, fn_args: dict, result: dict) -> str:
 # Narrow, hazard-specific phrasing -- deliberately doesn't overlap with the
 # broader generic "pie chart"/"distribution"/"breakdown" wording that
 # plot_category_distribution's TOOL description already owns, so a plain
-# "pie chart of temperature" request still goes through Gemini's normal
+# "pie chart of temperature" request still goes through OpenAI's normal
 # tool-selection instead of being hijacked into the hazard breakdown.
 _HAZARD_BREAKDOWN_KEYWORDS = ("hazard categories", "hazard breakdown", "hazard distribution", "hazard types")
 
 # Narrow to phrasings that specifically name temperature/SST -- NOT the
 # broader "yearly"/"trend of"/"historical" keywords planner.py routes to
 # this agent, since those could legitimately ask about salinity, pressure,
-# etc. Gemini's normal tool-selection below already picks the right
+# etc. OpenAI's normal tool-selection below already picks the right
 # parameter for those; this fast path only short-circuits the unambiguous
 # temperature case.
 _SST_TREND_KEYWORDS = ("sea surface temperature", "sst", "temperature trend")
 
 
 def _run_historical_query(user_message: str, model: str) -> dict:
-    # Deterministic fast paths: these query shapes need no LLM tool
-    # selection at all -- we already know exactly which tool answers them --
-    # so skip the Gemini function-calling round trip entirely. Faster, and
-    # immune to a Gemini quota/503/timeout stall (see
-    # advisory.LLM_CALL_TIMEOUT_S), since no Gemini call happens at all.
     text_lower = user_message.lower()
     if any(kw in text_lower for kw in _HAZARD_BREAKDOWN_KEYWORDS):
         result = plot_hazard_category_distribution()
@@ -469,40 +462,36 @@ def _run_historical_query(user_message: str, model: str) -> dict:
         return {"reply": reply, "mode": "historical", "plot_url": result.get("url"), "series": result.get("series")}
 
     if any(kw in text_lower for kw in _SST_TREND_KEYWORDS):
-        # Real Argo yearly-average TEMP data (see plot_yearly_trend/
-        # get_yearly_trend above) -- not fabricated demo numbers.
         result = plot_yearly_trend(parameter="TEMP")
         reply = _format_tool_result("plot_yearly_trend", {"parameter": "TEMP"}, result)
         return {"reply": reply, "mode": "historical", "plot_url": result.get("url"), "series": result.get("series")}
 
-    tool = types.Tool(function_declarations=cast(list[FunctionDeclaration], TOOLS))
-    config = types.GenerateContentConfig(
-        tools=[tool],
-        system_instruction=(
-            "You are ORCA's historical ocean-data tool selector. Call the ONE tool that "
-            "best answers the user's question. Never guess numbers - always call a tool first."
-        ),
+    response = get_openai_client().chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": (
+                "You are ORCA's historical ocean-data tool selector. Call the ONE tool that "
+                "best answers the user's question. Never guess numbers; always call a tool first."
+            )},
+            {"role": "user", "content": user_message},
+        ],
+        tools=[{"type": "function", "function": tool} for tool in TOOLS],
+        tool_choice="required",
+        temperature=0,
     )
+    message = response.choices[0].message
+    if not message.tool_calls:
+        return {"reply": message.content or "", "mode": "historical", "plot_url": None, "series": None}
 
-    response = generate_content(model=model, contents=user_message, config=config)
+    tool_call = message.tool_calls[0]
+    fn_name = tool_call.function.name
+    if fn_name not in _FUNCTION_MAP:
+        raise ValueError(f"OpenAI requested unknown historical tool: {fn_name}")
+    fn_args = json.loads(tool_call.function.arguments or "{}")
+    result = _FUNCTION_MAP[fn_name](**fn_args)
 
-    if not response.candidates or not response.candidates[0].content:
-        return {"reply": response.text or "", "mode": "historical", "plot_url": None, "series": None}
-
-    call_content = response.candidates[0].content
-    parts = call_content.parts
-    if not parts:
-        return {"reply": response.text or "", "mode": "historical", "plot_url": None, "series": None}
-    part = parts[0]
-    if part.function_call and part.function_call.name:
-        fn_name = part.function_call.name
-        fn_args = dict(part.function_call.args or {})
-        result = _FUNCTION_MAP[fn_name](**fn_args)
-
-        reply = _format_tool_result(fn_name, fn_args, result)
-        is_chart_tool = fn_name in ("plot_yearly_trend", "plot_category_distribution", "plot_hazard_category_distribution")
-        plot_url = result.get("url") if is_chart_tool else None
-        series = result.get("series") if is_chart_tool else None
-        return {"reply": reply, "mode": "historical", "plot_url": plot_url, "series": series}
-
-    return {"reply": response.text or "", "mode": "historical", "plot_url": None, "series": None}
+    reply = _format_tool_result(fn_name, fn_args, result)
+    is_chart_tool = fn_name in ("plot_yearly_trend", "plot_category_distribution", "plot_hazard_category_distribution")
+    plot_url = result.get("url") if is_chart_tool else None
+    series = result.get("series") if is_chart_tool else None
+    return {"reply": reply, "mode": "historical", "plot_url": plot_url, "series": series}

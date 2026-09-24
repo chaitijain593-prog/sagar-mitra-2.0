@@ -3,9 +3,6 @@ from typing import Optional
 
 import requests
 
-from app.blackout_cache import cached_get
-
-
 def get_live_ocean_conditions(lat: float, lon: float, day_offset: int = 0,
                                target_hour: Optional[int] = None) -> str:
     """
@@ -29,31 +26,53 @@ def _get_current_ocean_conditions(lat: float, lon: float) -> str:
     params = {
         "latitude": lat,
         "longitude": lon,
-        "current": "wave_height,sea_surface_temperature,sea_level_height_msl",
+        "current": "wave_height,sea_surface_temperature,swell_wave_height,swell_wave_period,sea_level_height_msl",
         "timezone": "auto"
     }
 
     try:
-        data = cached_get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
 
         current = data.get("current", {})
         wave_height = current.get("wave_height")
         temp = current.get("sea_surface_temperature")
         tide = current.get("sea_level_height_msl")
+        swell_height = current.get("swell_wave_height")
+        swell_period = current.get("swell_wave_period")
 
         if wave_height is None:
-             return "Marine data not available (coordinate may be on land)."
+             raise RuntimeError("Marine API returned no wave height for the requested coordinates.")
 
+        weather_response = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={"latitude": lat, "longitude": lon, "current": "wind_speed_10m",
+                    "wind_speed_unit": "kn", "timezone": "auto"},
+            timeout=10,
+        )
+        weather_response.raise_for_status()
+        weather = weather_response.json()
+        wind_knots = (weather.get("current") or {}).get("wind_speed_10m")
+        missing = [name for name, value in (
+            ("wave height", wave_height), ("swell height", swell_height),
+            ("swell period", swell_period), ("wind speed", wind_knots),
+            ("sea surface temperature", temp),
+        ) if value is None]
+        if missing:
+            raise RuntimeError("Marine API omitted live telemetry fields: " + ", ".join(missing))
         status = "Safe for navigation" if wave_height < 2.5 else "HAZARDOUS - High Waves"
 
         return (f"Live conditions at [{lat}, {lon}]: "
                 f"Wave Height: {wave_height}m, "
+                f"Swell: {swell_height}m @ {swell_period}s, "
+                f"Wind Speed: {wind_knots} kts, "
                 f"Water Temp: {temp}°C, "
                 f"Tide Level (MSL): {tide}m. "
                 f"Status: {status}.")
 
     except requests.exceptions.RequestException as e:
-        return f"Network error: {e}"
+        raise RuntimeError(f"Live marine weather request failed: {e}") from e
 
 
 def _get_forecast_ocean_conditions(lat: float, lon: float, day_offset: int, hour: int) -> str:
@@ -61,27 +80,50 @@ def _get_forecast_ocean_conditions(lat: float, lon: float, day_offset: int, hour
     params = {
         "latitude": lat,
         "longitude": lon,
-        "hourly": "wave_height,sea_surface_temperature,sea_level_height_msl",
+        "hourly": "wave_height,sea_surface_temperature,swell_wave_height,swell_wave_period,sea_level_height_msl",
         "timezone": "auto",
         "forecast_days": min(day_offset + 1, 8),  # Open-Meteo marine's supported horizon
     }
 
     try:
-        hourly = cached_get(url, params=params, timeout=10).get("hourly", {})
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        hourly = response.json().get("hourly", {})
         times = hourly.get("time", [])
 
         target_date = (date.today() + timedelta(days=day_offset)).isoformat()
         target_str = f"{target_date}T{hour:02d}:00"
         if target_str not in times:
-            return f"Marine forecast not available for {target_date} {hour:02d}:00 at this coordinate."
+            raise RuntimeError(f"Marine forecast is unavailable for {target_date} {hour:02d}:00 at the requested coordinates.")
         idx = times.index(target_str)
 
         wave_height = hourly.get("wave_height", [])[idx]
         temp = hourly.get("sea_surface_temperature", [])[idx]
         tide = hourly.get("sea_level_height_msl", [])[idx]
+        swell_height = hourly.get("swell_wave_height", [])[idx]
+        swell_period = hourly.get("swell_wave_period", [])[idx]
 
         if wave_height is None:
-            return "Marine forecast not available (coordinate may be on land)."
+            raise RuntimeError("Marine API returned no wave forecast at the requested coordinates.")
+
+        wind_response = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={"latitude": lat, "longitude": lon, "hourly": "wind_speed_10m",
+                    "wind_speed_unit": "kn", "timezone": "auto",
+                    "forecast_days": min(day_offset + 1, 8)}, timeout=10,
+        )
+        wind_response.raise_for_status()
+        wind_hourly = wind_response.json().get("hourly", {})
+        wind_times = wind_hourly.get("time", [])
+        if target_str not in wind_times:
+            raise RuntimeError(f"Wind forecast is unavailable for {target_date} {hour:02d}:00.")
+        wind_knots = wind_hourly.get("wind_speed_10m", [])[wind_times.index(target_str)]
+        missing = [name for name, value in (("water temperature", temp),
+                                             ("swell height", swell_height),
+                                             ("swell period", swell_period),
+                                             ("wind speed", wind_knots)) if value is None]
+        if missing:
+            raise RuntimeError("Marine forecast omitted fields: " + ", ".join(missing))
 
         status = "Safe for navigation" if wave_height < 2.5 else "HAZARDOUS - High Waves"
 
@@ -91,12 +133,14 @@ def _get_forecast_ocean_conditions(lat: float, lon: float, day_offset: int, hour
         # not a live reading.
         return (f"Forecast for [{lat}, {lon}] on {target_date} {hour:02d}:00: "
                 f"Wave Height: {wave_height}m, "
+                f"Swell: {swell_height}m @ {swell_period}s, "
+                f"Wind Speed: {wind_knots} kts, "
                 f"Water Temp: {temp}°C, "
                 f"Tide Level (MSL): {tide}m. "
                 f"Status: {status}.")
 
     except requests.exceptions.RequestException as e:
-        return f"Network error: {e}"
+        raise RuntimeError(f"Live marine forecast request failed: {e}") from e
 
 
 if __name__ == "__main__":

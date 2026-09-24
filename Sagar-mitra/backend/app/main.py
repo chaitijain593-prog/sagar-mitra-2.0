@@ -8,7 +8,7 @@ import json, secrets, hashlib, smtplib, time
 from email.message import EmailMessage
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -20,25 +20,26 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import AliasChoices, BaseModel, Field
-from google.genai.errors import ServerError
 from app.graph import create_orca_graph
 from app.state import AgentState
-from app.nlp_extract import extract_coordinates_from_message, extract_target_datetime_from_message
+from app.nlp_extract import extract_target_datetime_from_message
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
 from app.route_planner import plan_safe_route
-from app.db_store import store as session_store, insert_hazard_point, get_hazard_mesh
+from app.session_store import store as session_store
+from app.db_store import insert_hazard_point, get_hazard_mesh
 from app.anchor_store import store as anchor_store
 
 from app.data import store
 from app import db
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
-from app.advisory import _is_quota_error, _is_permission_denied_error
-from app.boundary_toool import distance_to_nearest_boundary_km, return_heading_to_safety
+from app.advisory import _is_quota_error, _is_permission_denied_error, synthesize_advisory, GROQ_API_KEY
+from app.boundary_toool import check_geofence, distance_to_nearest_boundary_km, return_heading_to_safety
 from app.news_feed import get_oceanography_news, DOMAIN_TAXONOMY
 from app.marine_weather_tool import get_live_ocean_conditions
+from app.pfz_tool import get_nearest_pfz_details
+from app.chlorophyll_tool import get_chlorophyll_data
 from app.response_formatter import derive_hazard_status
-from app.error_utils import is_quota_or_unavailable_error
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -47,16 +48,6 @@ def _orchestration_error_detail(e: Exception) -> str:
                 "Please wait a bit and try again.")
     return f"Internal error during orchestration: {e}"
 
-
-def _contextual_unavailable_advisory(question: str, coordinates: list[float]) -> str:
-    lat, lon = coordinates
-    lat_label = "N" if lat >= 0 else "S"
-    lon_label = "E" if lon >= 0 else "W"
-    return (
-        f"Advisory for position ({abs(lat):.3f}° {lat_label}, {abs(lon):.3f}° {lon_label}) "
-        f"in response to your question, ‘{question}’: current ocean conditions need to be "
-        "confirmed against official marine and weather advisories before making a trip decision."
-    )
 
 app = FastAPI(title="ORCA Backend API", version="0.2.0")
 
@@ -161,15 +152,14 @@ def _derive_geofence_alert(boundary: dict) -> tuple[str, str]:
     """
     inside_eez = boundary["inside_eez"]
     inside_mpa = boundary["inside_mpa"]
-    eez_km = boundary["eez_distance_km"]
     mpa_km = boundary["mpa_distance_km"]
 
+    if inside_eez is None:
+        return "CAUTION", "Indian EEZ boundary data is unavailable; vessel status could not be verified."
     if inside_eez is False:
         return "HAZARDOUS", "Vessel has crossed the Indian EEZ boundary into international waters."
     if inside_mpa:
         return "HAZARDOUS", "Vessel is inside a Marine Protected Area."
-    if eez_km is not None and inside_eez and eez_km < GEOFENCE_WARNING_KM:
-        return "CAUTION", f"Approaching the Indian EEZ boundary ({eez_km} km remaining)."
     if mpa_km is not None and mpa_km < GEOFENCE_WARNING_KM:
         return "CAUTION", f"Approaching a Marine Protected Area ({mpa_km} km away)."
     return "SAFE", "No maritime boundary within the 5 km geofence threshold."
@@ -282,7 +272,7 @@ def root():
 def health():
     return {
         "status": "ok",
-        "gemini_key_configured": bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEYS")),
+        "groq_key_configured": bool(GROQ_API_KEY),
     }
 
 # --- Auth: username/password + email OTP ---
@@ -298,7 +288,8 @@ def _otp(user, email, purpose):
     smtp_user = os.getenv("SMTP_USER")
     smtp_pass = os.getenv("SMTP_PASS")
     if not smtp_user or not smtp_pass:
-        raise RuntimeError("SMTP credentials missing in environment (SMTP_USER/SMTP_PASS).")
+        # Local development fallback: return the code for the frontend to show.
+        return code
 
     m = EmailMessage()
     m["Subject"] = "Sagar Mitra verification code"
@@ -311,6 +302,7 @@ def _otp(user, email, purpose):
         s.starttls()
         s.login(smtp_user, smtp_pass)
         s.send_message(m)
+    return None
 
 class Auth(BaseModel): username: str; password: str; email: str = ""; name: str = ""
 class Verify(BaseModel): username: str; otp: str; purpose: str
@@ -321,17 +313,17 @@ def signup(a: Auth):
     if a.username in _users(): raise HTTPException(409, "Username already taken.")
     if "@" not in a.email: raise HTTPException(400, "Invalid email.")
     salt = secrets.token_hex(8); PENDING[a.username] = {"salt": salt, "hash": _hash(a.password, salt), "email": a.email, "name": a.name, "profile": None}
-    try: _otp(a.username, a.email, "signup")
+    try: dev_otp = _otp(a.username, a.email, "signup")
     except Exception as e: raise HTTPException(500, f"Could not send OTP email: {e}")
-    return {"ok": True}
+    return {"ok": True, **({"dev_otp": dev_otp} if dev_otp else {})}
 
 @app.post("/api/auth/login")
 def login(a: Auth):
     r = _users().get(a.username)
     if not r or _hash(a.password, r["salt"]) != r["hash"]: raise HTTPException(401, "Invalid username or password.")
-    try: _otp(a.username, r["email"], "login")
+    try: dev_otp = _otp(a.username, r["email"], "login")
     except Exception as e: raise HTTPException(500, f"Could not send OTP email: {e}")
-    return {"ok": True}
+    return {"ok": True, **({"dev_otp": dev_otp} if dev_otp else {})}
 
 @app.post("/api/auth/verify")
 def verify(v: Verify):
@@ -351,13 +343,21 @@ def save_profile(p: Prof):
 @app.get("/api/geofence-check")
 def geofence_check(lat: float, lon: float):
     boundary = distance_to_nearest_boundary_km(lat, lon)
+    fence = check_geofence(lat, lon)
     alert_level, message = _derive_geofence_alert(boundary)
     return_heading = return_heading_to_safety(lat, lon) if alert_level != "SAFE" else None
     return {
         "coordinates": [lat, lon],
+        "status": fence["status"] if fence["breached"] or not boundary.get("inside_mpa") else alert_level,
+        "inside_eez": fence["inside_eez"],
+        "breached": fence["breached"],
+        "alert_level": fence["alert_level"],
+        "alert": message if fence["breached"] else None,
+        "dist_to_boundary_km": fence["distance_km"],
+        "distance_km": fence["distance_km"],
         **boundary,
         "geofence_alert": alert_level,
-        "message": message,
+        "message": fence["message"] if not boundary.get("inside_mpa") else message,
         "return_heading": return_heading,
     }
 
@@ -546,14 +546,10 @@ def run_orchestration(request: OrchestrateRequest):
     history = session_store.get_history(session_id)
     last_context = session_store.get_last_context(session_id)
     last_agents = last_context["agents"] if last_context else []
-
-    extracted = extract_coordinates_from_message(request.user_message)
-    if extracted:
-        coordinates = list(extracted)
-    elif last_context:
-        coordinates = last_context["coordinates"]
-    else:
-        coordinates = request.coordinates
+    coordinates = list(request.coordinates)
+    if (len(coordinates) != 2 or not all(math.isfinite(value) for value in coordinates)
+            or not -90 <= coordinates[0] <= 90 or not -180 <= coordinates[1] <= 180):
+        raise HTTPException(422, "Request must include valid vessel coordinates [latitude, longitude].")
 
     day_offset, target_hour = extract_target_datetime_from_message(request.user_message)
     vessel_persona = reconcile_persona_key(request.onboarding_persona)
@@ -581,46 +577,16 @@ def run_orchestration(request: OrchestrateRequest):
         "query_intent": "",
         "final_output": "",
         "final_advisory": "",
-        "advisory_degraded": False,
     }
 
     try:
         result = orca_graph.invoke(initial_state)
     except Exception as e:
-        if is_quota_or_unavailable_error(e):
-            print(f"[orchestrate] Live model unavailable; returning contextual fallback: {e}")
-            advisory = _contextual_unavailable_advisory(request.user_message, coordinates)
-            session_store.append_turn(session_id, "user", request.user_message)
-            session_store.append_turn(session_id, "assistant", advisory)
-            session_store.set_last_context(session_id, coordinates, last_agents)
-            return {
-                "status": "success",
-                "advisory_source": "live_telemetry",
-                "session_id": session_id,
-                "user_message": request.user_message,
-                "coordinates": coordinates,
-                "advisory": advisory,
-                "agents_invoked": [],
-                "query_intent": "",
-                "language": "English",
-                "persona": "Fisherman",
-                "vessel_persona": vessel_persona,
-                "hazard_status": "CAUTION",
-                "hazard_summary": "Live ocean conditions could not be verified.",
-                "pfz_location": [],
-                "telemetry": None,
-                "lightning_alert": False,
-                "cyclone_alert": False,
-                "route": None,
-                "plot_url": None,
-                "regional_zones": [],
-                "dispatch_pdf_url": None,
-                "dispatch_audio_url": None,
-                "forecast_for": None,
-            }
         traceback.print_exc()
-        status_code = 429 if _is_quota_error(e) else 500
-        raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
+        raise HTTPException(
+            status_code=503,
+            detail=f"Live telemetry/OpenAI orchestration failed: {e}",
+        ) from e
 
     lat, lon = coordinates[0], coordinates[1]
     common = result.get("common_signals") or {}
@@ -628,11 +594,7 @@ def run_orchestration(request: OrchestrateRequest):
     ocean_report = common.get("ocean_report", "")
     pfz_report = common.get("pfz_report", "")
     chlorophyll_report = common.get("chlorophyll_report", "")
-    hazard_report = common.get("hazard_report") or {
-        "lightning_alert": False, "lightning_detail": "Hazard data unavailable.",
-        "cyclone_alert": False, "cyclone_detail": "Hazard data unavailable.",
-        "summary": "Hazard data unavailable.",
-    }
+    hazard_report = common.get("hazard_report") or {}
 
     pfz_zones = _derive_pfz_zones(pfz_report)
     route = None
@@ -649,12 +611,9 @@ def run_orchestration(request: OrchestrateRequest):
                 "note": f"Route planning error, showing a direct line: {e}",
             }
 
-    final_advisory = result.get("final_advisory", "Advisory generated successfully.")
-    if result.get("advisory_degraded"):
-        final_advisory = (
-            f"Advisory for position ({coordinates[0]:.3f}, {coordinates[1]:.3f}): "
-            f"{result.get('final_advisory', 'Operational conditions steady. Mild wave activity and normal SST parameters observed.')}"
-        )
+    final_advisory = result.get("final_advisory")
+    if not final_advisory:
+        raise HTTPException(503, "OpenAI returned no advisory text for the live telemetry.")
 
     session_store.append_turn(session_id, "user", request.user_message)
     session_store.append_turn(session_id, "assistant", final_advisory)
@@ -666,10 +625,24 @@ def run_orchestration(request: OrchestrateRequest):
         salinity_delta=request.salinity_delta,
     )
     telemetry["historical_series"] = result.get("historical_series")
+    wave_match = re.search(r"Wave Height:\s*([0-9]+(?:\.[0-9]+)?)\s*m", ocean_report)
+    wave_height = float(wave_match.group(1)) if wave_match else None
+    marine_status = "CAUTION" if wave_height is None else "SAFE"
+    if result.get("cyclone_alert") or (wave_height is not None and wave_height >= 4.0) or "HAZARDOUS" in ocean_report.upper():
+        marine_status = "WARNING"
+    elif wave_height is not None and wave_height >= 2.5:
+        marine_status = "HAZARDOUS"
+    elif hazard_report.get("lightning_alert"):
+        marine_status = "CAUTION"
+    boundary_alert = str(boundary_report).startswith("ALERT")
+    boundary_status = (
+        "EEZ BORDER ALERT" if "international waters" in str(boundary_report).lower()
+        or "eez" in str(boundary_report).lower() else "REGULATORY CAUTION"
+    )
 
     return {
         "status": "success",
-        "advisory_source": "live_telemetry" if result.get("advisory_degraded") else "live_model",
+        "advisory_source": "openai_model",
         "session_id": session_id,
         "user_message": request.user_message,
         "coordinates": coordinates,
@@ -680,11 +653,15 @@ def run_orchestration(request: OrchestrateRequest):
         "persona": result.get("persona", "Fisherman"),
         "vessel_persona": vessel_persona,
         "hazard_status": derive_hazard_status(boundary_report, ocean_report, hazard_report),
+        "marine_status": marine_status,
+        "boundary_alert": boundary_alert,
+        "boundary_status": boundary_status if boundary_alert else None,
+        "boundary": common.get("boundary_data"),
         "pfz_location": pfz_zones,
         "telemetry": telemetry,
         "lightning_alert": hazard_report.get("lightning_alert", False),
         "cyclone_alert": hazard_report.get("cyclone_alert", False),
-        "hazard_summary": hazard_report.get("summary", "Hazard data unavailable."),
+        "hazard_summary": hazard_report.get("summary"),
         "route": route,
         "plot_url": result.get("plot_url"),
         "regional_zones": result.get("regional_zones", []),
@@ -713,18 +690,12 @@ async def run_voice_orchestration(
         transcription = transcribe_and_translate(audio_bytes, mime_type)
     except UnsupportedAudioError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    except ServerError as e:
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=503,
-            detail="Gemini audio transcription is temporarily unavailable. Use browser speech input or type your query.",
-        ) from e
     except Exception as e:
         traceback.print_exc()
         if isinstance(e, TimeoutError) or "timeout" in type(e).__name__.lower() or "timed out" in str(e).lower():
             raise HTTPException(
                 status_code=503,
-                detail="Gemini audio transcription timed out. Use browser speech input or type your query.",
+                detail="OpenAI audio transcription timed out. Use browser speech input or type your query.",
             ) from e
         if _is_quota_error(e):
             raise HTTPException(
@@ -768,7 +739,6 @@ async def run_voice_orchestration(
         "query_intent": "",
         "final_output": "",
         "final_advisory": "",
-        "advisory_degraded": False,
     }
 
     try:
@@ -778,7 +748,9 @@ async def run_voice_orchestration(
         status_code = 429 if _is_quota_error(e) else 500
         raise HTTPException(status_code=status_code, detail=_orchestration_error_detail(e))
 
-    advisory_text = result.get("final_advisory", "Advisory generated successfully.")
+    advisory_text = result.get("final_advisory")
+    if not advisory_text:
+        raise HTTPException(502, "OpenAI returned no advisory text for the voice query.")
 
     audio_url = None
     if not result.get("dispatch_audio_url"):
@@ -802,7 +774,9 @@ async def run_voice_orchestration(
     }
 
 class DispatchRequest(BaseModel):
-    coordinates: list[float]
+    coordinates: Any = None
+    lat: Any = None
+    lon: Any = None
     persona: str = "Fisherman"
     language: str = "English"
     day_offset: int = 0
@@ -810,38 +784,146 @@ class DispatchRequest(BaseModel):
     onboarding_persona: str | None = None
 
 
+
 @app.post("/api/dispatch/generate")
 def generate_dispatch(request: DispatchRequest):
-    """Return a lightweight dispatch using current marine telemetry."""
-    lat = request.coordinates[0] if len(request.coordinates) > 0 else 19.07
-    lon = request.coordinates[1] if len(request.coordinates) > 1 else 72.87
-    ocean_report = get_live_ocean_conditions(lat, lon, day_offset=0, target_hour=None)
-    wave_match = re.search(r"Wave Height:\s*([0-9]+(?:\.[0-9]+)?)m", ocean_report)
-    sst_match = re.search(r"Water Temp:\s*([0-9]+(?:\.[0-9]+)?)", ocean_report)
-    if not wave_match or not sst_match:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Current marine telemetry is unavailable for these coordinates: {ocean_report}",
-        )
-    wave_height = float(wave_match.group(1))
-    sst_temp = float(sst_match.group(1))
-    sea_condition = f"Wave height {wave_height:.2f}m"
-    sst = f"{sst_temp:.1f}°C"
-    corridor = "A* boundary avoidance active"
-    summary = (
-        f"Operational baseline for ({lat:.2f}, {lon:.2f}). Sea Condition: {sea_condition}, "
-        f"SST: {sst}. Detour Corridor: {corridor}."
+    """Build a dispatch only from telemetry fetched for the requested position."""
+    raw_coords = request.coordinates if isinstance(request.coordinates, (list, tuple)) else []
+    raw_lat = request.lat if request.lat is not None else (raw_coords[0] if raw_coords else None)
+    raw_lon = request.lon if request.lon is not None else (raw_coords[1] if len(raw_coords) > 1 else None)
+    try:
+        lat, lon = float(raw_lat), float(raw_lon)
+    except (TypeError, ValueError, OverflowError):
+        raise HTTPException(422, "Valid vessel latitude and longitude are required.")
+    if not (math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180):
+        raise HTTPException(422, "Vessel coordinates are outside valid latitude/longitude ranges.")
+
+    try:
+        ocean_report = get_live_ocean_conditions(lat, lon, day_offset=0, target_hour=None)
+    except Exception as exc:
+        raise HTTPException(503, f"Live marine telemetry failed: {exc}") from exc
+    def live_value(pattern: str, field: str) -> float:
+        match = re.search(pattern, ocean_report, re.IGNORECASE)
+        if not match:
+            raise HTTPException(503, f"Live {field} telemetry is unavailable: {ocean_report}")
+        try:
+            value = float(match.group(1))
+            if not math.isfinite(value):
+                raise ValueError("non-finite telemetry value")
+            return value
+        except (TypeError, ValueError):
+            raise HTTPException(503, f"Live {field} telemetry is not numeric: {match.group(1)}")
+
+    wave_height = live_value(r"Wave Height:\s*([-+0-9.]+)\s*m", "wave height")
+    swell_height = live_value(r"Swell:\s*([-+0-9.]+)\s*m", "swell height")
+    swell_period = live_value(r"Swell:\s*[-+0-9.]+\s*m\s*@\s*([-+0-9.]+)\s*s", "swell period")
+    wind_knots = live_value(r"Wind Speed:\s*([-+0-9.]+)\s*kts", "wind speed")
+    sst_temp = live_value(r"Water Temp:\s*([-+0-9.]+)", "sea surface temperature")
+
+    try:
+        chl_report = get_chlorophyll_data(lat, lon)
+    except Exception as exc:
+        raise HTTPException(503, f"Live chlorophyll telemetry failed: {exc}") from exc
+    chl_match = re.search(r"Chlorophyll-a:\s*([-+0-9.]+)", chl_report)
+    if not chl_match or "Historical Proxy" in chl_report:
+        raise HTTPException(503, f"Live chlorophyll telemetry unavailable: {chl_report}")
+    chloro_val = float(chl_match.group(1))
+    if not math.isfinite(chloro_val):
+        raise HTTPException(503, "Live chlorophyll telemetry is not finite numeric data.")
+
+    try:
+        pfz_zone = get_nearest_pfz_details(lat, lon)
+    except Exception as exc:
+        raise HTTPException(503, f"Live PFZ lookup failed: {exc}") from exc
+    if not pfz_zone:
+        raise HTTPException(503, "No current PFZ record is available from INCOIS or pfz_today.csv.")
+    boundary = distance_to_nearest_boundary_km(lat, lon)
+    if not boundary or boundary.get("inside_eez") is None:
+        raise HTTPException(503, "Indian EEZ reference geometry is unavailable.")
+    bearing = pfz_zone["bearing_deg"]
+    distance_nm = pfz_zone["distance_nm"]
+    pfz_name = pfz_zone["name"]
+    pfz_status = "Current PFZ record located"
+    opportunity = pfz_name
+    pfz_text = (f"{pfz_name} at {pfz_zone['lat']:.4f}, {pfz_zone['lon']:.4f}; "
+                f"{distance_nm:.1f} NM away, heading {bearing:.1f} degrees")
+
+    marine_status = (
+        "WARNING" if wave_height >= 4.0 or wind_knots >= 30 or not boundary["inside_eez"] or boundary["inside_mpa"]
+        else "CAUTION" if wave_height >= 2.5 or wind_knots >= 20
+        else "NORMAL"
     )
+    border_distance = boundary.get("eez_distance_km")
+    border_text = f"{border_distance:.2f} km" if border_distance is not None else "unavailable"
+    eez_status = "INSIDE INDIAN EEZ" if boundary["inside_eez"] else "OUTSIDE EEZ - INTERNATIONAL WATERS"
+    live_context = (
+        "[LIVE VESSEL & OCEANOGRAPHIC TELEMETRY]\n"
+        f"- Position: {lat:.4f}, {lon:.4f}\n"
+        f"- Wave Height: {wave_height:.2f} m\n"
+        f"- Swell: {swell_height:.2f} m @ {swell_period:.1f} s\n"
+        f"- Wind Speed: {wind_knots:.1f} kts\n"
+        f"- Sea Surface Temp (SST): {sst_temp:.2f} \u00b0C\n"
+        f"- Chlorophyll-a: {chloro_val:.3f} mg/m\u00b3\n"
+        f"- Nearest PFZ: {pfz_text}\n"
+        f"- Maritime EEZ Status: {eez_status} (Distance to border: {border_text})"
+    )
+    persona = request.onboarding_persona or request.persona
+    try:
+        advisory_text = synthesize_advisory(
+            raw_report=live_context + "\n\n" + ocean_report + "\n" + chl_report + "\n" + str(boundary),
+            persona=persona,
+            language=request.language,
+            user_message="Generate a pre-sail advisory using the live telemetry provided.",
+        )
+    except Exception as exc:
+        raise HTTPException(503, f"OpenAI dispatch synthesis failed: {exc}") from exc
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    telemetry = {
+        "wave_height": f"{wave_height:.2f} m",
+        "swell": f"{swell_height:.2f} m @ {swell_period:.1f}s",
+        "wind_speed": f"{wind_knots:.1f} kts",
+        "sst": f"{sst_temp:.1f} \u00b0C",
+        "chlorophyll": f"{chloro_val:.3f} mg/m\u00b3",
+        "salinity": None,
+    }
     return {
         "status": "success",
-        "vessel_persona": "Fisherman",
-        "coordinates": [lat, lon],
-        "sea_condition": sea_condition,
-        "sst": sst,
-        "corridor": corridor,
-        "summary": summary,
-        "message": summary,
+        "advisory_source": "live_model",
+        "timestamp": timestamp,
+        "vessel_persona": persona,
+        "coordinates": [round(lat, 4), round(lon, 4)],
+        "telemetry": telemetry,
+        "telemetry_sources": {"marine_weather": "Open-Meteo live API", "chlorophyll": "NOAA CoastWatch live API", "salinity": "Unavailable: no live salinity source returned"},
+        "pfz_advisory": {
+            "status": pfz_status,
+            "recommended_heading": f"{bearing:.1f}\u00b0" if bearing is not None else None,
+            "distance_nm": f"{distance_nm:.1f} NM" if distance_nm is not None else None,
+            "target_opportunity": opportunity,
+        },
+        "safety_and_routing": {
+            "status": marine_status,
+            "inside_eez": boundary["inside_eez"],
+            "breached": boundary.get("breached", not boundary["inside_eez"]),
+            "alert_level": boundary.get("alert_level"),
+            "eez_distance_km": boundary.get("distance_km", border_text),
+            "eez_distance": f"{border_text} to Indian EEZ boundary",
+            "corridor": (
+                "Safe (Inside Indian EEZ)" if boundary["inside_eez"]
+                else "Border Alert (Outside EEZ)"
+            ),
+        },
+        "routing": boundary,
+        "sea_condition": f"Wave height {wave_height:.2f} m ({marine_status})",
+        "sst": f"{sst_temp:.1f} \u00b0C",
+        "corridor": (
+            "Safe (Inside Indian EEZ)" if boundary["inside_eez"]
+            else "Border Alert (Outside EEZ)"
+        ),
+        "summary": advisory_text,
+        "message": advisory_text,
+        "advisory": advisory_text,
         "pdf_url": None,
         "audio_url": None,
-        "degraded": True,
+        "degraded": False,
     }

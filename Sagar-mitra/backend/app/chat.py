@@ -1,4 +1,4 @@
-"""
+﻿"""
 Sagar Mitra - End-to-End Chat Orchestration
 =============================================
 Wires: Phase 1 NLP (extract_query_parameters) -> ArgoStatisticalAnomalyEngine
@@ -13,7 +13,7 @@ profile lookup later only requires changing the two lines marked below.
 from app.data import store
 from app.statistical_engine import ArgoStatisticalAnomalyEngine
 from app.nlp_extract import extract_query_parameters
-from app.advisory import generate_sagar_mitra_advisory, plain_gemini_answer
+from app.advisory import generate_sagar_mitra_advisory, plain_openai_answer
 from app.historical import sagar_mitra_historical_query
 
 HISTORICAL_KEYWORDS = [
@@ -27,7 +27,7 @@ def sagar_mitra_chat(user_message: str) -> dict:
     End-to-end chatbot function:
       1. Extract params from user text (Phase 1 NLP)
       2. Try to build a profile from REAL nearby Argo data
-      3. If real data is too sparse there -> fall back to a plain Gemini
+      3. If real data is too sparse there -> use a plain OpenAI
          answer (no fabricated statistics)
       4. Otherwise run ArgoStatisticalAnomalyEngine -> Phase 2 NLP advisory
     """
@@ -41,7 +41,7 @@ def sagar_mitra_chat(user_message: str) -> dict:
     # Conceptual/definition questions ("what is a PFZ", "explain X") don't need
     # a live sensor reading -- answer directly instead of forcing stats.
     if any(k in intent for k in ["concept", "explanation", "general curiosity", "definition"]):
-        reply = plain_gemini_answer(user_message, persona, language)
+        reply = plain_openai_answer(user_message, persona, language)
         return {
             "reply": reply,
             "mode": "concept_explanation",
@@ -52,7 +52,7 @@ def sagar_mitra_chat(user_message: str) -> dict:
     profile_df = store.get_real_profile_near(lat, lon)
     if profile_df is None:
         # Not enough real data near this location -- don't fabricate stats.
-        reply = plain_gemini_answer(user_message, persona, language)
+        reply = plain_openai_answer(user_message, persona, language)
         return {
             "reply": reply,
             "mode": "fallback_general_knowledge",

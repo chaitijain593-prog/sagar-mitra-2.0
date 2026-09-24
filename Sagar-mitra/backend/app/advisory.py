@@ -2,8 +2,8 @@
 Sagar Mitra - Ocean Intelligence NLP & Explanation Layer
 ===========================================================
 
-This module wraps Google Gemini using the official
-`google-genai` SDK to translate structured oceanographic JSON data into
+This module uses the official OpenAI Python SDK to translate structured
+oceanographic JSON data into
 persona-aware, language-localized advisories for:
 
     - Fishermen / Coastal Community Members
@@ -12,281 +12,118 @@ persona-aware, language-localized advisories for:
     - General Public / Tourists
 
 Install dependency:
-    pip install google-genai
+    pip install openai
 
-Set your API key as an environment variable before running:
-    export GEMINI_API_KEY="your_key_here"        # Linux / macOS
-    setx GEMINI_API_KEY "your_key_here"           # Windows
+Set GROQ_API_KEY in the environment or backend/.env. OPENAI_API_KEY is
+also accepted for compatibility with an existing local setup.
 
 Author: Sagar Mitra Hackathon Team
 """
 
+import re
 import os
-import json
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from types import SimpleNamespace
 from typing import Dict, Any, Literal, Optional
+from dotenv import load_dotenv
+from openai import OpenAI
 
-from google import genai
-from google.genai import types
+# Load backend/.env when running from a different working directory.
+load_dotenv()
+if not (os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY")):
+    load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env")))
 
-from app.error_utils import is_quota_or_unavailable_error
-
-
-# ---------------------------------------------------------------------------
-# 1. API CLIENT SETUP
-# ---------------------------------------------------------------------------
-
-def get_gemini_client() -> genai.Client:
-    """
-    Safely initializes and returns a Gemini API client using the current key
-    in the rotation (see key-rotation block below).
-    """
-    api_key = _current_key()
-    if not api_key:
-        print("[advisory] ERROR: GEMINI_API_KEY is empty/unset -- no Gemini client can be built.")
-        raise EnvironmentError(
-            "No Gemini API key found. Set GEMINI_API_KEY (single key) or "
-            "GEMINI_API_KEYS (comma-separated, for automatic rotation when "
-            "one hits its quota) in your .env file."
-        )
-    return genai.Client(api_key=api_key)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY")
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+OPENAI_MODEL = "openai/gpt-oss-120b"
+OPENAI_TIMEOUT_SECONDS = 30
+_openai_client = (
+    OpenAI(api_key=GROQ_API_KEY, base_url=GROQ_BASE_URL, timeout=OPENAI_TIMEOUT_SECONDS)
+    if GROQ_API_KEY else None
+)
 
 
-# ---------------------------------------------------------------------------
-# 1b. MULTI-KEY ROTATION
-# ---------------------------------------------------------------------------
-# Put multiple free-tier keys in .env as:
-#   GEMINI_API_KEYS=key_one,key_two,key_three
-# (falls back to single GEMINI_API_KEY if GEMINI_API_KEYS isn't set).
-# When a call fails with a quota/rate-limit error, we automatically rotate
-# to the next key and retry -- no manual restart needed.
-
-_KEYS = [k.strip() for k in os.getenv("GEMINI_API_KEYS", "").split(",") if k.strip()] \
-        or ([os.getenv("GEMINI_API_KEY")] if os.getenv("GEMINI_API_KEY") else [])
-_key_index = 0
-_client: genai.Client | None = None
+def get_openai_client() -> OpenAI:
+    """Return the shared client or fail clearly when configuration is missing."""
+    if _openai_client is None:
+        raise EnvironmentError("GROQ_API_KEY (or legacy OPENAI_API_KEY) is not configured in the environment or backend/.env.")
+    return _openai_client
 
 
-def _current_key() -> str | None:
-    return _KEYS[_key_index] if _KEYS else None
+def require_openai_key() -> None:
+    """Keep startup available; OpenAI-backed requests fail clearly without a key."""
+    if _openai_client is None:
+        print("[ORCA LLM ERROR] GROQ_API_KEY is not configured.")
 
 
-def _rotate_key():
-    global _key_index, _client
-    _key_index = (_key_index + 1) % max(len(_KEYS), 1)
-    _client = None  # force rebuild with the new key
-    print(f"[advisory] Gemini key quota hit -- rotated to key #{_key_index + 1}/{len(_KEYS)}")
+def _is_quota_error(error: Exception) -> bool:
+    status = getattr(error, "status_code", None)
+    message = str(error).lower()
+    return status == 429 or any(token in message for token in ("429", "rate limit", "quota", "insufficient_quota"))
 
 
-def _is_quota_error(e: Exception) -> bool:
-    """True for errors where switching to the next key should help:
-    quota/rate-limit hits, or this specific key being invalid/disabled."""
-    msg = str(e).lower()
-    return any(s in msg for s in [
-        "429", "quota", "resource_exhausted", "rate limit",
-        "401", "unauthenticated", "account_state_invalid",
-        "service account is deleted", "service account is disabled",
-        "api key not valid", "invalid api key",
-    ])
+def _is_permission_denied_error(error: Exception) -> bool:
+    status = getattr(error, "status_code", None)
+    message = str(error).lower()
+    return status == 403 or any(token in message for token in ("403", "permission_denied", "permission denied", "forbidden"))
 
 
-def _is_invalid_key_error(e: Exception) -> bool:
-    """True specifically for an invalid/rejected/unauthenticated API key, as
-    opposed to a plain quota/rate-limit hit -- logged loudly (see
-    generate_content) so a broken GEMINI_API_KEY is diagnosable from the
-    terminal instead of only surfacing as a generic advisory fallback."""
-    msg = str(e).lower()
-    return any(s in msg for s in [
-        "401", "unauthenticated", "api key not valid", "invalid api key",
-        "account_state_invalid", "service account is deleted", "service account is disabled",
-    ])
+def generate_content(
+    model: str,
+    contents,
+    *,
+    system_instruction: str | None = None,
+    temperature: float = 0.3,
+    max_tokens: int = 2048,
+    response_format: dict | None = None,
+    tools: list | None = None,
+    tool_choice=None,
+):
+    """Call OpenAI Chat Completions and propagate API errors to the caller."""
+    messages = []
+    if system_instruction:
+        messages.append({"role": "system", "content": system_instruction})
+    if isinstance(contents, list) and all(isinstance(item, dict) for item in contents):
+        messages.extend(contents)
+    else:
+        messages.append({"role": "user", "content": str(contents)})
+    kwargs = {
+        "model": model or OPENAI_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if response_format is not None:
+        kwargs["response_format"] = response_format
+    if tools is not None:
+        kwargs["tools"] = tools
+    if tool_choice is not None:
+        kwargs["tool_choice"] = tool_choice
+    completion = get_openai_client().chat.completions.create(**kwargs)
+    message = completion.choices[0].message
+    return SimpleNamespace(text=message.content or "", completion=completion, message=message)
 
 
-def _is_permission_denied_error(e: Exception) -> bool:
-    """True for 403 PERMISSION_DENIED errors from the Gemini API (e.g. the
-    key/project lacks access to a model/feature, billing not enabled, or the
-    project itself was denied access). This IS per-key -- confirmed live, one
-    key in GEMINI_API_KEYS can be denied while another works fine -- so
-    generate_content (below) rotates past it like a quota error instead of
-    failing the whole request. Callers only see this surface once every key
-    has been tried and denied, in which case a retry truly won't help and
-    they should show a plain status message instead of the raw error."""
-    msg = str(e).lower()
-    return "403" in msg or "permission_denied" in msg or "permission denied" in msg
+def _query_language(user_message: str, language: str | None = None) -> str:
+    """Return the response language code, recognizing Hindi and Hinglish."""
+    message = str(user_message or "")
+    if re.search(r"[\u0900-\u097f]", message):
+        return "hi"
+    hinglish_terms = {
+        "aaj", "samundar", "mausam", "kaisa", "hai", "macchli", "machli",
+        "kidhar", "jaana", "kare", "batao", "paani", "kaisi", "machhli",
+        "lahar", "lehren", "jaun",
+    }
+    if set(re.findall(r"[a-z]+", message.lower())) & hinglish_terms:
+        return "hi"
+    if language and str(language).lower() in {"hi", "hindi"}:
+        return "hi"
+    return "en"
 
 
-def _get_client() -> genai.Client:
-    global _client
-    if _client is None:
-        _client = get_gemini_client()
-    return _client
+PRIMARY_MODEL = OPENAI_MODEL
+LITE_MODEL = OPENAI_MODEL
 
 
-def require_gemini_key() -> None:
-    """
-    Strict startup check -- called from app/graph.py's create_orca_graph()
-    (which app/main.py runs at import time), so a missing key fails the
-    server's own startup with clear terminal instructions instead of
-    starting normally and letting every request silently degrade to the
-    raw-data fallback formatter ("ORCA's AI summarizer is temporarily
-    busy") with no visible signal to whoever's running it.
-    """
-    if _KEYS:
-        return
-    print("=" * 72)
-    print("ORCA STARTUP ERROR: No Gemini API key configured.")
-    print("=" * 72)
-    print("ORCA needs a Gemini API key to generate localized, persona-aware")
-    print("advisories. Without one, every request will silently fall back to")
-    print("the raw-data formatter (\"ORCA's AI summarizer is temporarily busy\").")
-    print()
-    print("To fix this:")
-    print("  1. Copy backend/.env.example to backend/.env")
-    print("  2. Get a free key at https://aistudio.google.com/apikey")
-    print("  3. Add it to backend/.env as GEMINI_API_KEY=<your key>")
-    print("     (or GEMINI_API_KEYS=key1,key2,... for automatic quota rotation)")
-    print("  4. Restart the server: uvicorn app.main:app --reload")
-    print("=" * 72)
-    raise SystemExit(1)
-
-
-# ---------------------------------------------------------------------------
-# 1c. MODEL TIERING -- keep the synthesizer's quota free of classification traffic
-# ---------------------------------------------------------------------------
-# Gemini's free-tier quota is scoped PER PROJECT PER MODEL (confirmed live:
-# a model quota response did not block a call to gemini-flash-lite-latest
-# in the same project/key). Mechanical, structured-output tasks -- picking
-# agents, picking a data-lookup tool, extracting a lat/lon -- don't need the
-# strongest model and previously competed with the user-facing synthesis
-# call for the SAME model's daily quota. Routing them to a separate lite
-# model gives the final localized/persona-aware advisory its own quota pool,
-# so a burst of routing calls can no longer starve the one call that
-# actually has to succeed in the user's language.
-LITE_MODEL = "gemini-flash-lite-latest"
-
-# The default model for user-facing advisory generation and
-# synthesis (generate_sagar_mitra_advisory, synthesize_advisory,
-# plain_gemini_answer, format_compliance_advisory below all default to
-# this) -- kept as one explicit constant, mirroring LITE_MODEL above, so
-# there's a single place that names it rather than four repeated literals.
-#
-# Keep the requested Gemini 2.5 Flash stable model as the primary. The
-# fallback uses Google's currently recommended Flash model if 2.5 is
-# overloaded or unavailable to this project.
-PRIMARY_MODEL = "gemini-2.5-flash"
-
-# Fallback model for generate_content_with_fallback (below) when
-# PRIMARY_MODEL hits a 429/503/timeout -- a distinct, comparably-capable
-# model (not LITE_MODEL, which is reserved for cheap routing/classification
-# traffic -- see the "MODEL TIERING" note above) so a degraded synthesis
-# call still has a real shot at a good persona/language-aware answer.
-FALLBACK_MODEL = "gemini-3.8-flash"
-
-
-# Hard ceiling on a single Gemini call ("circuit breaker"), enforced two
-# ways below: the SDK's own HttpOptions.timeout (per HTTP attempt) AND an
-# outer thread-based deadline. The SDK retries a transient httpx timeout/
-# connect error internally (up to 3x with backoff -- see
-# google.genai._api_client), so HttpOptions.timeout alone can't guarantee
-# this ceiling; the outer future.result(timeout=...) below is what actually
-# stops a caller from hanging on Gemini past this many seconds, whether
-# that's a real 503 "high demand" or a silent stall.
-#
-# 15s: a 6s ceiling (tried previously) was cutting off ordinary, eventually-
-# successful synthesis calls before they finished, forcing normal queries
-# into the degraded fallback under regular load -- too tight for genuine
-# Gemini latency. Historical/chart queries don't count against this at all
-# any more (see planner.py's _INSTANT_HISTORICAL_KEYWORDS and graph.py's
-# synthesizer_node historical-only bypass, both zero-Gemini), so the
-# remaining traffic is single-agent narrative synthesis, where 15s comfortably
-# covers normal generation time while still failing fast on a genuine
-# 503/stall. generate_content_with_fallback still gets one retry on
-# FALLBACK_MODEL, itself bounded by this same ceiling, so worst case is
-# ~2x this value (~30s) before degrading to the deterministic formatter --
-# never an indefinite hang.
-LLM_CALL_TIMEOUT_S = 15
-
-
-def _call_with_timeout(client: genai.Client, model: str, contents, config):
-    """Runs client.models.generate_content in a worker thread and gives up
-    after LLM_CALL_TIMEOUT_S regardless of what the SDK is still doing
-    internally. The worker thread isn't forcibly killed on timeout (Python
-    can't do that) -- shutdown(wait=False) lets it finish in the background
-    on its own instead of blocking our return on it, so a stalled call still
-    fails fast for the caller."""
-    executor = ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(client.models.generate_content, model=model, contents=contents, config=config)
-    try:
-        return future.result(timeout=LLM_CALL_TIMEOUT_S)
-    except FuturesTimeoutError:
-        raise TimeoutError(
-            f"Gemini call to model '{model}' timed out after {LLM_CALL_TIMEOUT_S}s "
-            "(likely a 503/high-demand stall)."
-        )
-    finally:
-        executor.shutdown(wait=False)
-
-
-def generate_content(model: str, contents, config=None):
-    """
-    Drop-in replacement for client.models.generate_content(...) that
-    automatically rotates through GEMINI_API_KEYS on quota/rate-limit OR
-    permission-denied errors and retries, instead of getting permanently
-    stuck on a single bad key for the rest of the process lifetime. Every
-    call is bounded by LLM_CALL_TIMEOUT_S (see _call_with_timeout).
-    """
-    if config is None:
-        config = types.GenerateContentConfig(http_options=types.HttpOptions(timeout=LLM_CALL_TIMEOUT_S * 1000))
-    elif getattr(config, "http_options", None) is None:
-        config.http_options = types.HttpOptions(timeout=LLM_CALL_TIMEOUT_S * 1000)
-
-    last_err = None
-    attempts = max(len(_KEYS), 1)
-    for _ in range(attempts):
-        client = _get_client()
-        try:
-            return _call_with_timeout(client, model, contents, config)
-        except Exception as e:
-            last_err = e
-            if _is_invalid_key_error(e):
-                # Distinct from a quota hit -- explicit so an invalid/rejected
-                # GEMINI_API_KEY is diagnosable from the terminal instead of
-                # only surfacing as a generic advisory fallback later.
-                print(f"[advisory] ERROR: GEMINI_API_KEY (key #{_key_index + 1}/{max(len(_KEYS), 1)}) "
-                      f"was rejected by Google as invalid/unauthenticated: {e}")
-            if (_is_quota_error(e) or _is_permission_denied_error(e)) and len(_KEYS) > 1:
-                _rotate_key()
-                continue
-            raise
-    raise RuntimeError(f"All Gemini API keys exhausted/failed. Last error: {last_err}")
-
-
-def generate_content_with_fallback(primary_model: str, contents, config=None,
-                                    fallback_model: str = FALLBACK_MODEL):
-    """
-    Tries `primary_model` first; if it fails with a quota (429) OR
-    availability (503 "high demand") error, retries ONCE on `fallback_model`
-    -- a separate, comparably-capable model (see FALLBACK_MODEL) -- before
-    giving up.
-
-    _is_quota_error() (used for key rotation, above) only recognizes 429s,
-    since rotating API KEYS can't fix a 503 -- that's a whole-model outage,
-    not a per-key limit. Rotating MODEL can, which is what this adds: the
-    user-facing synthesis calls (synthesize_advisory, format_compliance_
-    advisory) get a real second chance at producing a localized answer
-    instead of immediately dropping to the raw-text fallback the moment the
-    strong model has a bad moment.
-    """
-    try:
-        return generate_content(model=primary_model, contents=contents, config=config)
-    except Exception as e:
-        if is_quota_or_unavailable_error(e) and primary_model != fallback_model:
-            print(f"[advisory] {primary_model} unavailable ({e}); retrying on {fallback_model}")
-            return generate_content(model=fallback_model, contents=contents, config=config)
-        raise
-
-
-# ---------------------------------------------------------------------------
 # 2. PERSONA & LANGUAGE CONFIGURATION
 # ---------------------------------------------------------------------------
 
@@ -527,7 +364,7 @@ def generate_sagar_mitra_advisory(
 ) -> str:
     """
     Generates a persona-aware, localized ocean advisory from structured
-    oceanographic JSON data using Gemini.
+    oceanographic JSON data using OpenAI.
 
     Args:
         json_payload: Dict matching the Sagar Mitra oceanographic schema,
@@ -541,7 +378,7 @@ def generate_sagar_mitra_advisory(
             }
         persona: One of "Fisherman", "Student", "Researcher", "General Public".
         language: Target output language, e.g. "English", "Hindi", "Marathi".
-        model: Gemini model name (defaults to PRIMARY_MODEL).
+        model: OpenAI model name (defaults to PRIMARY_MODEL).
 
     Returns:
         A formatted advisory string, ready to display to the end user.
@@ -561,16 +398,14 @@ def generate_sagar_mitra_advisory(
 )
 
     response = generate_content(
-        model=model,
-        contents=user_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=0.3,
-            max_output_tokens=2048,
-        ),
+        model=model, contents=user_prompt, system_instruction=system_instruction,
+        temperature=0.3, max_tokens=2048,
     )
 
-    return (response.text or "").strip()
+    text = (response.text or "").strip()
+    if not text:
+        raise RuntimeError("OpenAI returned an empty advisory for the live sensor data.")
+    return text
 
 
 def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: str = "English",
@@ -586,12 +421,13 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
     historical trends, hazard alerts, statistical anomalies) into ONE
     coherent, persona/language-aware advisory.
 
-    Unlike plain_gemini_answer (which assumes no real data was found and
+    Unlike plain_openai_answer (which assumes no real data was found and
     must hedge accordingly), this assumes real data WAS gathered by the
     dispatch step and must be reflected honestly, not hedged as "general
     guidance" or re-derived from the model's own background knowledge.
     """
 
+    language = "Hindi" if _query_language(user_message, language) == "hi" else "English"
     persona_block = PERSONA_SYSTEM_PROMPTS.get(persona, PERSONA_SYSTEM_PROMPTS["Fisherman"])
     vessel_block = _vessel_context_block(vessel_persona)
 
@@ -606,6 +442,18 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
         "for Bengali, Kannada script for Kannada, Gurmukhi for Punjabi, Odia script for Odia, Tamil "
         "script for Tamil). Never romanize or transliterate into Latin characters. Do not mix in "
         "English unless that language commonly borrows a term for something.\n\n"
+        "QUERY-LANGUAGE RULE: Detect the language of the user's latest question. If it contains "
+        "Hindi, Romanized Hinglish, or Devanagari characters, generate the ENTIRE advisory in "
+        "fluent Hindi using clean Devanagari script. If it is English, respond in English. "
+        "Do not answer Hindi in Romanized script.\n\n"
+        "LIVE DATA RULE: Generate the advisory strictly from the [LIVE VESSEL & OCEANOGRAPHIC "
+        "TELEMETRY] block and the agent data provided. Incorporate the exact numerical readings; "
+        "never invent or estimate values. Do not use canned disclaimers or template prose. If a "
+        "measurement is marked unavailable, state that it is unavailable.\n\n"
+        "QUERY-LANGUAGE REQUIREMENT: Answer directly in the language used by the user's latest "
+        "question. If the question is Hindi or Hinglish (Hindi written in Latin letters), answer "
+        "in natural Hindi using Devanagari. If it is English, answer in English. Use the requested "
+        "language above when the question itself does not make its language clear.\n\n"
         "GROUNDING: The data below was just gathered live by ORCA's specialist agents for this "
         "exact query. Base your answer on it -- never claim you lack real-time data, and never "
         "invent a number or fact that isn't in it. If a section reports an error or missing "
@@ -626,23 +474,25 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
         "Answer the user's actual question directly first, then mention any other relevant "
         "findings from the data above."
     )
-    response = generate_content_with_fallback(
-        primary_model=model, contents=user_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction, temperature=0.3, max_output_tokens=2048,
-        ),
+    response = generate_content(
+        model=model, contents=user_prompt, system_instruction=system_instruction,
+        temperature=0.3, max_tokens=2048,
     )
-    return (response.text or raw_report).strip()
+    text = (response.text or "").strip()
+    if not text:
+        raise RuntimeError("OpenAI returned an empty advisory for the live telemetry.")
+    return text
 
 
-def plain_gemini_answer(user_message: str, persona: str = "General Public",
-                         language: str = "English", model: str = PRIMARY_MODEL) -> str:
+def plain_openai_answer(user_message: str, persona: str = "General Public",
+                        language: str = "English", model: str = PRIMARY_MODEL) -> str:
     """
-    Fallback path: used when we don't have enough real nearby ocean data to
-    run the statistical engine honestly. Answers directly from Gemini's own
+    General-knowledge path used when nearby ocean data is not available.
+    Answers directly from OpenAI's own
     knowledge instead of fabricating statistics, but stays in Sagar Mitra's
     voice/persona/language.
     """
+    language = "Hindi" if _query_language(user_message, language) == "hi" else "English"
     persona = normalize_persona(persona)
     system_instruction = (
         f"You are Sagar Mitra, an ocean-intelligence assistant for the "
@@ -656,15 +506,13 @@ def plain_gemini_answer(user_message: str, persona: str = "General Public",
         f"blank lines between points/paragraphs instead of markdown lists."
     )
     response = generate_content(
-        model=model,
-        contents=user_message,
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=0.3,
-            max_output_tokens=2048,
-        ),
+        model=model, contents=user_message, system_instruction=system_instruction,
+        temperature=0.3, max_tokens=2048,
     )
-    return (response.text or "").strip()
+    text = (response.text or "").strip()
+    if not text:
+        raise RuntimeError("OpenAI returned an empty response for the user query.")
+    return text
 
 
 def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
@@ -680,7 +528,7 @@ def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
     Compliance findings are legal/safety facts computed deterministically by
     boundary_toool.check_maritime_boundary. This function's only job is to
     phrase that exact finding for the user in their language/persona tone --
-    unlike plain_gemini_answer, it must NEVER fall back on general knowledge
+    unlike plain_openai_answer, it must NEVER fall back on general knowledge
     or invent any detail (regulation names, distances, other MPA names,
     penalties, legal citations) that isn't literally present in raw_report.
     """
@@ -711,15 +559,11 @@ def format_compliance_advisory(raw_report: str, persona: str = "Fisherman",
         "FORMATTING: Plain text only, no markdown, no LaTeX. Lead with the "
         "compliance status, then any necessary safety/legal action."
     )
-    response = generate_content_with_fallback(
-        primary_model=model,
-        contents=f"Compliance Report:\n{raw_report}",
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=0.3,
-            max_output_tokens=1024,
-        ),
+    response = generate_content(
+        model=model, contents=f"Compliance Report:\n{raw_report}",
+        system_instruction=system_instruction, temperature=0.3, max_tokens=1024,
     )
-    # If Gemini returns nothing, fall back to the raw factual finding itself
-    # rather than an empty response - never silently drop a compliance result.
-    return (response.text or raw_report).strip()
+    text = (response.text or "").strip()
+    if not text:
+        raise RuntimeError("OpenAI returned an empty compliance advisory.")
+    return text

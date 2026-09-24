@@ -1,4 +1,4 @@
-"""
+﻿"""
 Sagar Mitra Backend - Data Layer
 =================================
 Loads the historical Argo dataset ONCE at startup (not per-request), builds
@@ -215,7 +215,7 @@ class DataStore:
         Builds a profile-shaped DataFrame from REAL nearby measurements in
         final_dataset (nearest lat/lon box), for ArgoStatisticalAnomalyEngine.
         Returns None if too few real points are nearby -- caller should then
-        fall back to a plain Gemini answer instead of fabricating stats.
+        use a plain OpenAI answer instead of fabricating stats.
         """
         df = self.final_dataset
         nearby = df[(df["LATITUDE"].between(lat - radius_deg, lat + radius_deg)) &

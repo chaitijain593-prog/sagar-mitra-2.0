@@ -1,7 +1,7 @@
 """
 Sagar Mitra / ORCA - Small TTL Cache for LLM Calls
 ======================================================
-The free-tier Gemini quota is 20 requests/day, and a single /api/orchestrate
+Repeated OpenAI calls for a single /api/orchestrate
 call can burn 2-4 of those (planner + per-agent + synthesizer). Repeated or
 near-identical questions -- common both in demos and in judges retesting the
 same query -- shouldn't each cost a fresh call. This is a plain in-memory

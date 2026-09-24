@@ -1,50 +1,43 @@
-"""
-Sagar Mitra / ORCA - Blackout Mode (stale-cache network wrapper)
-===================================================================
-Vessels lose connectivity at sea. `cached_get` wraps requests.get: on a
-successful response it persists the JSON body to static/offline_cache/ (a
-filename hashed from the request URL+params) and returns the parsed JSON.
-On ConnectionError/Timeout it falls back to the last-saved JSON for that
-same URL+params, so tools keep answering (with stale data) instead of
-raising through to the user mid-blackout.
+﻿"""HTTP wrapper with a bounded in-memory last-success cache.
+
+Cached payloads stay in RAM: API requests never create cache files that can
+trigger frontend file watchers. A stale in-process payload is used only for
+connection and timeout failures.
 """
 import hashlib
 import json
-import os
+import threading
+from collections import OrderedDict
 from typing import Any, Dict, Optional
 
 import requests
 
-CACHE_DIR = os.environ.get("SAGAR_MITRA_OFFLINE_CACHE_DIR", "./static/offline_cache")
+_MAX_CACHE_ENTRIES = 256
+_memory_cache: OrderedDict[str, dict] = OrderedDict()
+_cache_lock = threading.RLock()
 
 
-def _cache_path(url: str, params: Optional[Dict[str, Any]]) -> str:
+def _cache_key(url: str, params: Optional[Dict[str, Any]]) -> str:
     key = url + "?" + json.dumps(params or {}, sort_keys=True)
-    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
-    return os.path.join(CACHE_DIR, f"{digest}.json")
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
 def cached_get(url: str, params: Optional[Dict[str, Any]] = None, timeout: int = 10) -> dict:
-    """Drop-in for `requests.get(url, params=params, timeout=timeout).json()`.
-
-    Returns the live JSON on success (and caches it), or the last cached
-    JSON for this exact URL+params on ConnectionError/Timeout. Raises
-    requests.exceptions.RequestException for other failures (bad status,
-    etc.) or if no cache exists yet for a failed request.
-    """
-    path = _cache_path(url, params)
+    """Return live JSON, or an in-memory stale response after network loss."""
+    key = _cache_key(url, params)
     try:
         response = requests.get(url, params=params, timeout=timeout)
         response.raise_for_status()
         data = response.json()
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f)
+        with _cache_lock:
+            _memory_cache[key] = data
+            _memory_cache.move_to_end(key)
+            while len(_memory_cache) > _MAX_CACHE_ENTRIES:
+                _memory_cache.popitem(last=False)
         return data
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                stale = json.load(f)
-            stale["_blackout_stale"] = True
-            return stale
+        with _cache_lock:
+            stale = _memory_cache.get(key)
+        if stale is not None:
+            return {**stale, "_blackout_stale": True}
         raise

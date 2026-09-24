@@ -1,4 +1,4 @@
-"""
+﻿"""
 Sagar Mitra - Phase 1 NLP: User Query -> Structured Parameters
 =================================================================
 Takes free-text user input (any language) and extracts the structured
@@ -11,8 +11,7 @@ import re
 from datetime import date
 from typing import Optional, Tuple
 
-from google.genai import types
-from app.advisory import generate_content, LITE_MODEL
+from app.advisory import generate_content, LITE_MODEL, GROQ_API_KEY
 
 EXTRACTION_SYSTEM_PROMPT = """
 You are the input-parsing layer for Sagar Mitra, an ocean intelligence system
@@ -58,11 +57,10 @@ def extract_query_parameters(user_message: str, model: str = LITE_MODEL) -> dict
     response = generate_content(
         model=model,
         contents=user_message,
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=0.1,
-            max_output_tokens=2048,
-        ),
+        system_instruction=system_instruction,
+        temperature=0.1,
+        max_tokens=2048,
+        response_format={"type": "json_object"},
     )
 
     text = (response.text or "").strip()
@@ -102,9 +100,9 @@ _CURRENT_LOCATION_PHRASES = (
 )
 
 # Small, fast local gazetteer for common Indian coastal reference points, so
-# the common case never needs a Gemini call. Anything not listed here falls
+# the common case never needs a OpenAI call. Anything not listed here falls
 # through to the LLM-based extract_query_parameters() below (only when a
-# Gemini key is configured), which can resolve arbitrary place names.
+# OpenAI key is configured), which can resolve arbitrary place names.
 KNOWN_COASTAL_LOCATIONS = {
     "mumbai": (19.07, 72.87), "bombay": (19.07, 72.87),
     "ratnagiri": (16.99, 73.30),
@@ -156,19 +154,16 @@ def extract_coordinates_from_message(user_message: str) -> Optional[Tuple[float,
         if name in text:
             return coords
 
-    # 3. Fall through to the Gemini-based extractor for a place name outside
+    # 3. Fall through to the OpenAI-based extractor for a place name outside
     # the local gazetteer. Only trust its coordinates if it actually
     # identified a location_name -- extract_query_parameters() otherwise
     # fabricates a Ratnagiri default for every message, which would
     # wrongly override the real GPS position on generic/conceptual queries.
-    if os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEYS"):
-        try:
-            params = extract_query_parameters(user_message)
-            if params.get("location_name") and params.get("latitude") is not None \
-                    and params.get("longitude") is not None:
-                return (float(params["latitude"]), float(params["longitude"]))
-        except Exception:
-            pass  # best-effort only -- fall back to the GPS coordinate on any failure
+    if GROQ_API_KEY:
+        params = extract_query_parameters(user_message)
+        if params.get("location_name") and params.get("latitude") is not None \
+                and params.get("longitude") is not None:
+            return (float(params["latitude"]), float(params["longitude"]))
 
     return None
 
@@ -178,7 +173,7 @@ def extract_coordinates_from_message(user_message: str) -> Optional[Tuple[float,
 # ---------------------------------------------------------------------------
 # marine_weather_tool.py and weather_alert_tool.py previously only ever fetched
 # Open-Meteo's "current" endpoint, so "is it safe to sail tomorrow morning?"
-# was silently answered with right-now data. Regex-only (no Gemini call) so
+# was silently answered with right-now data. Regex-only (no OpenAI call) so
 # it works even without an API key and never adds latency/quota cost to the
 # common "today" case -- it just returns (0, None), which both tools treat
 # identically to their pre-existing "current conditions" behavior.

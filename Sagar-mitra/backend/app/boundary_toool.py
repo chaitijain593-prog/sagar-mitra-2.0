@@ -23,6 +23,35 @@ def load_geometries(filepath):
                 geometries.append(shape(geom))
     return geometries
 
+
+def get_eez_west_longitude(lat: float) -> float:
+    """Map-aligned approximation of India's western Arabian Sea EEZ edge."""
+    if lat >= 22.0:
+        return 67.2
+    if lat >= 19.0:
+        return 67.5 + (22.0 - lat) * (68.2 - 67.5) / 3.0
+    if lat >= 15.0:
+        return 68.2 + (19.0 - lat) * (69.2 - 68.2) / 4.0
+    if lat >= 10.0:
+        return 69.2 + (15.0 - lat) * (71.0 - 69.2) / 5.0
+    return 71.5
+
+
+def check_geofence(lat: float, lon: float) -> dict:
+    """Check west-edge EEZ status using the same curve represented on the map."""
+    boundary_lon = get_eez_west_longitude(lat)
+    inside = lon >= boundary_lon
+    distance_km = round(abs(lon - boundary_lon) * 111.0, 2)
+    return {
+        "status": "SAFE" if inside else "HAZARDOUS",
+        "inside_eez": inside,
+        "breached": not inside,
+        "alert_level": "NORMAL" if inside else "EEZ BORDER ALERT",
+        "distance_km": distance_km,
+        "message": "Vessel within Indian EEZ" if inside else "Vessel has crossed the Indian EEZ boundary into international waters.",
+    }
+
+
 # Load boundaries without GeoPandas
 eez_geoms = load_geometries(eez_path)
 mpa_geoms = load_geometries(mpa_path)
@@ -40,12 +69,11 @@ def check_maritime_boundary(lat: float, lon: float) -> str:
     coord_label = f"[{lat}, {lon}]"
 
     missing = []
-    if not eez_geoms:
-        missing.append("EEZ boundary data")
     if not mpa_geoms:
         missing.append("MPA boundary data")
 
-    if eez_geoms and not any(geom.contains(pt) for geom in eez_geoms):
+    fence = check_geofence(lat, lon)
+    if fence["breached"]:
         return f"ALERT: {coord_label} has crossed into international waters."
 
     if mpa_geoms and any(geom.contains(pt) for geom in mpa_geoms):
@@ -132,16 +160,19 @@ def distance_to_nearest_boundary_km(lat: float, lon: float) -> dict:
     pt = Point(lon, lat)
 
     missing = []
-    if not eez_geoms:
-        missing.append("EEZ boundary data")
     if not mpa_geoms:
         missing.append("MPA boundary data")
 
-    inside_eez = any(geom.contains(pt) for geom in eez_geoms) if eez_geoms else None
+    fence = check_geofence(lat, lon)
+    inside_eez = fence["inside_eez"]
     inside_mpa = any(geom.contains(pt) for geom in mpa_geoms) if mpa_geoms else False
 
     return {
-        "eez_distance_km": _distance_to_boundary_line_km(pt, eez_geoms),
+        "eez_distance_km": fence["distance_km"],
+        "breached": fence["breached"],
+        "alert_level": fence["alert_level"],
+        "status": fence["status"],
+        "distance_km": fence["distance_km"],
         "inside_eez": inside_eez,
         "mpa_distance_km": _distance_to_area_km(pt, mpa_geoms),
         "inside_mpa": inside_mpa,
@@ -171,22 +202,17 @@ def return_heading_to_safety(lat: float, lon: float) -> Optional[dict]:
     loaded (nothing to steer back toward) or if the vessel is already
     inside the EEZ and outside every MPA (no return heading is needed).
     """
-    if not eez_geoms:
-        return None
     pt = Point(lon, lat)
-    inside_eez = any(geom.contains(pt) for geom in eez_geoms)
+    inside_eez = check_geofence(lat, lon)["inside_eez"]
     inside_mpa = any(geom.contains(pt) for geom in mpa_geoms) if mpa_geoms else False
 
     if inside_eez and not inside_mpa:
         return None  # already in safe water -- no return heading needed
 
     if not inside_eez:
-        # Nearest point ON/INSIDE the EEZ multipolygon (not just its
-        # boundary line), so the target is the closest SAFE point.
-        target = min(
-            (nearest_points(geom, pt)[0] for geom in eez_geoms),
-            key=lambda p: _haversine_km(lat, lon, p.y, p.x),
-        )
+        # Return east across the same approximate western edge used by the
+        # geofence decision, independent of whether detailed polygons loaded.
+        target = Point(get_eez_west_longitude(lat), lat)
     else:
         # Inside the EEZ but inside an MPA -- steer to the nearest point on
         # that MPA polygon's boundary (i.e. just outside it).

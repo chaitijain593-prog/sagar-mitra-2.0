@@ -35,8 +35,3 @@ class AgentState(TypedDict):
     query_intent: str
     final_output: str
     final_advisory: str
-    # True when synthesizer_node had to fall back to format_fallback_advisory
-    # (Gemini synthesis exhausted primary+fallback model, e.g. a 503/high-
-    # demand stall or timeout) instead of a real Gemini-polished advisory --
-    # surfaced to the frontend as main.py's /api/orchestrate "status" field.
-    advisory_degraded: bool

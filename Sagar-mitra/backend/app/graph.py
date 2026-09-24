@@ -1,4 +1,6 @@
-from concurrent.futures import ThreadPoolExecutor
+﻿from concurrent.futures import ThreadPoolExecutor
+import math
+import re
 
 from langgraph.graph import StateGraph, END
 
@@ -9,19 +11,16 @@ from app.sub_agents import (
     morning_dispatch_node,
 )
 
-# Gemini formatters that keep persona/language/grounding rules
-from app.advisory import synthesize_advisory, format_compliance_advisory, require_gemini_key
+# OpenAI formatters that keep persona/language/grounding rules
+from app.advisory import synthesize_advisory, require_openai_key
 
 # LLM planner: decomposes the query into the set of agents to run, plus
 # detected language/persona/intent (replaces the old single-keyword router)
 from app.planner import plan_query
 
-# Deterministic, localized fallback formatting + error sanitization -- used
-# whenever Gemini itself is unavailable, so a quota/outage degrades the
-# FORMATTING and LANGUAGE gracefully instead of leaking a raw API error or
-# falling back to unlabeled, English-only, wall-of-text concatenation.
-from app.response_formatter import format_natural_fallback_advisory, derive_hazard_status
-from app.error_utils import safe_error_text
+# Error classification for surfacing provider failures after the OpenAI
+# model pool has been exhausted.
+from app.error_utils import is_quota_or_unavailable_error
 
 # The five "common" live-data lookups that BOTH the corresponding chat
 # agents (navigation/fishing/compliance/hazard) AND main.py's dashboard
@@ -33,7 +32,8 @@ from app.error_utils import safe_error_text
 # query.
 from app.boundary_toool import check_maritime_boundary
 from app.marine_weather_tool import get_live_ocean_conditions
-from app.pfz_tool import get_nearest_pfz
+from app.pfz_tool import get_nearest_pfz_details
+from app.boundary_toool import distance_to_nearest_boundary_km
 from app.chlorophyll_tool import get_chlorophyll_data
 from app.weather_alert_tool import get_weather_hazard_alerts
 
@@ -51,24 +51,46 @@ AGENT_FUNCS = {
     "dispatch": morning_dispatch_node,
 }
 
-# Agents whose report is built entirely from one of the five common signals
-# fetched below -- these must wait for that fetch, but don't need to make
-# any live call of their own once it lands (see sub_agents.py). "dispatch"
-# is deliberately NOT here: morning_dispatch_node runs its own full,
-# independent six-way concurrent fetch (see dispatch.py), so it belongs in
-# the independent_futures pool below and should start immediately,
-# concurrently with the common fetch, not wait on it -- an earlier version
-# put it here to reuse common_signals, but that serialized the slow
-# regional-zone scan after the common fetch instead of overlapping it,
-# making the chat-triggered dispatch path slower overall (see dispatch.py's
-# generate_morning_dispatch docstring).
-_COMMON_SIGNAL_AGENTS = {"navigation", "fishing", "compliance", "hazard"}
+# Agents whose report is built from the common signal set wait until live
+# telemetry has been fetched and validated.
+_COMMON_SIGNAL_AGENTS = {"navigation", "fishing", "compliance", "hazard", "dispatch"}
 
-_HAZARD_REPORT_FALLBACK = {
-    "lightning_alert": False, "lightning_detail": "Hazard data unavailable.",
-    "cyclone_alert": False, "cyclone_detail": "Hazard data unavailable.",
-    "summary": "Hazard data unavailable.",
-}
+def _live_context_block(coordinates: list[float], signals: dict) -> str:
+    """Serialize this request's fetched telemetry without substituting demo values."""
+    import re
+
+    lat, lon = float(coordinates[0]), float(coordinates[1])
+    ocean = str(signals.get("ocean_report") or "")
+    wave = re.search(r"Wave Height:\s*([^,]+)", ocean)
+    sst = re.search(r"Water Temp:\s*([^,]+)", ocean)
+    wind = re.search(r"Wind Speed:\s*([^,]+)", ocean)
+    swell = re.search(r"Swell:\s*([^,]+)", ocean)
+    chlorophyll = re.search(r"Chlorophyll-a:\s*([^,.]+)", str(signals.get("chlorophyll_report") or ""))
+    zone = signals.get("nearest_pfz")
+    raw_boundary = signals.get("boundary_data")
+    boundary = raw_boundary if isinstance(raw_boundary, dict) else {}
+    inside = boundary.get("inside_eez")
+    eez_status = ("INSIDE INDIAN EEZ" if inside is True else
+                  "OUTSIDE EEZ - INTERNATIONAL WATERS" if inside is False else
+                  "EEZ STATUS UNAVAILABLE")
+    distance = boundary.get("eez_distance_km")
+    distance_text = f"{distance:.2f} km" if isinstance(distance, (int, float)) else "unavailable"
+    if zone:
+        pfz_text = (f"{zone['name']} at {zone['lat']:.4f}Â°, {zone['lon']:.4f}Â° "
+                    f"({zone['distance_nm']:.1f} NM away, heading {zone['bearing_deg']:.1f}Â°)")
+    else:
+        pfz_text = "unavailable; no current PFZ record returned"
+    return (
+        "[LIVE VESSEL & OCEANOGRAPHIC TELEMETRY]\n"
+        f"- Position: {lat:.4f}Â°, {lon:.4f}Â°\n"
+        f"- Wave Height: {wave.group(1).strip() if wave else 'unavailable'}\n"
+        f"- Swell: {swell.group(1).strip() if swell else 'unavailable'}\n"
+        f"- Wind Speed: {wind.group(1).strip() if wind else 'unavailable'}\n"
+        f"- Sea Surface Temp (SST): {sst.group(1).strip() if sst else 'unavailable'}\n"
+        f"- Chlorophyll-a: {chlorophyll.group(1).strip() if chlorophyll else 'unavailable'}\n"
+        f"- Nearest PFZ: {pfz_text}\n"
+        f"- Maritime EEZ Status: {eez_status} (Distance to border: {distance_text})"
+    )
 
 
 def _fetch_common_signals(pool: ThreadPoolExecutor, lat: float, lon: float,
@@ -81,7 +103,8 @@ def _fetch_common_signals(pool: ThreadPoolExecutor, lat: float, lon: float,
         "boundary_report": pool.submit(check_maritime_boundary, lat, lon),
         "ocean_report": pool.submit(get_live_ocean_conditions, lat, lon,
                                      day_offset=day_offset, target_hour=target_hour),
-        "pfz_report": pool.submit(get_nearest_pfz, lat, lon),
+        "pfz_report": pool.submit(get_nearest_pfz_details, lat, lon),
+        "boundary_data": pool.submit(distance_to_nearest_boundary_km, lat, lon),
         "chlorophyll_report": pool.submit(get_chlorophyll_data, lat, lon),
         "hazard_report": pool.submit(get_weather_hazard_alerts, lat, lon,
                                       day_offset=day_offset, target_hour=target_hour),
@@ -89,47 +112,76 @@ def _fetch_common_signals(pool: ThreadPoolExecutor, lat: float, lon: float,
 
 
 def _resolve_common_signals(futures: dict) -> dict:
-    """Resolves each future independently so one flaky fetch can't mask the
-    other four (mirrors the 'never let a raw exception reach agent_reports'
-    guard already used for agent execution below)."""
-    signals = {}
-    for key, future in futures.items():
-        try:
-            signals[key] = future.result()
-        except Exception as e:
-            print(f"[dispatch] common signal '{key}' fetch failed: {e}")
-            signals[key] = dict(_HAZARD_REPORT_FALLBACK) if key == "hazard_report" else f"Data unavailable: {e}"
+    """Resolve live signal requests; surface fetch errors without mock text."""
+    signals = {key: future.result() for key, future in futures.items()}
+    zone = signals.get("pfz_report")
+    if isinstance(zone, dict):
+        signals["nearest_pfz"] = zone
+        signals["pfz_report"] = (
+            f"Nearest PFZ is {zone['name']}. Coordinates: [{zone['lat']}, {zone['lon']}]. "
+            f"{zone['distance_km']} km / {zone['distance_nm']} NM away, "
+            f"bearing {zone['bearing_deg']} degrees."
+        )
+    elif zone is None:
+        raise RuntimeError("Live PFZ telemetry returned no nearest-zone record.")
+    else:
+        signals["nearest_pfz"] = None
     return signals
+
+
+def _require_live_synthesis_inputs(signals: dict) -> None:
+    """Fail explicitly when current coordinate telemetry is missing."""
+    ocean = str(signals.get("ocean_report") or "")
+    required_ocean_fields = {
+        "wave height": r"Wave Height:\s*([-+\d.]+)\s*m",
+        "swell": r"Swell:\s*([-+\d.]+)\s*m\s*@\s*[-+\d.]+\s*s",
+        "wind speed": r"Wind Speed:\s*([-+\d.]+)\s*kts",
+        "water temperature": r"Water Temp:\s*([-+\d.]+)",
+    }
+    def has_live_number(pattern: str, text: str) -> bool:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            return False
+        try:
+            return math.isfinite(float(match.group(1)))
+        except (ValueError, OverflowError):
+            return False
+
+    missing = [name for name, pattern in required_ocean_fields.items()
+               if not has_live_number(pattern, ocean)]
+    chlorophyll = str(signals.get("chlorophyll_report") or "")
+    if not has_live_number(r"Chlorophyll-a:\s*([-+\d.]+)", chlorophyll):
+        missing.append("chlorophyll")
+    zone = signals.get("nearest_pfz")
+    zone_values = [zone.get(key) for key in ("lat", "lon", "distance_nm", "bearing_deg")] if isinstance(zone, dict) else []
+    if (len(zone_values) != 4 or not all(isinstance(value, (int, float)) and math.isfinite(value)
+                                        for value in zone_values)):
+        missing.append("nearest PFZ record")
+    boundary = signals.get("boundary_data")
+    if (not isinstance(boundary, dict)
+            or not isinstance(boundary.get("inside_eez"), bool)
+            or not isinstance(boundary.get("eez_distance_km"), (int, float))):
+        missing.append("EEZ status/distance")
+    if missing:
+        raise RuntimeError("Live telemetry unavailable for synthesis: " + ", ".join(missing))
 
 
 def _call_agent(fn, agent_name: str, state: AgentState, language: str) -> dict:
     try:
         return fn(state)
     except Exception as e:
-        # Never let a raw exception (e.g. a Gemini 429/503 JSON body from
-        # historical_node's Gemini call) reach agent_reports -- it flows
-        # straight into the advisory text from here.
-        print(f"[dispatch] {agent_name} agent failed: {e}")
-        return {"final_output": safe_error_text(e, language)}
+        category = "OpenAI" if is_quota_or_unavailable_error(e) else "live data"
+        raise RuntimeError(f"{category} operation in the {agent_name} agent failed: {e}") from e
 
 
 def create_orca_graph():
-    # Strict startup check: fails fast with clear terminal instructions if
-    # no Gemini key is configured, instead of silently compiling a graph
-    # where every request will quietly degrade to the raw-data fallback
-    # formatter with no visible signal that a key was never set.
-    require_gemini_key()
+    # Fail fast with clear terminal instructions when no OpenAI key exists.
+    require_openai_key()
 
     workflow = StateGraph(AgentState)
 
-    # 1. Planner Node -- LLM-based multi-agent decomposition (with a
-    # deterministic keyword fallback baked into plan_query itself, so a
-    # Gemini outage degrades routing quality but never breaks the request).
-    # Sees recent conversation history so referential follow-ups ("those
-    # same conditions", "what about tomorrow instead") can be resolved
-    # against what was just discussed, and falls back to the PREVIOUS
-    # turn's agent selection (last_agents) rather than an unrelated
-    # keyword-default guess when the new message matches no keyword.
+    # 1. Planner Node -- OpenAI-based multi-agent decomposition. It sees
+    # recent conversation history so referential follow-ups can be resolved.
     def planner_node(state: AgentState):
         print("--- PLANNER: Decomposing user request ---")
         plan = plan_query(
@@ -157,7 +209,7 @@ def create_orca_graph():
         agents_to_run = state.get("next_steps", []) or ["compliance"]
         print(f"--- DISPATCH: Running {agents_to_run} (parallel) ---")
         language = state.get("language", "English")
-        coordinates = state.get("coordinates", [18.9, 72.8])
+        coordinates = state["coordinates"]
         lat, lon = coordinates[0], coordinates[1]
         day_offset = state.get("day_offset", 0)
         target_hour = state.get("target_hour")
@@ -180,6 +232,7 @@ def create_orca_graph():
             # navigation/fishing/compliance/hazard agents below build their
             # report straight from data already in hand -- no extra call.
             common_signals = _resolve_common_signals(common_futures)
+            _require_live_synthesis_inputs(common_signals)
             state["common_signals"] = common_signals
 
             overlap_futures = {
@@ -218,7 +271,7 @@ def create_orca_graph():
         state["hazard_alerts"] = hazard_alerts
         state["common_signals"] = common_signals
         # Exposed as their OWN top-level API fields (see main.py) instead of
-        # only living inside the free-text advisory, where a Gemini
+        # only living inside the free-text advisory, where a OpenAI
         # synthesis pass can freely paraphrase (or drop) a raw URL/JSON
         # blob embedded in prose.
         state["plot_url"] = plot_url
@@ -226,7 +279,7 @@ def create_orca_graph():
         state["regional_zones"] = regional_zones
         state["dispatch_pdf_url"] = dispatch_pdf_url
         state["dispatch_audio_url"] = dispatch_audio_url
-        # final_output is kept only as a plain-text join for the Gemini
+        # final_output is kept only as a plain-text join for the OpenAI
         # synthesis prompt below; the FALLBACK path uses the structured
         # `agent_reports` dict directly instead, so it never has to
         # re-parse this string.
@@ -235,114 +288,28 @@ def create_orca_graph():
             state["final_output"] += f"\n\n[plot_url]: {plot_url}"
         return state
 
-    # 3. Synthesizer Node (combines all agent reports and formats via Gemini)
+    # 3. Synthesizer Node (combines the live agent reports via OpenAI)
     def synthesizer_node(state: AgentState):
-        raw_output = state.get("final_output", "Standard maritime check complete.")
-        agent_reports = state.get("agent_reports", {})
         persona = state.get("persona", "Fisherman")
         language = state.get("language", "English")
         vessel_persona = state.get("vessel_persona", "artisanal_coastal")
-        agents_run = state.get("next_steps", [])
-
-        if agents_run == ["historical"]:
-            # Chart/dataset-only queries (see planner.py's
-            # _INSTANT_HISTORICAL_KEYWORDS fast path) need no Gemini prose at
-            # all -- the real answer is the chart itself
-            # (telemetry.historical_series, rendered by script.js), not a
-            # narrated summary of numbers already visible in it. Skipping
-            # Gemini here removes the last LLM call on this query path
-            # entirely: no network calls, immune to a 503/timeout. Scoped to
-            # EXACTLY ["historical"] (not "historical is present") so a
-            # compound query that also picked navigation/fishing/etc. still
-            # gets those agents' findings synthesized properly instead of
-            # silently discarded.
-            #
-            # Text picked from the REAL chart_type the historical agent
-            # actually produced this turn (historical.py's
-            # plot_yearly_trend -> "line" vs plot_category_distribution /
-            # plot_hazard_category_distribution -> "pie"), not guessed from
-            # keywords, so it never describes a chart that isn't there.
-            series = state.get("historical_series") or {}
-            if series.get("chart_type") == "line":
-                state["final_advisory"] = (
-                    "Historical sea surface temperature data loaded. Displaying multi-year "
-                    "oceanographic trendline below."
-                )
-            else:
-                state["final_advisory"] = (
-                    "Historical oceanographic telemetry and hazard distribution retrieved "
-                    "successfully. Displaying interactive dataset breakdown below."
-                )
-            state["advisory_degraded"] = False
-            return state
-
-        print("--- SYNTHESIZER: Formatting combined advisory via Gemini ---")
-        try:
-            if agents_run == ["compliance"]:
-                # A pure legal/boundary question: keep the strict,
-                # non-inventive compliance formatter instead of the general
-                # synthesis path, so legal findings are reported exactly as
-                # computed and never embellished.
-                polished_advisory = format_compliance_advisory(
-                    raw_report=raw_output, persona=persona, language=language,
-                    vessel_persona=vessel_persona,
-                )
-            elif agents_run == ["dispatch"]:
-                # morning_dispatch_node's final_output already IS a fully
-                # synthesized, persona/language-aware narrative -- dispatch.py
-                # ran its own synthesize_advisory pass over the real fetched
-                # signals (see generate_morning_dispatch), not a placeholder.
-                # Re-synthesizing it again here would ask Gemini to rewrite
-                # an already-good answer from scratch with nothing new to add,
-                # at the cost of a second full Gemini call (measured: tens of
-                # seconds) -- and, worse, if this bypass didn't exist and
-                # final_output were ever just a short pointer sentence again,
-                # a second pass with no real grounding could invent a safety
-                # verdict not backed by data (see morning_dispatch_node's
-                # comment for what that looked like in testing).
-                polished_advisory = raw_output
-            else:
-                history = state.get("history", [])
-                history_text = "\n".join(f"{t['role']}: {t['text']}" for t in history[-4:])
-                polished_advisory = synthesize_advisory(
-                    raw_report=raw_output,
-                    persona=persona,
-                    language=language,
-                    vessel_persona=vessel_persona,
-                    user_message=state.get("user_message", ""),
-                    history_text=history_text,
-                )
-            state["final_advisory"] = polished_advisory
-            state["advisory_degraded"] = False
-        except Exception as e:
-            # Gemini unavailable (quota/outage/503-high-demand/timeout --
-            # see advisory.LLM_CALL_TIMEOUT_S): degrade gracefully to a
-            # clean, per-agent, language-labeled response built directly
-            # from the structured agent_reports dict -- never the raw
-            # exception text, and never an unlabeled wall of concatenated
-            # English strings. Flagged so main.py can surface this as
-            # status: "ADVISORY_BUSY" instead of silently claiming success.
-            #
-            # The advisory TEXT itself deliberately does not expose "AI
-            # busy"/infrastructure wording -- format_natural_fallback_advisory
-            # builds a calm, natural paragraph from the real gathered
-            # telemetry instead (see that function's docstring). Its
-            # Operational Status line is computed from the REAL hazard_status
-            # (derive_hazard_status, shared with main.py) rather than assumed
-            # safe -- this is a safety advisory, so a degraded response must
-            # never claim conditions are fine when they aren't, even while
-            # reading cleanly.
-            print(f"[Synthesizer Error] Falling back to formatted raw output: {e}")
-            common = state.get("common_signals") or {}
-            hazard_status = derive_hazard_status(
-                common.get("boundary_report", ""), common.get("ocean_report", ""),
-                common.get("hazard_report") or {},
-            )
-            state["final_advisory"] = format_natural_fallback_advisory(
-                agent_reports, hazard_status, language=language,
-            )
-            state["advisory_degraded"] = True
-
+        history = state.get("history", [])
+        history_text = "\n".join(f"{turn['role']}: {turn['text']}" for turn in history[-4:])
+        live_context = _live_context_block(
+            state.get("coordinates", []), state.get("common_signals") or {},
+        )
+        raw_output = state.get("final_output") or live_context
+        advisory = synthesize_advisory(
+            raw_report=f"{live_context}\\n\\n{raw_output}",
+            persona=persona,
+            language=language,
+            vessel_persona=vessel_persona,
+            user_message=state.get("user_message", ""),
+            history_text=history_text,
+        )
+        if not advisory:
+            raise RuntimeError("OpenAI returned an empty advisory.")
+        state["final_advisory"] = advisory
         return state
 
     # Register all nodes into the graph
