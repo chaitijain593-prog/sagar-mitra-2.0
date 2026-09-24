@@ -1,3 +1,4 @@
+if(!localStorage.getItem("orcaAuth"))location.replace("auth.html");
     const oceanVerbs = ["Surfing...", "Rippling...", "Crashing...", "Swimming...", "Floating...", "Sailing...", "Diving...", "Wading...", "Drifting..."];
     let verbIdx = 0;
     const verbEl = document.getElementById("oceanVerbText");
@@ -13,17 +14,12 @@
       }
       if (miniVerbEl) miniVerbEl.textContent = oceanVerbs[verbIdx];
     }, 3000);
-    window.addEventListener("load", () => {
-      const loader = document.getElementById("loading-screen");
-      setTimeout(() => {
-        loader.classList.add("fade-out");
-        setTimeout(() => {
-          loader.style.display = "none";
-          startLanguageRotation();
-          checkOnboarding();
-        }, 1000);
-      }, 10000);
-    });
+function runLoader(ms=2000){const l=document.getElementById("loading-screen"),v=document.getElementById("loadBgVideo");v.src=v.dataset.src;l.style.display="flex";l.classList.remove("fade-out");setTimeout(()=>{l.classList.add("fade-out");setTimeout(()=>l.style.display="none",500)},ms)}
+window.addEventListener("load", () => {
+  if (!localStorage.getItem("orcaAuth")) return;
+  startLanguageRotation(); checkOnboarding();
+  if (sessionStorage.getItem("orcaLoad")) { sessionStorage.removeItem("orcaLoad"); runLoader(); }
+});
     const titleElement = document.getElementById("languageTitle");
     const languages = ["Sagar Mitra", "सागर मित्र", "સાગર મિત્ર", "सागर मित्र", "ಸಾಗರ ಮಿತ್ರ", "சாகர் மித்ரா", "సాగర్ మిత్ర", "സാഗർ മിത്ര",
       "সাগর মিত্র", "ਸਾਗਰ ਮਿੱਤਰ"];
@@ -50,14 +46,15 @@
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     }
-    const ONBOARD_KEY = "orcaUserProfile";
+    const ONBOARD_KEY = "orcaUserProfile_" + (localStorage.getItem("orcaUser") || "");
     const onboardScreen = document.getElementById("onboarding-screen");
     const onboardStep1 = document.getElementById("onboardStep1");
     const onboardStep2 = document.getElementById("onboardStep2");
-    const onboardName = document.getElementById("onboardName");
+    const onboardName = { value: localStorage.getItem("orcaName") || localStorage.getItem("orcaUser") || "User" };
     const onboardPersonaGroup = document.getElementById("onboardPersonaGroup");
     const onboardPersonaOther = document.getElementById("onboardPersonaOther");
     const onboardDomainGroup = document.getElementById("onboardDomainGroup");
+    onboardDomainGroup.style.cssText="max-height:40vh;overflow-y:auto";["Ocean Acidification","Coral Reefs","Sea Level Rise","Cyclones & Monsoon","El Niño & Climate","Marine Pollution","Fisheries & Aquaculture","Tides & Waves","Deep-Sea Exploration","Marine Mammals","Coastal Erosion","Ocean Currents"].forEach(d=>onboardDomainGroup.insertAdjacentHTML("beforeend",`<label class="onboarding-checkbox"><input type="checkbox" value="${d}"/><span>${d}</span></label>`));
     const onboardStep1Error = document.getElementById("onboardStep1Error");
     const onboardNextBtn = document.getElementById("onboardNextBtn");
     const onboardBackBtn = document.getElementById("onboardBackBtn");
@@ -103,13 +100,14 @@
       const persona = personaInput.value === "Others" ? onboardPersonaOther.value.trim() : personaInput.value;
       const domains = Array.from(onboardDomainGroup.querySelectorAll("input:checked")).map((el) => el.value);
       const profile = { name, persona, domains, createdAt: new Date().toISOString() };
-      localStorage.setItem(ONBOARD_KEY, JSON.stringify(profile));
+      const first = localStorage.setItem(ONBOARD_KEY, JSON.stringify(profile));
       onboardScreen.classList.remove("active");
       refreshActivePersona();
+      fetch(`${API_BASE}/api/auth/profile`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: localStorage.getItem("orcaAuth"), profile }) }).catch(() => {});
+      if (first) runLoader();
     });
     logoutBtn.addEventListener("click", () => {
-      localStorage.removeItem(ONBOARD_KEY);
-      window.location.reload();
+      localStorage.removeItem("orcaAuth"); localStorage.removeItem("orcaUser"); location.replace("auth.html");
     });
     const themeBtn = document.getElementById("themeToggle");
     const themeIcon = document.getElementById("themeIcon");
@@ -132,7 +130,6 @@
     const soundToggle = document.getElementById("soundToggle");
     function createOceanSound() {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      // Generate 5 seconds of pink noise buffer
       const bufferSize = audioCtx.sampleRate * 5;
       const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
       const output = noiseBuffer.getChannelData(0);
@@ -151,14 +148,12 @@
       noiseNode = audioCtx.createBufferSource();
       noiseNode.buffer = noiseBuffer;
       noiseNode.loop = true;
-      // Lowpass filter for deep oceanic timbre
       const filter = audioCtx.createBiquadFilter();
       filter.type = "lowpass";
       filter.frequency.setValueAtTime(380, audioCtx.currentTime);
-      // Rhythmic wave swell generator
       const lfo = audioCtx.createOscillator();
       const lfoGain = audioCtx.createGain();
-      lfo.frequency.setValueAtTime(0.12, audioCtx.currentTime); // ~8s wave period
+      lfo.frequency.setValueAtTime(0.12, audioCtx.currentTime);
       lfoGain.gain.setValueAtTime(220, audioCtx.currentTime);
       lfo.connect(filter.frequency);
       const masterGain = audioCtx.createGain();
@@ -216,7 +211,6 @@
     pfzData.forEach(p => {
       L.marker([p.lat, p.lon], { icon: pfzIcon }).addTo(map).bindPopup(`<b>${p.id} — ${p.name}</b><br>High Biomass Aggregation Zone`);
     });
-    // --- 6a. Vessel Marker Layer ---
     let vesselMarker = null;
     let vesselSafetyBuffer = null;
     const vesselIcon = L.divIcon({ className: "", html: '<div class="vessel-marker">🚢</div>', iconSize: [24, 24] });
@@ -224,19 +218,16 @@
     function plotVesselMarker(lat, lon) {
       if (vesselMarker) map.removeLayer(vesselMarker);
       if (vesselSafetyBuffer) map.removeLayer(vesselSafetyBuffer);
-      // Pulsating 5 NM safety buffer ring around the vessel
       vesselSafetyBuffer = L.circle([lat, lon], {
         radius: 5 * NM_IN_METERS, color: "#facc15", weight: 1.5, fillColor: "#facc15", fillOpacity: 0.16, className: "vessel-safety-buffer"
       }).addTo(map).bindPopup("5 NM Safety Buffer");
       vesselMarker = L.marker([lat, lon], { icon: vesselIcon, zIndexOffset: 1000 }).addTo(map).bindPopup("<b>Your Vessel</b>");
       return vesselMarker;
     }
-    // --- 6b. Indian EEZ Boundary Layer ---
     const indianEEZCoords = [[23.5, 68.1], [20.5, 66.5], [15.5, 68.0], [10.5, 71.0], [7.0, 74.5], [5.5, 78.0], [7.5, 81.5], [11.0, 83.5],
       [16.0, 84.5], [20.5, 87.5]];
     L.polyline(indianEEZCoords, {
       color: "#ef4444", weight: 2, dashArray: "6, 8", opacity: 0.85 }).addTo(map).bindPopup("Indian EEZ Boundary (approximate)");
-    // --- 6c. Potential Fishing Zone (PFZ) Polygons ---
     let pfzPolygons = [];
     function plotPFZZones(zones) {
       pfzPolygons.forEach(p => map.removeLayer(p));
@@ -261,7 +252,6 @@
         regionalZoneMarkers.push(marker);
       });
     }
-    // --- 7. Crowdsourced Hazard Mesh Layer & Click-to-Report Modal ---
     const hazardMeshLayer = L.layerGroup().addTo(map);
     const HAZARD_TYPE_ICONS = { net: "🕸️", oil_slick: "🛢️", debris: "🪵" };
     function hazardTypeLabel(type) {
@@ -337,7 +327,6 @@
         if (submitBtn) submitBtn.disabled = false;
       }
     }
-    // --- Historical Oceanographic Trends Chart (Feature 18) ---
     let historicalChartInstance = null;
     function initHistoricalChart() {
       const canvas = document.getElementById("historicalChart");
@@ -364,7 +353,6 @@
       historicalChartInstance.data.datasets[0].data = series.map((p) => p.value);
       historicalChartInstance.update();
     }
-    // --- Compass / Bearing HUD (Feature 28) ---
     function calculateBearing(lat1, lon1, lat2, lon2) {
       const toRad = (d) => (d * Math.PI) / 180;
       const toDeg = (r) => (r * 180) / Math.PI;
@@ -398,7 +386,6 @@
       }
       if (hazardModalForm) hazardModalForm.addEventListener("submit", submitHazardReport);
     }
-    // --- 6d. Tactical Route to Nearest PFZ ---
     let routeLine = null;
     function polygonCentroid(coords) {
       const total = coords.reduce((acc, [lat, lon]) => {
@@ -526,9 +513,6 @@
         renderShapChart(chartId, shapData.feature_attributions, shapData.base_value);
       }
     }
-    // --- Persona Runtime Switcher (Feature 15) ---
-    // Maps the onboarding "I am a..." role radios onto the canonical persona
-    // strings the backend advisory/dispatch pipeline expects.
     const DEFAULT_PERSONA = "Fisherman";
     const PERSONA_ALIASES = {
       "Primary Grade Student": "Fisherman",
@@ -622,7 +606,6 @@
           shap_attributions: (backendData.telemetry && backendData.telemetry.shap_attributions) || null, };
       } catch (err) {
         console.error("API Connection Error:", err);
-        // Fall back to the mock payload if the backend is off
         parsedData = {...MOCK_ORCHESTRATOR_RESPONSE, vessel_coord: coords, route: null, plot_url: null,
           regional_zones: [], persona: "Fisherman", shap_attributions: null, };
       }
@@ -640,12 +623,11 @@
     let mediaRecorder = null;
     let recordedChunks = [];
     let micStream = null;
-    // 'idle' -> 'recording' -> 'busy' (uploading/processing) -> 'idle'
     let micState = "idle";
     function pickAudioMimeType() {
       const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus",];
       if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) {
-        return ""; // let the browser pick its own default
+        return "";
       }
       return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
     }
@@ -689,7 +671,6 @@
         if (e.data && e.data.size > 0) recordedChunks.push(e.data);
       };
       mediaRecorder.onstop = () => {
-        // Always release the mic hardware once we're done with it.
         micStream.getTracks().forEach((track) => track.stop());
         micStream = null;
         const blobType = mediaRecorder.mimeType || mimeType || "audio/webm";
@@ -781,44 +762,38 @@
       el.textContent = text;
     }
     async function triggerMayday() {
-    // 1. Prevent accidental clicks
-    if(!confirm("CONFIRM MAYDAY: Broadcast SOS to nearest Coast Guard?")) return;
+      if(!confirm("CONFIRM MAYDAY: Broadcast SOS to nearest Coast Guard?")) return;
+      const coords = window.vesselLocation || { lat: 18.9220, lon: 72.8347 };
 
-    // 2. Grab current vessel location (ensure window.vesselLocation is updated by your map)
-    const coords = window.vesselLocation || { lat: 18.9220, lon: 72.8347 }; // Mumbai fallback
-
-    try {
-        const response = await fetch('/api/sos', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                lat: coords.lat,
-                lon: coords.lon,
-                hazard_status: "CRITICAL_EMERGENCY",
-                nearest_port: "Awaiting calculation...", 
-                message: "Manual SOS triggered from ORCA dashboard.",
-                session_id: window.sessionId || "demo-session-1"
-            })
-        });
-        
-        const data = await response.json();
-        
-        if(data.status === "success") {
-            // 3. UI Confirmation
-            alert(`🚨 SOS BROADCAST SUCCESSFUL 🚨\nEvent ID: ${data.id}\nCoast Guard has been notified.`);
-            
-            // 4. Force the dashboard into emergency mode
-            const banner = document.querySelector('.hazard-banner');
-            if(banner) {
-                banner.textContent = "MAYDAY ACTIVE - REMAIN CALM - ASSISTANCE EN ROUTE";
-                banner.className = "hazard-banner hazard-hazardous"; // Red theme
-            }
-        }
-    } catch (err) {
-        console.error("SOS failed to send:", err);
-        alert("CRITICAL: Network error. Retrying via local VHF proxy...");
+      try {
+          const response = await fetch(`${API_BASE}/api/sos`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  lat: coords.lat,
+                  lon: coords.lon,
+                  hazard_status: "CRITICAL_EMERGENCY",
+                  nearest_port: "Awaiting calculation...", 
+                  message: "Manual SOS triggered from ORCA dashboard.",
+                  session_id: window.sessionId || "demo-session-1"
+              })
+          });
+          
+          const data = await response.json();
+          
+          if(data.status === "success") {
+              alert(`🚨 SOS BROADCAST SUCCESSFUL 🚨\nEvent ID: ${data.id}\nCoast Guard has been notified.`);
+              const banner = document.querySelector('.hazard-banner');
+              if(banner) {
+                  banner.textContent = "MAYDAY ACTIVE - REMAIN CALM - ASSISTANCE EN ROUTE";
+                  banner.className = "hazard-banner hazard-hazardous";
+              }
+          }
+      } catch (err) {
+          console.error("SOS failed to send:", err);
+          alert("CRITICAL: Network error. Retrying via local VHF proxy...");
+      }
     }
-}
     function updateTelemetryBars(telemetry) {
       const metrics = {
         telemetrySST: { pct: telemetry?.sst_anomaly_pct, labelId: "telemetrySSTLabel" },
@@ -835,7 +810,7 @@
       });
     }
     const GEOFENCE_POLL_MS = 15000;
-    const GEOFENCE_ALERT_KM = 5; // mirrors main.py's GEOFENCE_WARNING_KM
+    const GEOFENCE_ALERT_KM = 5;
     let geofencePollTimer = null;
     let geofenceAlertArmed = true;
     let geofenceAudioCtx = null;
@@ -996,11 +971,11 @@
         const nearestKm = distances.length ? Math.min(...distances) : null;
         const isNear = nearestKm !== null && nearestKm <= GEOFENCE_ALERT_KM;
         if (isNear && geofenceAlertArmed) {
-          geofenceAlertArmed = false; // one alert per crossing, not one per poll
+          geofenceAlertArmed = false;
           playGeofenceSiren();
           appendAgentBadge(`🚨 GEOFENCE ALERT: ${data.message} (${nearestKm.toFixed(2)} km)`);
         } else if (!isNear) {
-          geofenceAlertArmed = true; // re-arm only once clear of the zone again
+          geofenceAlertArmed = true;
         }
       } catch (err) {
         console.error("Geofence poll failed:", err);
@@ -1011,7 +986,6 @@
       pollGeofence();
       geofencePollTimer = setInterval(pollGeofence, GEOFENCE_POLL_MS);
     }
-    // Seed the dashboard with the mock payload on load so it isn't empty before the first query.
     updateHazardBanner(MOCK_ORCHESTRATOR_RESPONSE.hazard_status);
     plotVesselMarker(MOCK_ORCHESTRATOR_RESPONSE.vessel_coord[0], MOCK_ORCHESTRATOR_RESPONSE.vessel_coord[1]);
     plotPFZZones(MOCK_ORCHESTRATOR_RESPONSE.pfz_location);
@@ -1030,24 +1004,19 @@
         lucide.createIcons();
     }
 function startGeofenceMonitor() {
-    // Poll the backend every 60 seconds
     setInterval(async () => {
         const coords = window.vesselLocation;
-        if(!coords) return; // Wait until GPS is locked
+        if(!coords) return;
 
         try {
-            const response = await fetch(`/api/geofence-check?lat=${coords.lat}&lon=${coords.lon}`);
+            const response = await fetch(`${API_BASE}/api/geofence-check?lat=${coords.lat}&lon=${coords.lon}`);
             const data = await response.json();
 
             if(data.status === "CAUTION") {
                 console.warn(`Boundary Alert: ${data.distance_km}km away!`);
-                
-                // 1. Trigger the siren (assuming you adapted createOceanSound for an alarm)
                 if(typeof createOceanSound === "function") {
                     createOceanSound('siren'); 
                 }
-                
-                // 2. Update the UI Banner proactively
                 const banner = document.querySelector('.hazard-banner');
                 if(banner) {
                     banner.innerHTML = `⚠️ IMBL PROXIMITY ALERT: ${data.distance_km.toFixed(1)}km to boundary. Adjust heading immediately.`;
