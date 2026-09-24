@@ -1,0 +1,30 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sagar Mitra — Sign in</title>
+<link rel="stylesheet" href="style.css"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"></head>
+<body data-theme="dark"><div id="onboarding-screen" class="active"><div class="onboarding-card">
+<span class="onboarding-eyebrow" id="ey"></span><h2 class="onboarding-title" id="ti"></h2><p class="onboarding-subtitle" id="su"></p>
+<div id="f1" style="display:flex;flex-direction:column;gap:12px"><input class="onboarding-input s" id="nm" placeholder="Full name">
+<input class="onboarding-input" id="un" placeholder="Username" autocomplete="username"><input class="onboarding-input s" id="em" type="email" placeholder="Email">
+<input class="onboarding-input" id="pw" type="password" placeholder="Password"><input class="onboarding-input s" id="pw2" type="password" placeholder="Confirm password"></div>
+<div id="f2" class="onboarding-hidden"><input class="onboarding-input" id="otp" maxlength="4" inputmode="numeric" placeholder="4-digit OTP"></div>
+<p class="onboarding-error" id="er"></p>
+<div class="onboarding-actions"><button class="onboarding-btn onboarding-btn-ghost" id="alt"></button><button class="onboarding-btn onboarding-btn-primary" id="go"></button></div>
+</div></div>
+<script>
+const A="http://127.0.0.1:8000",$=i=>document.getElementById(i),S=new URLSearchParams(location.search).get("m")==="signup";let step=1;
+if(localStorage.getItem("orcaAuth"))location.replace("index.html");
+document.querySelectorAll(".s").forEach(e=>e.style.display=S?"":"none");
+$("ey").textContent=S?"Sign up":"Log in";$("ti").textContent=S?"Create your account":"Welcome back";
+$("su").textContent=S?"Register with your email. We'll send a 4-digit code.":"Log in with your credentials. We'll email you a 4-digit code.";
+$("go").textContent=S?"Send OTP":"Log in";$("alt").textContent=S?"Have an account? Log in":"New here? Create account";
+$("alt").onclick=()=>location.href=S?"auth.html":"auth.html?m=signup";
+async function post(p,b){const r=await fetch(A+p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}),d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.detail||"Error "+r.status);return d}
+$("go").onclick=async()=>{const u=$("un").value.trim(),p=$("pw").value,e=$("em").value.trim(),n=$("nm").value.trim();$("er").textContent="";$("go").disabled=true;
+try{if(step==1){if(!u||!p||(S&&(!e||!n)))throw Error("Please fill in all fields.");if(S&&p!==$("pw2").value)throw Error("Passwords don't match.");
+await post(S?"/api/auth/signup":"/api/auth/login",{username:u,password:p,email:e,name:n});step=2;
+$("f1").classList.add("onboarding-hidden");$("f2").classList.remove("onboarding-hidden");$("go").textContent="Verify";$("su").textContent="Enter the 4-digit code sent to your email."}
+else{const d=await post("/api/auth/verify",{username:u,otp:$("otp").value.trim(),purpose:S?"signup":"login"});
+localStorage.setItem("orcaAuth",d.token);localStorage.setItem("orcaUser",u);localStorage.setItem("orcaName",d.name||u);
+if(d.profile)localStorage.setItem("orcaUserProfile_"+u,JSON.stringify(d.profile));
+if(!S)sessionStorage.setItem("orcaLoad","1");location.replace("index.html")}}
+catch(x){$("er").textContent=x.message}$("go").disabled=false};
+</script></body></html>

@@ -920,8 +920,8 @@
   <div id="loading-screen">
     <div class="video-background">
       <iframe
-        id="loadBgVideo"
-        src="https://www.youtube-nocookie.com/embed/-U5_GOl4Uhc?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=-U5_GOl4Uhc&start=15&end=30&enablejsapi=1"
+        id="loadBgVideo" autoplay muted loop playsinline
+        data-src="https://www.youtube-nocookie.com/embed/-U5_GOl4Uhc?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&loop=1&playlist=-U5_GOl4Uhc&start=15&end=30&enablejsapi=1"
         allow="autoplay; encrypted-media"
         loading="eager"
         allowfullscreen>
@@ -951,8 +951,6 @@
         <span class="onboarding-eyebrow">Step 1 of 2</span>
         <h2 class="onboarding-title">Welcome Aboard</h2>
         <p class="onboarding-subtitle">Tell us a little about yourself before we set sail.</p>
-        <label class="onboarding-label" for="onboardName">Your Name</label>
-        <input type="text" id="onboardName" class="onboarding-input" placeholder="e.g. Aarya" autocomplete="off" />
         <label class="onboarding-label">I am a...</label>
         <div class="onboarding-radio-group" id="onboardPersonaGroup">
           <label class="onboarding-radio"><input type="radio" name="persona" value="Primary Grade Student" /><span>Primary Grade Student</span></label>

@@ -1,13 +1,20 @@
 import math
 import os
 import re
+import sqlite3
 import traceback
 import uuid
+import json, secrets, hashlib, smtplib, time
+from email.message import EmailMessage
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()  # reads .env in the working directory, if present
+
+# Points directly to backend/.env regardless of current terminal folder
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,11 +27,8 @@ from app.nlp_extract import extract_coordinates_from_message, extract_target_dat
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
 from app.route_planner import plan_safe_route
-
-from app.session_store import store as session_store
+from app.db_store import store as session_store, insert_hazard_point, get_hazard_mesh
 from app.anchor_store import store as anchor_store
-
-from app.db_store import store as session_store, insert_hazard_point, get_hazard_mesh, get_anchor, set_anchor
 
 from app.data import store
 from app import db
@@ -55,8 +59,6 @@ def _contextual_unavailable_advisory(question: str, coordinates: list[float]) ->
 
 app = FastAPI(title="ORCA Backend API", version="0.2.0")
 
-# --- CORS ---------------------------------------------------------------
-# Wide open for the hackathon so the frontend can connect freely
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -77,21 +79,9 @@ _STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 os.makedirs(_STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
-# Compile the LangGraph orchestrator on startup. create_orca_graph() itself
-# enforces the strict Gemini-key startup check (see app/advisory.py's
-# require_gemini_key) -- a missing/invalid key fails startup here with
-# clear terminal instructions instead of starting a server that silently
-# degrades every request.
 orca_graph = create_orca_graph()
-
-# Phase 0 #1: stand up the persistent SQLite store (app/db.py) -- loads
-# final_dataset.parquet into argo_readings (idempotent: a no-op after the
-# first run) and ensures sos_events exists for Task 2's mayday logging.
-# Additive only -- app/data.py's in-memory pandas `store` above is
-# untouched and still the source of truth for every existing caller.
 db.init_db()
 
-# --- Request Models ------------------------------------------------------
 class OrchestrateRequest(BaseModel):
     user_message: str = Field(validation_alias=AliasChoices("user_message", "query"))
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
@@ -156,13 +146,8 @@ def reconcile_persona_key(raw_input: str | None) -> str:
 # only ever update when the planner happened to pick that domain, and would
 # silently show a stale/default value the rest of the time.
 _PFZ_COORD_RE = re.compile(r"Coordinates:\s*\[\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\]")
-_PFZ_ZONE_HALF_WIDTH_DEG = 0.08  # ~9 km box drawn around the nearest known PFZ point
-
-# Feature 3 (Proactive IMBL/Geofence Siren): the proximity, in km, at which
-# /api/geofence-check starts warning -- matches the "5km threshold" named in
-# the ORCA brief.
+_PFZ_ZONE_HALF_WIDTH_DEG = 0.08
 GEOFENCE_WARNING_KM = 5.0
-
 
 def _derive_geofence_alert(boundary: dict) -> tuple[str, str]:
     """
@@ -188,6 +173,18 @@ def _derive_geofence_alert(boundary: dict) -> tuple[str, str]:
         return "CAUTION", f"Approaching a Marine Protected Area ({mpa_km} km away)."
     return "SAFE", "No maritime boundary within the 5 km geofence threshold."
 
+def _derive_hazard_status(boundary_report: str, ocean_report: str, hazard_report: dict) -> str:
+    if boundary_report.startswith("ALERT"):
+        return "HAZARDOUS"
+    if "HAZARDOUS" in ocean_report.upper():
+        return "HAZARDOUS"
+    if hazard_report.get("cyclone_alert"):
+        return "HAZARDOUS"
+    if hazard_report.get("lightning_alert"):
+        return "CAUTION"
+    if boundary_report.startswith("UNVERIFIED"):
+        return "CAUTION"
+    return "SAFE"
 
 def _derive_pfz_zones(pfz_report: str) -> list[dict]:
     match = _PFZ_COORD_RE.search(pfz_report)
@@ -203,19 +200,15 @@ def _derive_pfz_zones(pfz_report: str) -> list[dict]:
         ],
     }]
 
-
 def _zone_centroid(zone: dict) -> list[float]:
     coords = zone["coordinates"]
     lat = sum(c[0] for c in coords) / len(coords)
     lon = sum(c[1] for c in coords) / len(coords)
     return [lat, lon]
 
-
-# --- Prediction Telemetry (real values, not the old hardcoded 85/72/91) ---
 _SST_RE = re.compile(r"Water Temp:\s*([-\d.]+)")
 _CHLOROPHYLL_RE = re.compile(r"Chlorophyll-a:\s*([\d.]+)")
 _pfz_validator = PFZStatisticalValidator()
-
 
 def _build_telemetry(
     lat: float, lon: float, ocean_report: str, chlorophyll_report: str,
@@ -280,12 +273,9 @@ def _build_telemetry(
         "shap_attributions": shap_attributions,
     }
 
-
-# --- Endpoints ----------------------------------------------------------
 @app.get("/")
 def root():
     return {"service": "ORCA Backend API", "status": "running"}
-
 
 @app.get("/api/health")
 def health():
@@ -294,6 +284,68 @@ def health():
         "gemini_key_configured": bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEYS")),
     }
 
+# --- Auth: username/password + email OTP ---
+UF, OTPS, PENDING, TOKENS = "users.json", {}, {}, {}
+def _users(): return json.load(open(UF)) if os.path.exists(UF) else {}
+def _save(u): json.dump(u, open(UF, "w"))
+def _hash(p, s): return hashlib.pbkdf2_hmac("sha256", p.encode(), bytes.fromhex(s), 200000).hex()
+
+def _otp(user, email, purpose):
+    code = f"{secrets.randbelow(10000):04d}"
+    OTPS[user] = (code, time.time() + 300, purpose)
+    
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_pass = os.getenv("SMTP_PASS")
+    if not smtp_user or not smtp_pass:
+        raise RuntimeError("SMTP credentials missing in environment (SMTP_USER/SMTP_PASS).")
+
+    m = EmailMessage()
+    m["Subject"] = "Sagar Mitra verification code"
+    m["From"] = smtp_user
+    m["To"] = email
+    m.set_content(f"Your Sagar Mitra OTP is {code}. It expires in 5 minutes.")
+
+    # Using STARTTLS port 587
+    with smtplib.SMTP("smtp.gmail.com", 587) as s:
+        s.starttls()
+        s.login(smtp_user, smtp_pass)
+        s.send_message(m)
+
+class Auth(BaseModel): username: str; password: str; email: str = ""; name: str = ""
+class Verify(BaseModel): username: str; otp: str; purpose: str
+class Prof(BaseModel): token: str; profile: dict
+
+@app.post("/api/auth/signup")
+def signup(a: Auth):
+    if a.username in _users(): raise HTTPException(409, "Username already taken.")
+    if "@" not in a.email: raise HTTPException(400, "Invalid email.")
+    salt = secrets.token_hex(8); PENDING[a.username] = {"salt": salt, "hash": _hash(a.password, salt), "email": a.email, "name": a.name, "profile": None}
+    try: _otp(a.username, a.email, "signup")
+    except Exception as e: raise HTTPException(500, f"Could not send OTP email: {e}")
+    return {"ok": True}
+
+@app.post("/api/auth/login")
+def login(a: Auth):
+    r = _users().get(a.username)
+    if not r or _hash(a.password, r["salt"]) != r["hash"]: raise HTTPException(401, "Invalid username or password.")
+    try: _otp(a.username, r["email"], "login")
+    except Exception as e: raise HTTPException(500, f"Could not send OTP email: {e}")
+    return {"ok": True}
+
+@app.post("/api/auth/verify")
+def verify(v: Verify):
+    c = OTPS.get(v.username)
+    if not c or c[2] != v.purpose or time.time() > c[1] or c[0] != v.otp: raise HTTPException(400, "Invalid or expired OTP.")
+    del OTPS[v.username]; u = _users()
+    if v.purpose == "signup": u[v.username] = PENDING.pop(v.username); _save(u)
+    t = secrets.token_urlsafe(24); TOKENS[t] = v.username
+    return {"token": t, "profile": u[v.username]["profile"], "name": u[v.username].get("name", "")}
+
+@app.post("/api/auth/profile")
+def save_profile(p: Prof):
+    n = TOKENS.get(p.token)
+    if not n: raise HTTPException(401, "Bad token.")
+    u = _users(); u[n]["profile"] = p.profile; _save(u); return {"ok": True}
 
 @app.get("/api/geofence-check")
 def geofence_check(lat: float, lon: float):
@@ -308,78 +360,67 @@ def geofence_check(lat: float, lon: float):
         "return_heading": return_heading,
     }
 
-
-# --- Feature 10: Anchor Drift Sentry --------------------------------------
+# --- Feature 10: Anchor Drift Sentry (+ legacy sqlite anchor check) ---
 ANCHOR_DRIFT_DEFAULT_RADIUS_KM = 0.5
 ANCHOR_DRIFT_CAUTION_MULTIPLIER = 1.5
-
-
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6371.0
-    lat1_r, lon1_r = math.radians(lat1), math.radians(lon1)
-    lat2_r, lon2_r = math.radians(lat2), math.radians(lon2)
-    dlat, dlon = lat2_r - lat1_r, lon2_r - lon1_r
-    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
-    return 2 * R * math.asin(math.sqrt(a))
-
-
+ANCHOR_DRIFT_ALERT_M = 50.0
+_ANCHOR_DB, _ANCHOR_DDL = "data/sagar_mitra_store.db", "CREATE TABLE IF NOT EXISTS anchor_state (session_id TEXT PRIMARY KEY, lat REAL, lon REAL, set_at TEXT)"
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    return 2 * 6371000.0 * math.asin(math.sqrt(a))
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float: return _haversine_m(lat1, lon1, lat2, lon2) / 1000.0
+def get_anchor(session_id: str):
+    with sqlite3.connect(_ANCHOR_DB) as c:
+        c.execute(_ANCHOR_DDL); r = c.execute("SELECT lat, lon FROM anchor_state WHERE session_id = ?", (session_id,)).fetchone()
+        return {"lat": r[0], "lon": r[1]} if r else None
+def set_anchor(session_id: str, lat: float, lon: float):
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(_ANCHOR_DB) as c:
+        c.execute(_ANCHOR_DDL); c.execute("INSERT OR REPLACE INTO anchor_state (session_id, lat, lon, set_at) VALUES (?, ?, ?, ?)", (session_id, lat, lon, now))
+    return {"lat": lat, "lon": lon, "set_at": now}
+@app.get("/api/sentry/anchor-drift/check")
+def anchor_drift_check(session_id: str, lat: float, lon: float):
+    a = get_anchor(session_id)
+    if a is None:
+        a = set_anchor(session_id, lat, lon)
+        return {"status": "ANCHOR_SET", "message": "Anchor dropped at current position.", "anchor": [a["lat"], a["lon"]], "current": [lat, lon], "drift_m": 0.0}
+    d = round(_haversine_m(a["lat"], a["lon"], lat, lon), 1); drag = d > ANCHOR_DRIFT_ALERT_M
+    return {"status": "DRAGGING" if drag else "HOLDING", "message": f"Anchor dragging -- {d}m from the dropped position." if drag else f"Holding -- {d}m from the dropped position.",
+            "anchor": [a["lat"], a["lon"]], "current": [lat, lon], "drift_m": d, "alert_threshold_m": ANCHOR_DRIFT_ALERT_M}
+class AnchorResetRequest(BaseModel):
+    session_id: str
+    lat: float
+    lon: float
+@app.post("/api/sentry/anchor-drift/reset")
+def anchor_drift_reset(request: AnchorResetRequest):
+    a = set_anchor(request.session_id, request.lat, request.lon)
+    return {"status": "ANCHOR_SET", "anchor": [a["lat"], a["lon"]], "set_at": a["set_at"]}
 def _derive_drift_alert(distance_km: float, radius_km: float) -> tuple[str, str]:
-    if distance_km <= radius_km:
-        return "SAFE", f"Within the {radius_km} km anchor radius ({distance_km} km drift)."
-    if distance_km <= radius_km * ANCHOR_DRIFT_CAUTION_MULTIPLIER:
-        return "CAUTION", f"Approaching the edge of the {radius_km} km anchor radius ({distance_km} km drift)."
+    if distance_km <= radius_km: return "SAFE", f"Within the {radius_km} km anchor radius ({distance_km} km drift)."
+    if distance_km <= radius_km * ANCHOR_DRIFT_CAUTION_MULTIPLIER: return "CAUTION", f"Approaching the edge of the {radius_km} km anchor radius ({distance_km} km drift)."
     return "HAZARDOUS", f"Vessel has drifted {distance_km} km from anchor -- outside the {radius_km} km safe radius."
-
-
 class SetAnchorRequest(BaseModel):
     session_id: str
     coordinates: list[float]
     radius_km: float = ANCHOR_DRIFT_DEFAULT_RADIUS_KM
-
-
 @app.post("/api/sentry/anchor-drift")
 def set_anchor_drift(request: SetAnchorRequest):
     lat, lon = request.coordinates[0], request.coordinates[1]
     anchor_store.set_anchor(request.session_id, lat, lon, request.radius_km)
-    return {
-        "status": "success",
-        "session_id": request.session_id,
-        "anchor": {"coordinates": [lat, lon], "radius_km": request.radius_km},
-    }
-
-
+    return {"status": "success", "session_id": request.session_id, "anchor": {"coordinates": [lat, lon], "radius_km": request.radius_km}}
 @app.get("/api/sentry/anchor-drift")
 def get_anchor_drift(session_id: str, lat: float, lon: float):
-    anchor = anchor_store.get_anchor(session_id)
-    if anchor is None:
-        return {
-            "session_id": session_id,
-            "anchor_set": False,
-            "coordinates": [lat, lon],
-            "drift_alert": "SAFE",
-            "message": "No anchor is currently set for this session.",
-        }
-
-    distance_km = round(_haversine_km(lat, lon, anchor["lat"], anchor["lon"]), 3)
-    alert_level, message = _derive_drift_alert(distance_km, anchor["radius_km"])
-    return {
-        "session_id": session_id,
-        "anchor_set": True,
-        "anchor": {"coordinates": [anchor["lat"], anchor["lon"]], "radius_km": anchor["radius_km"]},
-        "coordinates": [lat, lon],
-        "distance_km": distance_km,
-        "drift_alert": alert_level,
-        "message": message,
-    }
-
-
+    a = anchor_store.get_anchor(session_id)
+    if a is None:
+        return {"session_id": session_id, "anchor_set": False, "coordinates": [lat, lon], "drift_alert": "SAFE", "message": "No anchor is currently set for this session."}
+    dist = round(_haversine_km(lat, lon, a["lat"], a["lon"]), 3); level, msg = _derive_drift_alert(dist, a["radius_km"])
+    return {"session_id": session_id, "anchor_set": True, "anchor": {"coordinates": [a["lat"], a["lon"]], "radius_km": a["radius_km"]}, "coordinates": [lat, lon], "distance_km": dist, "drift_alert": level, "message": msg}
 @app.delete("/api/sentry/anchor-drift")
 def clear_anchor_drift(session_id: str):
     anchor_store.clear_anchor(session_id)
     return {"status": "success", "session_id": session_id, "anchor_set": False}
 
-
-# --- Feature: Real SOS / Mayday logging (Phase 1 #5) ----------------------
 class SOSRequest(BaseModel):
     lat: float
     lon: float
@@ -387,7 +428,6 @@ class SOSRequest(BaseModel):
     nearest_port: str | None = None
     message: str | None = None
     session_id: str | None = None
-
 
 @app.post("/api/sos")
 def report_sos(request: SOSRequest):
@@ -410,14 +450,12 @@ def report_sos(request: SOSRequest):
         "coordinates": [request.lat, request.lon],
     }
 
-
 class EscalationRequest(BaseModel):
     lat: float
     lon: float
     reason: str | None = None
     nearest_port: str | None = None
     session_id: str | None = None
-
 
 @app.post("/api/escalate")
 def escalate_boundary_violation(request: EscalationRequest):
@@ -441,29 +479,24 @@ def escalate_boundary_violation(request: EscalationRequest):
                  "No live Coast Guard/VHF/satellite dispatch is integrated."),
     }
 
-
 class HazardReportRequest(BaseModel):
     lat: float
     lon: float
     hazard_type: str
     status: str | None = None
 
-
 @app.post("/api/hazard")
 def report_hazard(request: HazardReportRequest):
     point_id = insert_hazard_point(request.lat, request.lon, request.hazard_type, request.status)
     return {"status": "success", "id": point_id}
 
-
 @app.get("/api/hazard/mesh")
 def get_hazard_mesh_endpoint(ttl_hours: float = 24.0, limit: int = 1000):
     return {"points": get_hazard_mesh(limit=limit, ttl_hours=ttl_hours)}
 
-
 @app.get("/api/news")
 def get_news(domain: str | None = None):
     return {"articles": get_oceanography_news(limit=5, domain=domain)}
-
 
 @app.get("/api/news/domains")
 def get_news_domains():
@@ -663,8 +696,6 @@ def run_orchestration(request: OrchestrateRequest):
         ),
     }
 
-
-# --- Feature 1: Regional Language Voice In/Out ---------------------------
 @app.post("/api/voice/orchestrate")
 async def run_voice_orchestration(
     audio: UploadFile = File(...),
@@ -769,8 +800,6 @@ async def run_voice_orchestration(
         "dispatch_audio_url": result.get("dispatch_audio_url"),
     }
 
-
-# --- Feature 4: Offline "Morning Dispatch" --------------------------------
 class DispatchRequest(BaseModel):
     coordinates: list[float]
     persona: str = "Fisherman"

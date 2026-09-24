@@ -25,10 +25,7 @@ body {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow-x: hidden;
   transition: background-color 0.4s ease, color 0.4s ease;
 }
-#loading-screen {
-  position: fixed; inset: 0; width: 100vw; height: 100vh; background-color: #020914; display: flex; justify-content: center; align-items: center;
-  z-index: 99999; transition: opacity 1s ease, visibility 1s ease; overflow: hidden;
-}
+#loading-screen{position:fixed;inset:0;width:100vw;height:100vh;background:#020914;display:none;justify-content:center;align-items:center;z-index:99999;transition:opacity .5s ease,visibility .5s ease;overflow:hidden}
 .video-background { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; z-index: 1; }
 .video-background iframe {
   position: absolute; top: 50%; left: 50%; width: 100vw; height: 56.25vw; min-height: 100vh; min-width: 177.77vh; transform: translate(-50%, -50%);
