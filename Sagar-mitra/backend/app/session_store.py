@@ -39,6 +39,20 @@ class SessionStore:
         turns.append({"role": role, "text": text})
         del turns[:-MAX_TURNS_KEPT]
 
+    def replace_history(self, session_id: str, history: List[dict], clear_context: bool = False) -> None:
+        """Resync a conversation from its client transcript (used by edits/reload)."""
+        self._sessions[session_id] = [
+            {"role": item["role"], "text": item["text"]}
+            for item in history[-MAX_TURNS_KEPT:]
+            if item.get("role") in {"user", "assistant"} and item.get("text")
+        ]
+        if clear_context:
+            self._last_context.pop(session_id, None)
+
+    def delete_session(self, session_id: str) -> None:
+        self._sessions.pop(session_id, None)
+        self._last_context.pop(session_id, None)
+
     def get_last_context(self, session_id: str) -> Optional[dict]:
         """Returns {"coordinates": [lat, lon], "agents": [...]} from the
         previous turn on this session, or None for a brand-new session."""

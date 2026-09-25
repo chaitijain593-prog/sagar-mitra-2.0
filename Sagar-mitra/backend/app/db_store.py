@@ -107,6 +107,31 @@ class SessionStore:
         )
         self._conn.commit()
 
+    def replace_history(self, session_id: str, history: List[dict], clear_context: bool = False) -> None:
+        """Resync one conversation from its client transcript (edit/reload)."""
+        row = self._load_row(session_id)
+        turns = [
+            {"role": item["role"], "text": item["text"]}
+            for item in history[-MAX_TURNS_KEPT:]
+            if item.get("role") in {"user", "assistant"} and item.get("text")
+        ]
+        last_context = None if clear_context or row is None else row["last_context"]
+        self._conn.execute(
+            """
+            INSERT INTO sessions (session_id, history, last_context)
+            VALUES (?, ?, ?)
+            ON CONFLICT(session_id) DO UPDATE SET
+                history = excluded.history,
+                last_context = excluded.last_context
+            """,
+            (session_id, json.dumps(turns), last_context),
+        )
+        self._conn.commit()
+
+    def delete_session(self, session_id: str) -> None:
+        self._conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+        self._conn.commit()
+
     def get_last_context(self, session_id: str) -> Optional[dict]:
         """Returns {"coordinates": [lat, lon], "agents": [...]} from the
         previous turn on this session, or None for a brand-new session."""

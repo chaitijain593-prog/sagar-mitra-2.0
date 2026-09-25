@@ -5,6 +5,7 @@ import sqlite3
 import traceback
 import uuid
 import json, secrets, hashlib, smtplib, time
+from urllib.parse import urlencode
 from email.message import EmailMessage
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
@@ -40,6 +41,7 @@ from app.marine_weather_tool import get_live_ocean_conditions
 from app.pfz_tool import get_nearest_pfz_details
 from app.chlorophyll_tool import get_chlorophyll_data
 from app.response_formatter import derive_hazard_status
+from app.indobis_service import get_marine_observations
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -78,6 +80,8 @@ class OrchestrateRequest(BaseModel):
     user_message: str = Field(validation_alias=AliasChoices("user_message", "query"))
     coordinates: list[float]  # e.g., [18.9, 72.8] for Mumbai
     session_id: str | None = None  # carried across turns for conversation memory
+    history_override: list[dict[str, str]] | None = Field(default=None, max_length=8)
+    reset_context: bool = False  # set when an edited prompt creates a history branch
 
     onboarding_persona: str | None = None  # raw vessel-type string from the onboarding UI (see reconcile_persona_key)
 
@@ -274,6 +278,27 @@ def health():
         "status": "ok",
         "groq_key_configured": bool(GROQ_API_KEY),
     }
+
+@app.get("/api/marine-observations")
+async def marine_observations(
+    species: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    month: str | None = None,
+    season: str | None = None,
+    region: str = "indian_ocean",
+    include_global_tracks: bool = False,
+):
+    """Return normalized OBIS observations, optionally filtered for the map."""
+    return await get_marine_observations(
+        species=species,
+        start_date=start_date,
+        end_date=end_date,
+        month=month,
+        season=season,
+        region=region,
+        include_global_tracks=include_global_tracks,
+    )
 
 # --- Auth: username/password + email OTP ---
 UF, OTPS, PENDING, TOKENS = "users.json", {}, {}, {}
@@ -543,13 +568,22 @@ def evaluate_sensitivity(payload: SensitivityPredictRequest):
 @app.post("/api/orchestrate")
 def run_orchestration(request: OrchestrateRequest):
     session_id = request.session_id or str(uuid.uuid4())
-    history = session_store.get_history(session_id)
-    last_context = session_store.get_last_context(session_id)
-    last_agents = last_context["agents"] if last_context else []
     coordinates = list(request.coordinates)
     if (len(coordinates) != 2 or not all(math.isfinite(value) for value in coordinates)
             or not -90 <= coordinates[0] <= 90 or not -180 <= coordinates[1] <= 180):
         raise HTTPException(422, "Request must include valid vessel coordinates [latitude, longitude].")
+
+    if request.history_override is not None:
+        clean_history = []
+        for turn in request.history_override:
+            role = turn.get("role")
+            text = (turn.get("text") or "").strip()
+            if role in {"user", "assistant"} and text:
+                clean_history.append({"role": role, "text": text[:12000]})
+        session_store.replace_history(session_id, clean_history, clear_context=request.reset_context)
+    history = session_store.get_history(session_id)
+    last_context = session_store.get_last_context(session_id)
+    last_agents = last_context["agents"] if last_context else []
 
     day_offset, target_hour = extract_target_datetime_from_message(request.user_message)
     vessel_persona = reconcile_persona_key(request.onboarding_persona)
@@ -926,4 +960,41 @@ def generate_dispatch(request: DispatchRequest):
         "pdf_url": None,
         "audio_url": None,
         "degraded": False,
+    }
+@app.get("/api/ecosystem-layers")
+def get_ecosystem_layers():
+    """Return public data sources used by the optional map overlays."""
+    # UNEP-WCMC / Global Mangrove Watch ArcGIS layer, constrained to the
+    # approximate Indian EEZ / coastline region to keep the GeoJSON response small.
+    mangrove_query = urlencode({
+        "where": "1=1",
+        "outFields": "pxlval",
+        "returnGeometry": "true",
+        "geometry": "65,5,98,26",
+        "geometryType": "esriGeometryEnvelope",
+        "inSR": "4326",
+        "outSR": "4326",
+        "spatialRel": "esriSpatialRelIntersects",
+        "resultRecordCount": "2000",
+        "f": "geojson",
+    })
+    return {
+        "mangroves": {
+            "name": "Global Mangrove Watch (2020)",
+            "type": "geojson",
+            "description": "Global Mangrove Watch mangrove extent polygons for the Indian region.",
+            "source_link": "https://data-gis.unep-wcmc.org/server/rest/services/Hosted/Global_Mangrove_Watch/FeatureServer/0",
+            # Optional local mirror path. The client falls back to data_url if it is absent.
+            "local_data_url": "/static/data/mangroves_india.geojson",
+            "data_url": "https://data-gis.unep-wcmc.org/server/rest/services/Hosted/Global_Mangrove_Watch/FeatureServer/0/query?" + mangrove_query,
+        },
+        "chlorophyll": {
+            "name": "Satellite Chlorophyll-a",
+            "type": "wms",
+            "description": "NASA GIBS Sentinel-3A OLCI daily chlorophyll-a imagery; satellite coverage and processing can leave gaps.",
+            "source_link": "https://oceancolor.gsfc.nasa.gov/",
+            "tile_url": "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi",
+            "wms_url": "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi",
+            "layer_name": "S3A_OLCI_Chlorophyll_a",
+        },
     }
