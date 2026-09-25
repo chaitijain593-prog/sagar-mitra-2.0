@@ -839,83 +839,146 @@ const SagarDatabase = {
     }
   },
 
-  async login(identifier, password){
-    const cleanId = identifier.trim().toLowerCase();
+  apiBase: "http://127.0.0.1:8000",
+
+  async postApi(endpoint, payload) {
+    const urls = [
+      this.apiBase + endpoint,
+      endpoint
+    ];
+    for (const url of urls) {
+      try {
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok) {
+          return { success: true, data };
+        } else {
+          return { success: false, message: data.detail || ("API error " + resp.status) };
+        }
+      } catch (err) {
+        // Try next URL fallback
+      }
+    }
+    return { success: false, isOffline: true, message: "Backend offline or unreachable." };
+  },
+
+  async login(identifier, password) {
+    const cleanId = identifier.trim();
     const cleanPw = password.trim();
 
-    // 1. Try local database verification first
+    // 1. Primary: Try FastAPI backend authentication (/api/auth/login)
+    const apiRes = await this.postApi("/api/auth/login", {
+      username: cleanId,
+      password: cleanPw
+    });
+
+    if (apiRes.success) {
+      const data = apiRes.data;
+      let token = data.token || ("session_token_" + Date.now());
+      let name = data.name || cleanId;
+      let roleId = data.roleId || "researcher";
+      let topics = data.topics || ["Satellite & Remote Sensing", "ARGO Telemetry & Ocean Buoys"];
+
+      // Verify step if backend requires OTP
+      if (data.dev_otp || data.otp_required) {
+        const verifyRes = await this.postApi("/api/auth/verify", {
+          username: cleanId,
+          otp: data.dev_otp || "1234",
+          purpose: "login"
+        });
+        if (verifyRes.success) {
+          token = verifyRes.data.token || token;
+          name = verifyRes.data.name || name;
+          if (verifyRes.data.profile) {
+            localStorage.setItem("orcaUserProfile_" + cleanId, JSON.stringify(verifyRes.data.profile));
+          }
+        }
+      }
+
+      // Persist auth tokens & user session
+      localStorage.setItem("orcaAuth", token);
+      localStorage.setItem("orcaUser", cleanId);
+      localStorage.setItem("orcaName", name);
+
+      return {
+        success: true,
+        user: {
+          username: cleanId,
+          name,
+          roleId,
+          topics
+        }
+      };
+    }
+
+    // 2. Fallback: Local database verification if backend fails or offline
     const users = this.getUsers();
-    const match = users.find(u => 
-      (u.username.toLowerCase() === cleanId || u.email.toLowerCase() === cleanId) &&
+    const match = users.find(u =>
+      (u.username.toLowerCase() === cleanId.toLowerCase() || u.email.toLowerCase() === cleanId.toLowerCase()) &&
       u.password === cleanPw
     );
 
-    if(match){
+    if (match) {
+      localStorage.setItem("orcaAuth", "local_token_" + Date.now());
+      localStorage.setItem("orcaUser", match.username);
+      localStorage.setItem("orcaName", match.name || match.username);
       return { success: true, user: match };
-    }
-
-    // 2. Try FastAPI backend endpoint if active
-    try {
-      const resp = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: identifier.trim(), password: cleanPw })
-      });
-      if(resp.ok){
-        const data = await resp.json();
-        return {
-          success: true,
-          user: {
-            username: identifier.trim(),
-            name: identifier.trim(),
-            roleId: "researcher",
-            topics: ["ARGO Telemetry & Ocean Buoys"]
-          }
-        };
-      }
-    } catch(err){
-      // Server not reachable; local fallback already checked
     }
 
     return {
       success: false,
-      message: "No user found with matching credentials in the ocean database."
+      message: apiRes.message && !apiRes.isOffline ? apiRes.message : "Invalid username or password. Please check your credentials."
     };
   },
 
-  async signup(newUser){
-    const users = this.getUsers();
-    
-    // Check for duplicate username or email
-    const exists = users.some(u => 
-      u.username.toLowerCase() === newUser.username.trim().toLowerCase() ||
-      u.email.toLowerCase() === newUser.email.trim().toLowerCase()
-    );
+  async signup(newUser) {
+    const cleanUser = newUser.username.trim();
+    const cleanEmail = newUser.email.trim();
+    const cleanName = newUser.name.trim();
 
-    if(exists){
-      return {
-        success: false,
-        message: "Username or email is already registered in the database."
-      };
+    // 1. Primary: FastAPI backend signup (/api/auth/signup)
+    const apiRes = await this.postApi("/api/auth/signup", {
+      username: cleanUser,
+      password: newUser.password,
+      email: cleanEmail,
+      name: cleanName
+    });
+
+    if (apiRes.success) {
+      const data = apiRes.data;
+      let token = data.token || ("session_token_" + Date.now());
+
+      // Attempt OTP auto-verification if dev_otp returns from backend
+      if (data.dev_otp) {
+        const verifyRes = await this.postApi("/api/auth/verify", {
+          username: cleanUser,
+          otp: data.dev_otp,
+          purpose: "signup"
+        });
+        if (verifyRes.success && verifyRes.data.token) {
+          token = verifyRes.data.token;
+        }
+      }
+
+      // Persist token and session info
+      localStorage.setItem("orcaAuth", token);
+      localStorage.setItem("orcaUser", cleanUser);
+      localStorage.setItem("orcaName", cleanName);
     }
 
-    // Add to persistent database
-    users.push(newUser);
+    // 2. Save user in local users database for local persistence
+    const users = this.getUsers();
+    const existsIdx = users.findIndex(u => u.username.toLowerCase() === cleanUser.toLowerCase());
+    if (existsIdx >= 0) {
+      users[existsIdx] = newUser;
+    } else {
+      users.push(newUser);
+    }
     localStorage.setItem(this.dbKey, JSON.stringify(users));
-
-    // Optional asynchronous sync with backend /api/auth/signup
-    try {
-      fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newUser.name,
-          username: newUser.username,
-          email: newUser.email,
-          password: newUser.password
-        })
-      }).catch(() => {});
-    } catch(e){}
 
     return { success: true, user: newUser };
   }
