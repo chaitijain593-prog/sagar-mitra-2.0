@@ -16,7 +16,10 @@
   <link rel="preconnect" href="https://www.youtube-nocookie.com" />
   <link rel="preconnect" href="https://www.google.com" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -1134,11 +1137,12 @@
 
           <!-- Agent Operational Stream -->
           <div class="agent-stream-panel">
+            <section class="conversation-main">
             <span class="agent-stream-header">Agent Operational Stream</span>
             <div class="agent-stream-feed" id="agentStreamFeed">
               <div class="agent-badge">🌊 Sagar Mitra ORCA orchestrator online. Ask about your route, weather or fishing zones.</div>
             </div>
-            <div class="chat-processing-indicator" id="chatLoader">
+              <div class="chat-processing-indicator" id="chatLoader">
               <div class="mini-wave">
                 <span class="mini-bar"></span>
                 <span class="mini-bar"></span>
@@ -1146,9 +1150,10 @@
                 <span class="mini-bar"></span>
                 <span class="mini-bar"></span>
               </div>
-              <span class="mini-verb-text" id="miniVerbText">Surfing...</span>
-            </div>
-            <form class="radiating-search-bar" id="chatForm" onsubmit="event.preventDefault(); return false;">
+                <span class="mini-verb-text" id="miniVerbText">Surfing...</span>
+              </div>
+              <p id="promptEditStatus" class="prompt-edit-status" role="status" hidden></p>
+              <form class="radiating-search-bar" id="chatForm" onsubmit="event.preventDefault(); return false;">
               <i data-lucide="search" class="w-5 h-5 text-cyan-400"></i>
               <input
                 type="text"
@@ -1164,6 +1169,7 @@
                 <i data-lucide="arrow-up" class="w-5 h-5"></i>
               </button>
             </form>
+            </section>
           </div>
         </div>
       </div>

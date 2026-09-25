@@ -752,6 +752,7 @@ function updateHazardBanner(status, context = {}) {
 }
 
 function appendAgentBadge(text) {
+  if (String(text).includes('Query: "')) return;
   const feed = document.querySelector(".agent-stream-feed") || document.getElementById("agentStreamFeed");
   if (!feed) return;
   const badge = document.createElement("div");
@@ -948,6 +949,176 @@ let sessionId = null;
 try {
   sessionId = localStorage.getItem("orca_session_id");
 } catch (e) {}
+const CONVERSATIONS_STORAGE_KEY = "orca_conversations_v1";
+const ACTIVE_CONVERSATION_STORAGE_KEY = "orca_active_conversation_v1";
+let conversationThreads = [];
+let activeConversationId = null;
+let editingMessageIndex = null;
+
+function createConversationId() {
+  return (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `conversation-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function persistConversations() {
+  try {
+    // Keep one ongoing chat transcript; multi-conversation management is not part of this UI.
+    const activeThread = getActiveConversation();
+    localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(activeThread ? [activeThread] : []));
+    if (activeConversationId) {
+      localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, activeConversationId);
+      localStorage.setItem("orca_session_id", activeConversationId);
+    }
+  } catch (error) {
+    console.warn("Conversation history could not be saved locally:", error?.message || error);
+  }
+}
+
+function getActiveConversation() {
+  return conversationThreads.find((thread) => thread.id === activeConversationId) || null;
+}
+
+function createInitialConversation() {
+  const id = sessionId || createConversationId();
+  const thread = { id, title: "New conversation", messages: [], mapContext: null, updatedAt: Date.now(), backendHistoryManaged: true };
+  conversationThreads = [thread];
+  return thread;
+}
+
+function initConversationManager() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(CONVERSATIONS_STORAGE_KEY) || "[]");
+    if (Array.isArray(stored)) conversationThreads = stored.filter((thread) => thread && typeof thread.id === "string");
+    activeConversationId = localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY);
+  } catch (error) {
+    console.warn("Saved conversations could not be read:", error?.message || error);
+  }
+
+  const savedThread = conversationThreads.find((thread) => thread.id === activeConversationId)
+    || conversationThreads.find((thread) => thread.id === sessionId)
+    || conversationThreads[0];
+  conversationThreads = savedThread ? [savedThread] : [];
+  if (!conversationThreads.length) createInitialConversation();
+  activeConversationId = conversationThreads[0].id;
+  sessionId = activeConversationId;
+  renderConversationMessages();
+  restoreConversationMapContext(getActiveConversation()?.mapContext);
+  persistConversations();
+}
+
+function renderConversationMessages() {
+  const feed = document.getElementById("agentStreamFeed");
+  const thread = getActiveConversation();
+  if (!feed || !thread) return;
+  feed.replaceChildren();
+  if (!thread.messages.length) {
+    const welcome = document.createElement("div");
+    welcome.className = "agent-badge";
+    welcome.textContent = "Sagar Mitra ORCA is ready. Ask about your route, weather, or fishing zones.";
+    feed.appendChild(welcome);
+    return;
+  }
+  thread.messages.forEach((message, index) => {
+    const bubble = document.createElement("div");
+    bubble.className = `conversation-message ${message.role === "user" ? "user" : "assistant"}`;
+    const content = document.createElement("div");
+    content.textContent = message.text || "";
+    bubble.appendChild(content);
+    if (message.role === "user" && thread.backendHistoryManaged !== false) {
+      const toolbar = document.createElement("div");
+      toolbar.className = "conversation-message-toolbar";
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "conversation-edit-button";
+      edit.textContent = "Edit & regenerate";
+      edit.addEventListener("click", () => {
+        const editor = document.createElement("textarea");
+        editor.className = "conversation-inline-editor";
+        editor.value = message.text || "";
+        editor.rows = Math.min(8, Math.max(3, Math.ceil(editor.value.length / 55)));
+        content.replaceChildren(editor);
+        toolbar.remove();
+        const editActions = document.createElement("div");
+        editActions.className = "conversation-message-toolbar conversation-edit-actions";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "conversation-edit-button";
+        cancel.textContent = "Cancel";
+        cancel.addEventListener("click", renderConversationMessages);
+        const regenerate = document.createElement("button");
+        regenerate.type = "button";
+        regenerate.className = "conversation-edit-button";
+        regenerate.textContent = "Save & regenerate";
+        regenerate.addEventListener("click", () => {
+          const editedText = editor.value.trim();
+          if (!editedText) {
+            editor.focus();
+            return;
+          }
+          editingMessageIndex = index;
+          document.getElementById("chatInput").value = editedText;
+          const editStatus = document.getElementById("promptEditStatus");
+          if (editStatus) {
+            editStatus.textContent = "Regenerating from this prompt; later messages in this conversation will be replaced.";
+            editStatus.hidden = false;
+          }
+          handleSendMessage();
+        });
+        editActions.append(cancel, regenerate);
+        bubble.appendChild(editActions);
+        editor.focus();
+      });
+      toolbar.appendChild(edit);
+      bubble.appendChild(toolbar);
+    }
+    feed.appendChild(bubble);
+  });
+  scrollAgentStreamToBottom(feed);
+}
+
+function addConversationMessage(role, text) {
+  const thread = getActiveConversation();
+  if (!thread) return null;
+  const message = { role, text: String(text || ""), createdAt: Date.now() };
+  thread.messages.push(message);
+  thread.messages = thread.messages.slice(-60);
+  thread.updatedAt = Date.now();
+  persistConversations();
+  renderConversationMessages();
+  return message;
+}
+
+function restoreConversationMapContext(context) {
+  const coords = context?.coordinates;
+  activePFZZones = context?.pfz_location || [];
+  plotPFZZones(activePFZZones);
+  plotRegionalZones(context?.regional_zones || []);
+  plotRoute(Array.isArray(coords) ? coords : null, activePFZZones, context?.route || null);
+  if (Array.isArray(coords) && coords.length === 2 && coords.every(Number.isFinite)) {
+    lastVesselCoord = coords;
+    plotVesselMarker(coords[0], coords[1]);
+    setLastKnownState(coords, context.hazard_status || context.display_status || "SAFE");
+    updateHazardBanner(context.display_status || context.hazard_status || "SAFE", {
+      boundaryAlert: context.boundary_alert,
+      boundaryLabel: context.boundary_status,
+      marineStatus: context.marine_status,
+    });
+    if (context.telemetry) {
+      updateTelemetryBars(context.telemetry);
+      updateHistoricalChart(context.telemetry);
+    }
+  } else {
+    updateHazardBanner("SAFE");
+    setLastKnownState(lastVesselCoord, "SAFE");
+    updateTelemetryBars(null);
+    if (historicalChartInstance) {
+      historicalChartInstance.destroy();
+      historicalChartInstance = null;
+    }
+  }
+  if (typeof map !== "undefined") map.invalidateSize();
+}
 
 const MOCK_ORCHESTRATOR_RESPONSE = {
   vessel_coord: [18.95, 72.75],
@@ -1001,10 +1172,32 @@ async function handleQuerySubmit(e) {
   const input = document.getElementById("chatInput");
   const text = input ? input.value.trim() : "";
   if (!text) return;
+  const activeThread = getActiveConversation();
+  if (!activeThread) return;
+  const wasEditingPrompt = Number.isInteger(editingMessageIndex);
+  const priorMessages = wasEditingPrompt
+    ? activeThread.messages.slice(0, editingMessageIndex)
+    : activeThread.messages.slice();
+  const historyOverride = activeThread.backendHistoryManaged === false && !wasEditingPrompt
+    ? null
+    : priorMessages
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .slice(-8)
+      .map(({ role, text: messageText }) => ({ role, text: messageText }));
+  if (wasEditingPrompt) {
+    activeThread.messages = priorMessages;
+    activeThread.mapContext = null;
+    restoreConversationMapContext(null);
+  }
+  editingMessageIndex = null;
   const loader = document.getElementById("chatLoader");
   const sendBtn = document.getElementById("chatSendBtn");
   if (sendBtn) sendBtn.disabled = true;
   if (input) input.value = "";
+  addConversationMessage("user", text);
+  const promptEditStatus = document.getElementById("promptEditStatus");
+  if (promptEditStatus) promptEditStatus.hidden = true;
+  if (input) input.placeholder = "Ask ORCA about hazards, EEZ or fishing zones...";
   appendAgentBadge(`🧑‍✈️ Query: "${text}"`);
   if (loader) loader.style.display = "flex";
   try {
@@ -1031,12 +1224,20 @@ async function handleQuerySubmit(e) {
     const res = await fetch(`${API_BASE}/api/orchestrate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: text, coordinates: coords, session_id: sessionId, onboarding_persona: activePersona }),
+      body: JSON.stringify({
+        query: text,
+        coordinates: coords,
+        session_id: sessionId,
+        history_override: historyOverride,
+        reset_context: wasEditingPrompt,
+        onboarding_persona: activePersona,
+      }),
       signal: abortController.signal,
     });
     if (!res.ok) throw new Error(`Backend not responding correctly (HTTP ${res.status})`);
     const backendData = await res.json();
     sessionId = backendData.session_id || sessionId;
+    activeConversationId = sessionId;
     try {
       if (sessionId) localStorage.setItem("orca_session_id", sessionId);
     } catch (e) {}
@@ -1059,6 +1260,7 @@ async function handleQuerySubmit(e) {
 
     parsedData = {
       user_message: backendData.user_message || text,
+      advisory: backendData.advisory || "",
       vessel_coord: backendData.coordinates || coords,
       hazard_status: backendData.hazard_status || "UNKNOWN",
       display_status: displayStatus,
@@ -1101,6 +1303,30 @@ async function handleQuerySubmit(e) {
   renderSafely("Route", () => plotRoute(parsedData.vessel_coord, parsedData.pfz_location, parsedData.route));
   renderSafely("Regional zones", () => plotRegionalZones(parsedData.regional_zones));
   renderSafely("Advisory card", () => appendAdvisoryCard(parsedData));
+  const responseThread = getActiveConversation();
+  if (responseThread) {
+    responseThread.messages.push({
+      role: "assistant",
+      text: String(parsedData.advisory || "No advisory text returned."),
+      createdAt: Date.now(),
+    });
+    responseThread.messages = responseThread.messages.slice(-60);
+    responseThread.mapContext = {
+      coordinates: parsedData.vessel_coord,
+      pfz_location: parsedData.pfz_location,
+      route: parsedData.route,
+      regional_zones: parsedData.regional_zones,
+      display_status: parsedData.display_status,
+      hazard_status: parsedData.hazard_status,
+      boundary_alert: parsedData.boundary_alert,
+      boundary_status: parsedData.boundary_status,
+      marine_status: parsedData.marine_status,
+      telemetry: parsedData.telemetry,
+    };
+    responseThread.lastQuery = { text, coordinates: parsedData.vessel_coord, persona: activePersona, updatedAt: Date.now() };
+    responseThread.updatedAt = Date.now();
+    persistConversations();
+  }
   renderSafely("Vessel state", () => setLastKnownState(parsedData.vessel_coord, parsedData.hazard_status));
   if (parsedData.telemetry) {
     renderSafely("Telemetry", () => updateTelemetryBars(parsedData.telemetry));
@@ -1977,6 +2203,7 @@ updateTelemetryBars(MOCK_ORCHESTRATOR_RESPONSE.telemetry);
 
 initPersonaSwitcher();
 initChatInterface();
+initConversationManager();
 initDispatchButton();
 initVoiceMic();
 initHazardReporting();
@@ -1992,3 +2219,419 @@ initWhatIfSensors();
 if (typeof lucide !== 'undefined') {
   lucide.createIcons();
 }
+// Marine records load the first time the map layer is enabled. The cache keeps
+// repeated toggles local, and a failed request can be retried on the next toggle.
+const marineMarkerGroup = typeof L.markerClusterGroup === "function"
+  ? L.markerClusterGroup({ showCoverageOnHover: false, chunkedLoading: true, maxClusterRadius: 38, disableClusteringAtZoom: 10 })
+  : L.layerGroup();
+const marineOverlay = L.layerGroup([marineMarkerGroup]);
+const mapLayerControl = L.control.layers(null, {
+  "Marine Observations (OBIS / IndOBIS)": marineOverlay,
+}, { collapsed: true }).addTo(map);
+let marineLoadedFilterKey = null;
+let marineObservationsController = null;
+let marineObservationsRequestId = 0;
+let marineObservationRecords = [];
+let marineObservationStatus = "";
+
+const marineFilterControl = L.control({ position: "topright" });
+marineFilterControl.onAdd = () => {
+  const container = L.DomUtil.create("section", "marine-filter-control");
+  container.setAttribute("aria-label", "Marine observation filters");
+  container.innerHTML = `
+    <h3>Marine Observations</h3>
+    <label for="marine-species-filter">Search species</label>
+    <input id="marine-species-filter" type="search" placeholder="e.g. Thunnus albacares or Scleractinia" autocomplete="off">
+    <label for="marine-region-filter">Search region</label>
+    <select id="marine-region-filter"><option value="indian_ocean">Indian Ocean</option><option value="indian_eez">Indian EEZ</option><option value="global">Global</option></select>
+    <div class="marine-filter-dates">
+      <div><label for="marine-start-date">Start date</label><input id="marine-start-date" type="date"></div>
+      <div><label for="marine-end-date">End date</label><input id="marine-end-date" type="date"></div>
+    </div>
+    <label for="marine-season-filter">Indian marine season</label>
+    <select id="marine-season-filter">
+        <option value="">Any season</option><option value="winter">Winter (Dec–Feb)</option>
+        <option value="pre_monsoon">Pre-monsoon (Mar–May)</option><option value="monsoon">Monsoon (Jun–Sep)</option>
+        <option value="post_monsoon">Post-monsoon (Oct–Nov)</option>
+    </select>
+    <label class="marine-filter-toggle"><input id="marine-show-paths" type="checkbox"> Show Migratory Paths</label>
+    <label class="marine-filter-toggle"><input id="marine-depth-colors" type="checkbox"> Color-Grade by Depth</label>
+    <div class="marine-depth-legend" hidden>
+      <span>Shallow 0–50 m</span><i class="depth-gradient"></i><span>Mid-water</span><span>Deep &gt;1,000 m</span><span><i class="depth-unknown"></i>Not reported</span>
+    </div>
+    <p id="marine-path-note" class="marine-filter-note" hidden></p>
+    <div class="marine-filter-actions">
+      <button type="button" id="marine-apply-filters">Visualize</button>
+      <button type="button" id="marine-reset-filters">Reset</button>
+    </div>
+    <p class="marine-filter-status" role="status" aria-live="polite"></p>`;
+
+  L.DomEvent.disableClickPropagation(container);
+  L.DomEvent.disableScrollPropagation(container);
+  container.querySelector("#marine-apply-filters").addEventListener("click", () => {
+    const species = container.querySelector("#marine-species-filter").value.trim();
+    const startDate = container.querySelector("#marine-start-date").value;
+    const endDate = container.querySelector("#marine-end-date").value;
+    const season = container.querySelector("#marine-season-filter").value;
+    const region = container.querySelector("#marine-region-filter").value;
+    const hasGlobalSpeciesSearch = Boolean(species) && region === "global";
+    const status = container.querySelector(".marine-filter-status");
+    if (startDate && endDate && startDate > endDate) {
+      status.textContent = "Start date must be on or before the end date.";
+      return;
+    }
+    loadMarineObservations({
+      species,
+      start_date: startDate,
+      end_date: endDate,
+      season,
+      region,
+      include_global_tracks: hasGlobalSpeciesSearch && container.querySelector("#marine-show-paths").checked,
+    }, { force: true });
+  });
+  container.querySelector("#marine-reset-filters").addEventListener("click", () => {
+    container.querySelector("#marine-species-filter").value = "";
+    container.querySelector("#marine-start-date").value = "";
+    container.querySelector("#marine-end-date").value = "";
+    container.querySelector("#marine-season-filter").value = "";
+    container.querySelector("#marine-region-filter").value = "indian_ocean";
+    container.querySelector("#marine-show-paths").checked = false;
+    container.querySelector("#marine-path-note").hidden = true;
+    container.querySelector("#marine-depth-colors").checked = false;
+    container.querySelector(".marine-depth-legend").hidden = true;
+    loadMarineObservations({ species: "", start_date: "", end_date: "", season: "", region: "indian_ocean", include_global_tracks: false }, { force: true });
+  });
+  const pathToggle = container.querySelector("#marine-show-paths");
+  const updatePathToggle = () => {
+    const eligible = container.querySelector("#marine-region-filter").value === "global"
+      && Boolean(container.querySelector("#marine-species-filter").value.trim());
+    const note = container.querySelector("#marine-path-note");
+    note.hidden = !pathToggle.checked;
+    if (pathToggle.checked) {
+      note.textContent = eligible
+        ? "Paths connect dated observations of the same species, not individual animal tracks. Press Visualize to load them."
+        : "Enter a species and select Global, then press Visualize to load migratory paths.";
+      renderMarineObservationLayer();
+    }
+  };
+  container.querySelector("#marine-species-filter").addEventListener("input", updatePathToggle);
+  container.querySelector("#marine-region-filter").addEventListener("change", updatePathToggle);
+  updatePathToggle();
+  container.querySelector("#marine-show-paths").addEventListener("change", () => {
+    const species = container.querySelector("#marine-species-filter").value.trim();
+    const region = container.querySelector("#marine-region-filter").value;
+    updatePathToggle();
+    if (!species || region !== "global") return;
+    loadMarineObservations({
+      species,
+      start_date: container.querySelector("#marine-start-date").value,
+      end_date: container.querySelector("#marine-end-date").value,
+      season: container.querySelector("#marine-season-filter").value,
+      region,
+      include_global_tracks: Boolean(species) && region === "global" && container.querySelector("#marine-show-paths").checked,
+    }, { force: true });
+  });
+  container.querySelector("#marine-depth-colors").addEventListener("change", (event) => {
+    container.querySelector(".marine-depth-legend").hidden = !event.target.checked;
+    renderMarineObservationLayer();
+  });
+  return container;
+};
+marineFilterControl.addTo(map);
+
+const marineStatusControl = L.control({ position: "bottomleft" });
+marineStatusControl.onAdd = () => {
+  const element = L.DomUtil.create("div", "leaflet-control marine-observation-status");
+  element.setAttribute("role", "status");
+  element.setAttribute("aria-live", "polite");
+  element.textContent = marineObservationStatus;
+  element.style.display = marineObservationStatus ? "" : "none";
+  return element;
+};
+marineStatusControl.addTo(map);
+
+function setMarineObservationStatus(message) {
+  marineObservationStatus = message;
+  const element = document.querySelector(".marine-observation-status");
+  if (element) {
+    element.textContent = message;
+    element.style.display = message ? "" : "none";
+  }
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character]);
+}
+
+function getObisSourceUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && (url.hostname === "obis.org" || url.hostname.endsWith(".obis.org"))
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadMarineObservations(filters = {}, { force = false } = {}) {
+  const normalizedFilters = {
+    species: String(filters.species || "").trim(),
+    start_date: String(filters.start_date || ""),
+    end_date: String(filters.end_date || ""),
+    season: String(filters.season || ""),
+    region: String(filters.region || "indian_ocean"),
+    include_global_tracks: filters.include_global_tracks ? "true" : "",
+  };
+  const filterKey = JSON.stringify(normalizedFilters);
+  if (!force && marineLoadedFilterKey === filterKey) return;
+
+  if (marineObservationsController) marineObservationsController.abort();
+  marineObservationsController = new AbortController();
+  const controller = marineObservationsController;
+  const requestId = ++marineObservationsRequestId;
+  if (!map.hasLayer(marineOverlay)) marineOverlay.addTo(map);
+  const status = document.querySelector(".marine-filter-status");
+  if (status) status.textContent = "Filtering observations…";
+  setMarineObservationStatus("Filtering marine observations…");
+  marineOverlay.clearLayers();
+  marineMarkerGroup.clearLayers();
+  marineOverlay.addLayer(marineMarkerGroup);
+
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(normalizedFilters)) {
+    if (value) query.set(key, value);
+  }
+
+  try {
+      const response = await fetch(`${API_BASE}/api/marine-observations${query.size ? `?${query}` : ""}`, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`OBIS service returned HTTP ${response.status}`);
+      const observations = await response.json();
+      if (!Array.isArray(observations)) throw new Error("Unexpected marine observations response");
+      if (requestId !== marineObservationsRequestId) return;
+
+      marineObservationRecords = observations;
+      marineOverlay.clearLayers();
+      const markerCount = renderMarineObservationLayer();
+      marineLoadedFilterKey = filterKey;
+      if (status) status.textContent = markerCount
+        ? `Showing ${markerCount} marine observation${markerCount === 1 ? "" : "s"}.`
+        : "No marine observations match these filters.";
+      setMarineObservationStatus(markerCount
+        ? `Showing ${markerCount} marine observations.`
+        : "No marine observations match these filters.");
+  } catch (error) {
+      if (error.name === "AbortError" || requestId !== marineObservationsRequestId) return;
+      console.error("Marine observations request failed:", error?.message || String(error));
+      if (status) status.textContent = "Marine observations are temporarily unavailable. Please try again.";
+      setMarineObservationStatus("Marine observation data is temporarily unavailable.");
+  } finally {
+      if (requestId === marineObservationsRequestId) marineObservationsController = null;
+  }
+}
+
+function depthColor(depthMeters) {
+  if (!Number.isFinite(depthMeters)) return "#94a3b8";
+  const stops = [
+    [0, [125, 211, 252]], [50, [125, 211, 252]], [200, [56, 189, 248]],
+    [500, [37, 99, 235]], [1000, [29, 78, 216]], [4000, [8, 47, 73]],
+  ];
+  const depth = Math.min(4000, Math.max(0, depthMeters));
+  let upper = stops.findIndex(([limit]) => depth <= limit);
+  if (upper < 0) upper = stops.length - 1;
+  const lower = Math.max(0, upper - 1);
+  const [d0, c0] = stops[lower];
+  const [d1, c1] = stops[upper];
+  const ratio = d0 === d1 ? 0 : (depth - d0) / (d1 - d0);
+  const rgb = c0.map((value, index) => Math.round(value + (c1[index] - value) * ratio));
+  return `rgb(${rgb.join(",")})`;
+}
+
+function isMigratoryMarineTaxon(speciesName) {
+  const name = String(speciesName || "").toLocaleLowerCase();
+  return [
+    "thunnus", "tuna", "cheloni", "caretta", "eretmochelys", "lepido", "dermochelys",
+    "delphin", "tursiops", "cetacea", "balaenoptera", "megaptera", "rhincodon", "selachimorpha",
+  ].some((taxon) => name.includes(taxon));
+}
+
+function speciesPathColor(speciesName) {
+  const colors = ["#22d3ee", "#f472b6", "#a3e635", "#fb923c", "#c084fc", "#f87171"];
+  const hash = Array.from(String(speciesName || "")).reduce((value, character) => value + character.charCodeAt(0), 0);
+  return colors[hash % colors.length];
+}
+
+function renderMarineObservationLayer() {
+  marineOverlay.clearLayers();
+  marineMarkerGroup.clearLayers();
+  marineOverlay.addLayer(marineMarkerGroup);
+  const depthColorsEnabled = document.querySelector("#marine-depth-colors")?.checked || false;
+  const showPaths = Boolean(document.querySelector("#marine-show-paths")?.checked)
+    && Boolean(document.querySelector("#marine-species-filter")?.value.trim())
+    && document.querySelector("#marine-region-filter")?.value === "global";
+  const pathsBySpecies = new Map();
+  let markerCount = 0;
+
+  for (const observation of marineObservationRecords) {
+    const lat = Number(observation.lat);
+    const lon = Number(observation.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
+
+    const depthMeters = observation.depth_m != null && Number.isFinite(Number(observation.depth_m))
+      ? Number(observation.depth_m)
+      : null;
+    const color = depthColorsEnabled ? depthColor(depthMeters) : "#38bdf8";
+    const sourceUrl = getObisSourceUrl(observation.source_link);
+    const source = sourceUrl
+      ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">View Source</a>`
+      : "Source unavailable";
+    const dateLabel = observation.observation_date || "Unknown";
+    const popup = `<div class="marine-observation-popup">
+      <strong>${escapeHtml(observation.species_name || "Unknown species")}</strong><br>
+      <span><b>Observation Date:</b> ${escapeHtml(dateLabel)}</span><br>
+      <span><b>Month / Season:</b> ${escapeHtml(observation.month ?? "Unknown")} / ${escapeHtml(observation.season || "Unknown")}</span><br>
+      <span><b>Depth:</b> ${depthMeters == null ? "Not reported" : `${depthMeters.toLocaleString()} m`}</span><br>
+      <span><b>Dataset / Provider:</b> ${escapeHtml(observation.dataset_name || "OBIS")}</span><br>${source}
+    </div>`;
+    const observationMarker = L.marker([lat, lon], {
+      icon: L.divIcon({
+        className: "marine-observation-marker-icon",
+        html: `<span style="background-color:${color}"></span>`,
+        iconSize: [17, 17],
+        iconAnchor: [8.5, 8.5],
+      }),
+    }).bindPopup(popup);
+    marineMarkerGroup.addLayer(observationMarker);
+    markerCount += 1;
+
+    const speciesName = String(observation.species_name || "Unknown species");
+    if (showPaths && isMigratoryMarineTaxon(speciesName) && Number.isFinite(Date.parse(dateLabel))) {
+      const key = speciesName.toLocaleLowerCase();
+      if (!pathsBySpecies.has(key)) pathsBySpecies.set(key, { name: speciesName, records: [] });
+      pathsBySpecies.get(key).records.push({ observation, lat, lon, timestamp: Date.parse(dateLabel) });
+    }
+  }
+
+  for (const { name, records } of pathsBySpecies.values()) {
+    records.sort((a, b) => a.timestamp - b.timestamp);
+    if (records.length < 2) continue;
+    const line = L.polyline(records.map(({ lat, lon }) => [lat, lon]), {
+      color: speciesPathColor(name),
+      weight: 3,
+      opacity: 0.82,
+      dashArray: "8 5",
+    });
+    line.bindTooltip(`${escapeHtml(name)} - dated observation sequence (not an individual track)`);
+    marineOverlay.addLayer(line);
+
+    const endpoints = [
+      { record: records[0], label: "Earliest dated observation", color: "#f8fafc" },
+      { record: records[records.length - 1], label: "Latest dated observation", color: "#0f172a" },
+    ];
+    for (const { record, label, color } of endpoints) {
+      L.circleMarker([record.lat, record.lon], {
+        radius: 5,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: color,
+        fillOpacity: 1,
+      })
+        .bindTooltip(`${escapeHtml(name)} - ${label}: ${escapeHtml(record.observation.observation_date || "Unknown date")}`)
+        .addTo(marineOverlay);
+    }
+  }
+  return markerCount;
+}
+
+map.on("overlayadd", (event) => {
+  if (event.layer === marineOverlay && !marineObservationsController && marineLoadedFilterKey === null) {
+    loadMarineObservations();
+  }
+});
+/**
+ * Fetches ecosystem layer configurations and adds them to the Leaflet map with layer controls.
+ * @param {L.Map} mapInstance - The active Leaflet map instance
+ */
+async function loadEcosystemLayers(mapInstance) {
+  try {
+    const response = await fetch(`${API_BASE}/api/ecosystem-layers`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) throw new Error(`Layer metadata returned HTTP ${response.status}`);
+    const layersConfig = await response.json();
+
+    const mangroves = layersConfig.mangroves;
+    if (mangroves?.local_data_url || mangroves?.data_url) {
+      try {
+        let geoJson = null;
+        let sourceError = null;
+        const dataUrls = [mangroves.local_data_url, mangroves.data_url]
+          .filter(Boolean)
+          .map((dataUrl) => new URL(dataUrl, `${API_BASE}/`).toString());
+        for (const dataUrl of dataUrls) {
+          try {
+            const geoResponse = await fetch(dataUrl, {
+              headers: { Accept: "application/geo+json, application/json" },
+              signal: AbortSignal.timeout(20000),
+            });
+            if (!geoResponse.ok) throw new Error(`Mangrove source returned HTTP ${geoResponse.status}`);
+            const payload = await geoResponse.json();
+            if (!payload || !["FeatureCollection", "Feature"].includes(payload.type)) {
+              throw new Error("Mangrove source did not return GeoJSON features");
+            }
+            geoJson = payload;
+            break;
+          } catch (error) {
+            sourceError = error;
+            console.error("Mangrove GeoJSON source request failed:", error?.message || String(error));
+          }
+        }
+        if (!geoJson) throw sourceError || new Error("No mangrove data source is configured");
+
+        const mangroveLayer = L.geoJSON(geoJson, {
+          style: { color: "#1b5e20", weight: 1.5, fillColor: "#4caf50", fillOpacity: 0.45 },
+          onEachFeature: (feature, layer) => {
+            const extent = feature.properties?.pxlval;
+            const extentText = extent == null ? "Mangrove extent" : `Extent class: ${escapeHtml(extent)}`;
+            const sourceLink = escapeHtml(mangroves.source_link || "https://www.globalmangrovewatch.org/");
+            layer.bindPopup(`<strong>${escapeHtml(mangroves.name || "Mangrove habitat")}</strong><br>
+              ${extentText}<br><a href="${sourceLink}" target="_blank" rel="noopener noreferrer">Dataset source</a>`);
+          },
+        });
+        mapLayerControl.addOverlay(mangroveLayer, "Mangrove Extent (Global Mangrove Watch)");
+      } catch (error) {
+        console.warn("Mangrove overlay is unavailable; continuing without it:", error);
+        setMarineObservationStatus("Mangrove extent data is temporarily unavailable.");
+      }
+    }
+
+    const chlorophyll = layersConfig.chlorophyll;
+    const chlorophyllTileUrl = chlorophyll?.tile_url || chlorophyll?.wms_url;
+    if (chlorophyllTileUrl && chlorophyll?.layer_name) {
+      const chlorophyllLayer = L.tileLayer.wms(chlorophyllTileUrl, {
+        layers: chlorophyll.layer_name,
+        format: "image/png",
+        transparent: true,
+        version: "1.3.0",
+        opacity: 0.65,
+        attribution: `&copy; <a href="${chlorophyll.source_link}" target="_blank" rel="noopener noreferrer">NASA Ocean Color / GIBS</a>`,
+      });
+      chlorophyllLayer.on("tileerror", () => {
+        console.warn("NASA chlorophyll tiles are currently unavailable.");
+        setMarineObservationStatus("Chlorophyll imagery is temporarily unavailable.");
+      });
+      mapLayerControl.addOverlay(chlorophyllLayer, "Chlorophyll-a (NASA satellite)");
+    }
+  } catch (error) {
+    console.error("Ecosystem layer metadata request failed:", error?.message || String(error));
+    setMarineObservationStatus("Ecosystem overlay settings are temporarily unavailable.");
+  }
+}
+
+loadEcosystemLayers(map);

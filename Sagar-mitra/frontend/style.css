@@ -186,6 +186,7 @@ body {
   flex: 1; display: flex; flex-direction: column; gap: 12px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 16px;
   padding: 18px; min-height: 0; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
+.conversation-main { display: flex; flex: 1; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
 .agent-stream-header { font-size: 0.95rem; font-weight: 800; color: var(--accent-cyan); letter-spacing: 0.5px; text-transform: uppercase; }
 .agent-stream-feed { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
 .agent-badge {
@@ -525,6 +526,90 @@ body {
 @media (max-width: 520px) {
   .hazard-modal { padding: 22px 20px; }
 }
+.conversation-message { max-width: 92%; padding: 10px 12px; border-radius: 12px; color: var(--text-main); font-size: .82rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.conversation-message.user { align-self: flex-end; background: rgba(14, 165, 233, .2); border: 1px solid rgba(56, 189, 248, .28); }
+.conversation-message.assistant { align-self: flex-start; background: rgba(148, 163, 184, .1); border: 1px solid rgba(148, 163, 184, .18); }
+.conversation-message-toolbar { display: flex; justify-content: flex-end; margin-top: 4px; }
+.conversation-edit-button { border: 0; padding: 2px 5px; background: transparent; color: var(--accent-cyan); font: inherit; font-size: .68rem; cursor: pointer; }
+.conversation-inline-editor { display: block; width: 100%; min-width: 230px; padding: 8px; border: 1px solid rgba(56, 189, 248, .4); border-radius: 8px; color: var(--text-main); background: var(--bg-alt); font: inherit; resize: vertical; }
+.conversation-edit-actions { gap: 10px; }
+.prompt-edit-status { margin: 0; color: var(--text-sub); font-size: .7rem; }
+.prompt-edit-status[hidden] { display: none; }
+
+/* Marine observation filter panel inside the Leaflet map. */
+.marine-filter-control {
+  width: 286px;
+  max-width: calc(100vw - 64px);
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  padding: 14px;
+  color: var(--text-main);
+  background: var(--card-bg);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(14px);
+}
+.marine-filter-control h3 { margin: 0 0 12px; font-size: 0.95rem; font-weight: 800; }
+.marine-filter-control label { display: block; margin: 8px 0 4px; font-size: 0.72rem; font-weight: 700; color: var(--text-sub); }
+.marine-filter-control input {
+  width: 100%; min-width: 0; padding: 8px 9px; color: var(--text-main); background: var(--bg-alt);
+  border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 8px; font: inherit; font-size: 0.76rem;
+}
+.marine-filter-control select {
+  width: 100%; min-width: 0; padding: 8px 7px; color: var(--text-main); background: var(--bg-alt);
+  border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 8px; font: inherit; font-size: 0.7rem;
+}
+.marine-filter-control input:focus { outline: 2px solid rgba(56, 189, 248, 0.45); border-color: var(--accent-cyan); }
+.marine-filter-control select:focus { outline: 2px solid rgba(56, 189, 248, 0.45); border-color: var(--accent-cyan); }
+.marine-filter-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.marine-filter-control .marine-filter-toggle {
+  display: flex; align-items: center; gap: 8px; margin: 10px 0 0; color: var(--text-main); font-size: 0.74rem; font-weight: 700; cursor: pointer;
+}
+.marine-filter-control .marine-filter-toggle input { flex: 0 0 auto; width: 15px; height: 15px; padding: 0; margin: 0; border-radius: 3px; accent-color: var(--accent-cyan); }
+.marine-filter-control .marine-filter-toggle input:disabled { opacity: 0.45; cursor: not-allowed; }
+.marine-filter-control .marine-filter-toggle:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
+.marine-depth-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; color: var(--text-sub); font-size: 0.62rem; }
+.marine-depth-legend[hidden] { display: none; }
+.marine-depth-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.marine-depth-legend i { width: 9px; height: 9px; border-radius: 50%; }
+.depth-shallow { background: #facc15; }
+.depth-shelf { background: #fb923c; }
+.depth-deep { background: #38bdf8; }
+.depth-bathyal { background: #6366f1; }
+.depth-abyssal { background: #7e22ce; }
+.depth-unknown { background: #94a3b8; }
+.marine-depth-legend .depth-gradient {
+  display: inline-block;
+  flex: 1 1 100%;
+  min-width: 120px;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7dd3fc 0%, #38bdf8 25%, #2563eb 55%, #1d4ed8 75%, #082f49 100%);
+}
+.marine-depth-legend .depth-unknown { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.marine-observation-marker-icon { background: transparent; border: 0; }
+.marine-observation-marker-icon span {
+  display: block;
+  width: 15px;
+  height: 15px;
+  border: 2px solid #e0f2fe;
+  border-radius: 50%;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.75);
+}
+.marine-filter-note { margin: 8px 0 0; color: var(--text-sub); font-size: 0.61rem; line-height: 1.35; }
+.marine-filter-actions { display: flex; gap: 8px; margin-top: 12px; }
+.marine-filter-actions button {
+  flex: 1; padding: 8px 9px; border: 0; border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.75rem; font-weight: 800;
+}
+#marine-apply-filters { color: #04111f; background: var(--accent-cyan); }
+#marine-reset-filters { color: var(--text-main); background: rgba(148, 163, 184, 0.2); }
+.marine-filter-actions button:hover { filter: brightness(1.08); }
+.marine-filter-status { min-height: 0; margin: 8px 0 0; color: var(--text-sub); font-size: 0.7rem; line-height: 1.35; }
+.marine-filter-status:empty { display: none; }
+@media (max-width: 520px) {
+  .marine-filter-control { width: 246px; padding: 11px; }
+}
 
 /* Compact-screen dashboard hardening (including 375px iPhone SE layouts). */
 @media (max-width: 768px) {
@@ -535,7 +620,8 @@ body {
   .dashboard-map-panel { width: 100%; height: 320px; min-height: 280px; max-height: 320px; }
   #oceanMap { width: 100%; height: 100%; }
   .dashboard-side-panel { width: 100%; height: auto; min-height: 0; }
-  .agent-stream-panel { min-height: 300px; }
+  .agent-stream-panel { min-height: 500px; }
+  .conversation-main { min-height: 380px; }
   .telemetry-metrics-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .dashboard-footer-row, .chart-hud-row { display: flex; flex-direction: column; align-items: stretch; gap: 14px; width: 100%; }
   .telemetry-panel, .sos-wrap, .sos-button, .sos-status, .chart-card, .compass-card, .news-panel { width: 100%; min-width: 0; }
