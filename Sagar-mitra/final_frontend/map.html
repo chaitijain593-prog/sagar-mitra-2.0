@@ -381,18 +381,18 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 .legend-wrapper{
   position:fixed;
   bottom:24px;
-  left:80px;
-  max-width:calc(100vw - 260px);
+  right:135px;
+  max-width:480px;
   z-index:30;
-  background:var(--panel-bg);
-  backdrop-filter:blur(18px);
-  border:1px solid var(--panel-border);
+  background:linear-gradient(145deg, rgba(8, 20, 30, 0.82) 0%, rgba(4, 12, 20, 0.9) 100%);
+  backdrop-filter:blur(24px) saturate(1.2);
+  border:1px solid rgba(255, 255, 255, 0.08);
   border-radius:14px;
-  padding:12px 18px;
-  box-shadow:var(--panel-glow);
+  padding:10px 16px;
+  box-shadow:0 12px 35px rgba(0, 0, 0, 0.5);
   display:flex;
   flex-direction:column;
-  gap:8px;
+  gap:6px;
   transition:all .25s ease;
 }
 
@@ -891,7 +891,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   left: 455px;
   top: 100px;
   width: 410px;
-  max-height: 310px;
+  max-height: 365px;
   z-index: 35;
   background: linear-gradient(145deg, rgba(8, 20, 30, 0.72) 0%, rgba(4, 12, 20, 0.82) 100%);
   backdrop-filter: blur(24px) saturate(1.2);
@@ -908,7 +908,9 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   visibility: hidden;
   transform: translateX(-15px);
   transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1);
-  overflow: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(57,189,242,0.4) transparent;
 }
 .reasoning-drawer-wrapper.open {
   opacity: 1;
@@ -922,6 +924,43 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   justify-content: space-between;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding-bottom: 10px;
+}
+
+.reasoning-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wave-icon-title {
+  width: 22px !important;
+  height: 22px !important;
+  flex-shrink: 0 !important;
+}
+
+.reasoning-main-title {
+  display: block;
+  font: 700 15px "Playfair Display", serif;
+  color: #f8fafc;
+  line-height: 1.2;
+}
+
+.reasoning-sub-title {
+  display: block;
+  font: 500 10px "DM Mono", monospace;
+  color: #38bdf8;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.carousel-counter-badge {
+  font: 600 10px "DM Mono", monospace;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
 }
 
 /* Nautical Logbook Step-Tracker Bar */
@@ -1027,9 +1066,9 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 .obis-panel-wrapper {
   position: fixed;
   left: 455px;
-  top: 425px;
+  top: 480px;
   width: 410px;
-  max-height: calc(100vh - 445px);
+  max-height: calc(100vh - 500px);
   z-index: 35;
   background: linear-gradient(145deg, rgba(8, 20, 30, 0.72) 0%, rgba(4, 12, 20, 0.82) 100%);
   backdrop-filter: blur(24px) saturate(1.2);
@@ -1153,9 +1192,10 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 
 @media(max-width:850px){
   .legend-wrapper{
-    max-width:calc(100vw - 120px);
+    right:16px;
+    left:auto;
     bottom:76px;
-    left:16px;
+    max-width:calc(100vw - 140px);
   }
   .hud-coordinates{display:none}
   .modes-bar-wrapper{right:16px;top:80px}
@@ -1426,7 +1466,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 <div class="reasoning-drawer-wrapper" id="reasoningDrawer">
   <div class="reasoning-header">
     <div class="reasoning-title-group">
-      <svg class="wave-icon-title" viewBox="0 0 24 24" fill="none" stroke="#39bdf2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <svg class="wave-icon-title" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#39bdf2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px;flex-shrink:0;">
         <path d="M2 10c3.2-2.5 6.8-2.5 10 0s6.8 2.5 10 0"/>
         <path d="M2 16c3.2-2.5 6.8-2.5 10 0s6.8 2.5 10 0"/>
       </svg>
@@ -2838,6 +2878,45 @@ async function fetchAndRenderOBISData(speciesFilter = "all", regionFilter = "ind
   });
 }
 
+// Auto-execute route calculation if redirected from Chatbot with URL query parameters
+window.addEventListener("load", () => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.has("start_lat") && params.has("start_lon") && params.has("target_lat") && params.has("target_lon")) {
+    const sLat = parseFloat(params.get("start_lat"));
+    const sLon = parseFloat(params.get("start_lon"));
+    const tLat = parseFloat(params.get("target_lat"));
+    const tLon = parseFloat(params.get("target_lon"));
+    const mode = params.get("mode") || "BALANCED_PARETO";
+
+    if (!isNaN(sLat) && !isNaN(sLon) && !isNaN(tLat) && !isNaN(tLon)) {
+      customStartPos = [sLat, sLon];
+      customTargetPos = [tLat, tLon];
+      activeParetoMode = mode;
+
+      if (document.getElementById("inputStartLat")) {
+        document.getElementById("inputStartLat").value = sLat;
+        document.getElementById("inputStartLon").value = sLon;
+        document.getElementById("inputTargetLat").value = tLat;
+        document.getElementById("inputTargetLon").value = tLon;
+      }
+
+      document.querySelectorAll(".pareto-tab-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-pareto") === mode);
+      });
+
+      if (routePresetSelect) routePresetSelect.value = "custom";
+
+      const routePanel = document.getElementById("routePanel");
+      const reasoningDrawer = document.getElementById("reasoningDrawer");
+      const routeBtn = document.getElementById("btnModeRoute");
+      if (routePanel) routePanel.classList.add("open");
+      if (reasoningDrawer) reasoningDrawer.classList.add("open");
+      if (routeBtn) routeBtn.classList.add("active");
+
+      fetchAndRenderParetoRoute();
+    }
+  }
+});
 </script>
 </body>
 </html>

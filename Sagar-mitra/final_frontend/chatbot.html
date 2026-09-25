@@ -583,6 +583,82 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   color:var(--text-muted);
 }
 
+/* Google-Maps-Style Nautical Route Card in Chatbot */
+.chatbot-route-card {
+  background: var(--surface-card);
+  border: 1px solid rgba(57, 189, 242, 0.4);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.15);
+}
+.chatbot-route-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px dashed var(--surface-border);
+  padding-bottom: 8px;
+  font: 600 12px "DM Mono", monospace;
+  color: var(--blue);
+}
+.chatbot-route-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  background: var(--bg);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--surface-border);
+}
+.chatbot-metric-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chatbot-metric-lbl {
+  font: 600 9px "DM Mono", monospace;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.chatbot-metric-val {
+  font: 700 13px "DM Sans", sans-serif;
+  color: var(--ink);
+}
+.chatbot-leg-step {
+  padding: 8px 12px;
+  background: rgba(57, 189, 242, 0.06);
+  border-left: 3px solid var(--blue);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.launch-map-route-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #0284c7 0%, #0da9df 100%);
+  color: #ffffff !important;
+  font: 600 13px "DM Sans", sans-serif;
+  padding: 12px 20px;
+  border-radius: 10px;
+  text-decoration: none;
+  box-shadow: 0 4px 16px rgba(13, 169, 223, 0.35);
+  transition: all 0.25s ease;
+  margin-top: 6px;
+  cursor: pointer;
+}
+.launch-map-route-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(13, 169, 223, 0.5);
+  background: linear-gradient(135deg, #0da9df 0%, #39bdf2 100%);
+}
+
 /* Chat Messages Container */
 .messages-list{
   width:100%;
@@ -1120,12 +1196,12 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
               <div class="mode-card-desc">Subsurface physics, thermocline gradients, ARGO float acoustics & marine ecosystems.</div>
             </div>
 
-            <div class="mode-card" data-mode="create" data-prompt="Generate a scientific expedition plan and bathymetric transect across the Ninety East Ridge">
+            <div class="mode-card" data-mode="create" data-prompt="Find optimal eco route from Mumbai (18.92, 72.83) to Offshore Target B (13.50, 72.00)">
               <div class="mode-card-header">
                 <span>🗺️</span>
-                <span>CREATE</span>
+                <span>OPTIMAL ROUTE</span>
               </div>
-              <div class="mode-card-desc">Expedition routes, bathymetric depth charts, sonar transects & waypoint grids.</div>
+              <div class="mode-card-desc">Calculate multi-objective Pareto maritime routes, fuel savings & leg navigation.</div>
             </div>
 
             <div class="mode-card" data-mode="write" data-prompt="Draft a hydrographic field research dispatch summarizing today's SST anomalies and currents">
@@ -1619,25 +1695,317 @@ function sendQuery(text){
   const target = aiRow.querySelector("#streamTarget");
   const responseText = generateOceanResponse(text, activeDepth);
 
-  let charIdx = 0;
-  const speed = 12;
-  const timer = setInterval(() => {
-    charIdx += 3;
-    target.innerHTML = responseText.slice(0, charIdx);
+  if(responseText.includes("<div") || responseText.includes("<a ")) {
+    target.innerHTML = responseText;
     scrollArea.scrollTop = scrollArea.scrollHeight;
+  } else {
+    let charIdx = 0;
+    const speed = 12;
+    const timer = setInterval(() => {
+      charIdx += 3;
+      target.innerHTML = responseText.slice(0, charIdx);
+      scrollArea.scrollTop = scrollArea.scrollHeight;
 
-    if(charIdx >= responseText.length){
-      clearInterval(timer);
-      target.id = ""; // clear ID
-    }
-  }, speed);
+      if(charIdx >= responseText.length){
+        clearInterval(timer);
+        target.id = ""; // clear ID
+      }
+    }, speed);
+  }
 }
 
 function escapeHtml(str){
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+function generateClientFallbackRoute(start_pos, target_pos, mode) {
+  const trajectory = [];
+  const xai_intentions = [];
+  
+  const isCrossLand = (start_pos[1] < 77.3 && target_pos[1] > 78.2) || (start_pos[1] > 78.2 && target_pos[1] < 77.3);
+  
+  let keyWaypoints = [];
+  if (isCrossLand) {
+    const kanyakumariChannel = [8.00, 77.20];
+    keyWaypoints = [start_pos, kanyakumariChannel, target_pos];
+    xai_intentions.push({
+      step: 2,
+      intent_type: "HAZARD_OBSTACLE_AVOIDANCE",
+      reasoning: "Diverged south around Kanyakumari Cape Comorin Marine Channel to avoid Peninsular India landmass."
+    });
+  } else {
+    keyWaypoints = [start_pos, target_pos];
+  }
+
+  const stepsPerLeg = Math.floor(30 / (keyWaypoints.length - 1));
+  let stepCounter = 1;
+
+  for (let w = 0; w < keyWaypoints.length - 1; w++) {
+    const pA = keyWaypoints[w];
+    const pB = keyWaypoints[w + 1];
+    
+    const dLat = (pB[0] - pA[0]) / stepsPerLeg;
+    const dLon = (pB[1] - pA[1]) / stepsPerLeg;
+
+    for (let i = (w === 0 ? 0 : 1); i <= stepsPerLeg; i++) {
+      let driftLat = 0;
+      let driftLon = 0;
+      let intent_type = "DIRECT_TRANSIT";
+      let reasoning = "Maintained direct high-speed line towards destination. Minimizes travel time and fuel consumption.";
+
+      if (mode === "MAX_HARVEST") {
+        driftLat = Math.sin((i / stepsPerLeg) * Math.PI * 2) * 0.40;
+        driftLon = Math.cos((i / stepsPerLeg) * Math.PI * 2) * 0.30;
+        intent_type = "PFZ_HARVEST_DETOUR";
+        reasoning = `Detoured ${(Math.abs(driftLat) * 80).toFixed(1)}° off direct course to intercept Active Potential Fishing Zone (PFZ). Catch rating 98/100.`;
+      } else if (mode === "ECO_SAVER") {
+        driftLat = Math.sin((i / stepsPerLeg) * Math.PI) * 0.25;
+        driftLon = Math.sin((i / stepsPerLeg) * Math.PI) * 0.20;
+        intent_type = "ECO_FLUID_DRIFT";
+        reasoning = "Adjusted heading to ride favorable thermal currents (SST 28.5°C), saving 22.4% fuel.";
+      } else if (mode === "BALANCED_PARETO" && i > 3 && i < stepsPerLeg - 3) {
+        driftLat = Math.sin((i / stepsPerLeg) * Math.PI) * 0.12;
+        driftLon = Math.sin((i / stepsPerLeg) * Math.PI) * 0.10;
+        intent_type = "BALANCED_PARETO_TRANSIT";
+        reasoning = "Optimal Pareto balance: minor detour for PFZ proximity while saving 14.2% fuel.";
+      }
+
+      const currLat = pA[0] + (dLat * i) + driftLat;
+      const currLon = pA[1] + (dLon * i) + driftLon;
+      trajectory.push([currLat, currLon]);
+
+      if (stepCounter % 6 === 1) {
+        xai_intentions.push({ step: stepCounter, intent_type, reasoning });
+      }
+      stepCounter++;
+    }
+  }
+
+  let modeFuelPct = mode === "ECO_SAVER" ? 22.4 : (mode === "BALANCED_PARETO" ? 14.2 : 5.8);
+  let modeCatchScore = mode === "MAX_HARVEST" ? 98.0 : (mode === "BALANCED_PARETO" ? 78.5 : 32.0);
+  
+  const dist_nm = Math.round((trajectory.length * 0.08 * 111.0) / 1.852 * 10) / 10;
+  const eta_hrs = Math.round((dist_nm / 10.0) * 10) / 10;
+  
+  return {
+    status: "success",
+    metrics: {
+      total_distance_nm: dist_nm,
+      total_distance_km: Math.round(dist_nm * 1.852),
+      eta_hours: eta_hrs,
+      estimated_fuel_saved_pct: modeFuelPct,
+      estimated_catch_rating_score: modeCatchScore
+    },
+    trajectory,
+    xai_intentions
+  };
+}
+
+function parseRouteRequestFromText(text) {
+  const t = text.toLowerCase();
+  
+  const isRouteIntent = t.includes("route") || t.includes("path") || t.includes("optimal") || 
+                        t.includes("navigate") || t.includes("navigation") || t.includes("waypoint") ||
+                        (t.includes("from") && t.includes("to"));
+                        
+  const numberMatches = text.match(/-?\d+\.?\d*/g);
+  let coordsFound = [];
+  if (numberMatches && numberMatches.length >= 4) {
+    for (let i = 0; i < numberMatches.length - 1; i += 2) {
+      const lat = parseFloat(numberMatches[i]);
+      const lon = parseFloat(numberMatches[i + 1]);
+      if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+        coordsFound.push([lat, lon]);
+      }
+    }
+  }
+
+  const locations = {
+    "mumbai": [18.922, 72.833],
+    "ratnagiri": [16.990, 73.280],
+    "kochi": [9.960, 76.260],
+    "cochin": [9.960, 76.260],
+    "porbandar": [21.640, 69.600],
+    "lakshadweep": [10.500, 72.500],
+    "deepsea": [15.500, 71.200],
+    "arabian": [16.200, 71.500],
+    "target a": [15.500, 71.200],
+    "target b": [13.500, 72.000],
+    "target": [13.500, 72.000]
+  };
+
+  let start_pos = null;
+  let target_pos = null;
+
+  if (coordsFound.length >= 2) {
+    start_pos = coordsFound[0];
+    target_pos = coordsFound[1];
+  } else {
+    for (const [key, pos] of Object.entries(locations)) {
+      if (t.includes(key)) {
+        if (!start_pos) start_pos = pos;
+        else if (!target_pos && pos !== start_pos) target_pos = pos;
+      }
+    }
+  }
+
+  if (!start_pos && isRouteIntent) start_pos = [18.922, 72.833];
+  if (!target_pos && isRouteIntent) target_pos = [13.500, 72.000];
+
+  if (!start_pos || !target_pos) return null;
+
+  let mode = "BALANCED_PARETO";
+  if (t.includes("eco") || t.includes("fuel") || t.includes("saving") || t.includes("green")) {
+    mode = "ECO_SAVER";
+  } else if (t.includes("fish") || t.includes("harvest") || t.includes("pfz") || t.includes("yield")) {
+    mode = "MAX_HARVEST";
+  } else if (t.includes("express") || t.includes("fast") || t.includes("speed") || t.includes("eta")) {
+    mode = "EXPRESS_SPEED";
+  }
+
+  return { start_pos, target_pos, mode };
+}
+
+function calculateCompassHeading(p1, p2) {
+  const dLat = (p2[0] - p1[0]) * 60; // NM
+  const dLon = (p2[1] - p1[1]) * 60 * Math.cos(p1[0] * Math.PI / 180); // NM
+  
+  const dist_nm = Math.sqrt(dLat * dLat + dLon * dLon);
+  let angle = Math.atan2(dLon, dLat) * (180 / Math.PI);
+  if (angle < 0) angle += 360;
+  
+  const compassDirections = [
+    { name: "North", abbr: "N", min: 337.5, max: 360 },
+    { name: "North", abbr: "N", min: 0, max: 22.5 },
+    { name: "Northeast", abbr: "NE", min: 22.5, max: 67.5 },
+    { name: "East", abbr: "E", min: 67.5, max: 112.5 },
+    { name: "Southeast", abbr: "SE", min: 112.5, max: 157.5 },
+    { name: "South", abbr: "S", min: 157.5, max: 202.5 },
+    { name: "Southwest", abbr: "SW", min: 202.5, max: 247.5 },
+    { name: "West", abbr: "W", min: 247.5, max: 292.5 },
+    { name: "Northwest", abbr: "NW", min: 292.5, max: 337.5 }
+  ];
+
+  let dirName = "North";
+  let dirAbbr = "N";
+  for (const cd of compassDirections) {
+    if (angle >= cd.min && angle < cd.max) {
+      dirName = cd.name;
+      dirAbbr = cd.abbr;
+      break;
+    }
+  }
+
+  return {
+    dist_nm: Math.round(dist_nm * 10) / 10,
+    heading_deg: Math.round(angle),
+    dirName,
+    dirAbbr
+  };
+}
+
 function generateOceanResponse(query, depth){
+  const req = parseRouteRequestFromText(query);
+  if (req) {
+    const sLat = req.start_pos[0];
+    const sLon = req.start_pos[1];
+    const tLat = req.target_pos[0];
+    const tLon = req.target_pos[1];
+    const mode = req.mode;
+
+    const routeData = generateClientFallbackRoute([sLat, sLon], [tLat, tLon], mode);
+    const m = routeData.metrics;
+
+    const modeLabels = {
+      "BALANCED_PARETO": "Balanced Optimal Pareto Mode",
+      "ECO_SAVER": "Eco Mode (Max Fuel & CO2 Savings)",
+      "MAX_HARVEST": "Fisherman Harvest Mode (Max PFZ Yield)",
+      "EXPRESS_SPEED": "Express Mode (Fastest ETA)"
+    };
+
+    const traj = routeData.trajectory;
+    const legCount = routeData.xai_intentions.length;
+    let turnByTurnHtml = "";
+
+    routeData.xai_intentions.forEach((xai, idx) => {
+      const startIdx = Math.floor((idx / legCount) * (traj.length - 1));
+      const endIdx = Math.floor(((idx + 1) / legCount) * (traj.length - 1));
+      const pA = traj[startIdx] || [sLat, sLon];
+      const pB = traj[endIdx] || [tLat, tLon];
+
+      const nav = calculateCompassHeading(pA, pB);
+      let stepIcon = "🧭";
+      let stepTitle = `Depart Position`;
+      
+      if (idx === 0) {
+        stepIcon = "🧭";
+        stepTitle = `Depart Starting Port / Fairway (${pA[0].toFixed(2)}°N, ${pA[1].toFixed(2)}°E)`;
+      } else if (idx === legCount - 1) {
+        stepIcon = "⚓";
+        stepTitle = `Final Approach to Destination (${pB[0].toFixed(2)}°N, ${pB[1].toFixed(2)}°E)`;
+      } else {
+        stepIcon = "↗️";
+        stepTitle = `Mid-Voyage Course Adjustment`;
+      }
+
+      turnByTurnHtml += `
+        <div class="chatbot-leg-step">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <span style="font:600 12px 'DM Mono',monospace;color:var(--blue)">${stepIcon} STEP 0${idx + 1}: ${stepTitle}</span>
+            <span style="font:700 11px 'DM Mono',monospace;color:#38bdf8;background:rgba(56,189,248,0.12);padding:2px 6px;border-radius:4px">${nav.dist_nm} NM</span>
+          </div>
+          <div style="font-size:13px;line-height:1.5;color:var(--ink)">
+            Head <strong>${nav.dirName} (${nav.heading_deg}° ${nav.dirAbbr})</strong> for <strong>${nav.dist_nm} Nautical Miles</strong> (${(nav.dist_nm * 1.852).toFixed(1)} km).
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-style:italic">
+            Strategy: ${xai.reasoning}
+          </div>
+        </div>
+      `;
+    });
+
+    return `
+      <strong>📍 MARITIME PARETO OPTIMAL ROUTE DISPATCH</strong><br><br>
+      Calculated turn-by-turn navigation guide from <strong>(${sLat.toFixed(2)}°N, ${sLon.toFixed(2)}°E)</strong> to <strong>(${tLat.toFixed(2)}°N, ${tLon.toFixed(2)}°E)</strong>.<br><br>
+      
+      <div class="chatbot-route-card">
+        <div class="chatbot-route-header">
+          <span>VOYAGE TELEMETRY & EFFICIENCY REPORT</span>
+          <span style="background:rgba(57,189,242,0.15);padding:2px 8px;border-radius:6px;color:var(--blue);font-weight:700">${modeLabels[mode] || mode}</span>
+        </div>
+        <div class="chatbot-route-metrics-grid">
+          <div class="chatbot-metric-box">
+            <span class="chatbot-metric-lbl">TOTAL DIST</span>
+            <span class="chatbot-metric-val">${m.total_distance_nm} NM</span>
+          </div>
+          <div class="chatbot-metric-box">
+            <span class="chatbot-metric-lbl">EST. ETA</span>
+            <span class="chatbot-metric-val">${m.eta_hours} hrs</span>
+          </div>
+          <div class="chatbot-metric-box">
+            <span class="chatbot-metric-lbl">FUEL SAVED</span>
+            <span class="chatbot-metric-val" style="color:#34d399">${m.estimated_fuel_saved_pct}%</span>
+          </div>
+          <div class="chatbot-metric-box">
+            <span class="chatbot-metric-lbl">CATCH YIELD</span>
+            <span class="chatbot-metric-val" style="color:#f59e0b">${m.estimated_catch_rating_score} / 100</span>
+          </div>
+        </div>
+        
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
+          <span style="font:600 11px 'DM Mono',monospace;color:var(--text-dim);text-transform:uppercase;">🗺️ Turn-by-Turn Compass Navigation Guide:</span>
+          ${turnByTurnHtml}
+        </div>
+
+        <div style="margin-top:10px;text-align:center;">
+          <a href="map.html?start_lat=${sLat}&start_lon=${sLon}&target_lat=${tLat}&target_lon=${tLon}&mode=${mode}&auto_calc=1" class="launch-map-route-btn" onclick="if(window.triggerWaveTransition){event.preventDefault();triggerWaveTransition(-1, this.href);}">
+            🗺️ LAUNCH OCEAN MAP & VIEW LEG RATIONALE LOGBOOK →
+          </a>
+        </div>
+      </div>
+    `;
+  }
+
   const q = query.toLowerCase();
   
   if(q.includes("argo") || q.includes("float")){
