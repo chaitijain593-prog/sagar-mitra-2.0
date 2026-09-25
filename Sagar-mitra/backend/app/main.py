@@ -531,6 +531,73 @@ def get_news_domains():
     return {"domains": list(DOMAIN_TAXONOMY.keys())}
 
 
+# --- OBIS Marine Biodiversity API Endpoint --------------------------------
+@app.get("/api/marine/obis")
+async def get_obis_marine_biodiversity(
+    species: str | None = None,
+    season: str | None = None,
+    region: str = "indian_ocean",
+    limit: int = 500
+):
+    """
+    Direct OBIS (Ocean Biodiversity Information System) API integration.
+    Queries live marine organism occurrence records, calculates species proportions,
+    depth classification, and identifies density hotspots for optimal observation/harvesting.
+    """
+    res = await get_marine_observations(
+        species=species,
+        season=season,
+        region=region,
+        limit=limit
+    )
+    
+    observations = res.get("data", [])
+    taxa_counts = {}
+    depth_distribution = {"surface": 0, "mid_water": 0, "deep_sea": 0, "unknown": 0}
+
+    for obs in observations:
+        sp = obs.get("species_name", "Unknown species")
+        taxa_counts[sp] = taxa_counts.get(sp, 0) + 1
+        cat = obs.get("depth_category", "unknown")
+        depth_distribution[cat] = depth_distribution.get(cat, 0) + 1
+
+    total_count = len(observations)
+    proportions = []
+    for sp_name, count in sorted(taxa_counts.items(), key=lambda x: x[1], reverse=True)[:10]:
+        pct = round((count / total_count * 100), 1) if total_count > 0 else 0.0
+        proportions.append({
+            "species_name": sp_name,
+            "count": count,
+            "percentage": pct
+        })
+
+    hotspots = []
+    if observations:
+        grid = {}
+        for obs in observations:
+            grid_key = (round(obs["lat"], 1), round(obs["lon"], 1))
+            grid[grid_key] = grid.get(grid_key, 0) + 1
+        
+        sorted_grid = sorted(grid.items(), key=lambda x: x[1], reverse=True)[:5]
+        for (grid_lat, grid_lon), count in sorted_grid:
+            hotspots.append({
+                "lat": grid_lat,
+                "lon": grid_lon,
+                "density_score": count,
+                "description": f"High Biodiversity Density Zone ({count} records)"
+            })
+
+    return {
+        "status": res.get("status", "success"),
+        "total_records": total_count,
+        "species_proportions": proportions,
+        "depth_distribution": depth_distribution,
+        "hotspots": hotspots,
+        "observations": observations,
+        "source": "OBIS (Ocean Biodiversity Information System)"
+    }
+
+
 # --- Task 4: SHAP What-If Sensitivity Prediction Endpoint ----------------
 @app.post("/api/predict/sensitivity")
 def evaluate_sensitivity(payload: SensitivityPredictRequest):
@@ -565,6 +632,35 @@ def evaluate_sensitivity(payload: SensitivityPredictRequest):
         },
         "raw_shap": shap_data,
     }
+
+
+class ParetoRouteRequest(BaseModel):
+    start_pos: list[float]
+    target_pos: list[float]
+    mode: str = "BALANCED_PARETO"
+    custom_weights: dict[str, float] | None = None
+
+@app.post("/api/route/plan_pareto")
+def plan_pareto_route_endpoint(payload: ParetoRouteRequest):
+    """
+    Computes a Multi-Objective Pareto Optimal Route between start_pos and target_pos,
+    returning detailed metrics, trajectory waypoints, and Explainable AI (XAI) agent intentions.
+    """
+    from app.pareto_xai_planner import plan_pareto_route
+    model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "ppo_marine_navigator.zip")
+    
+    try:
+        res = plan_pareto_route(
+            start_pos=tuple(payload.start_pos),
+            target_pos=tuple(payload.target_pos),
+            mode=payload.mode,
+            custom_weights=payload.custom_weights,
+            model_path=model_path
+        )
+        return {"status": "success", **res}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Pareto route planning failed: {e}")
 
 
 @app.post("/api/orchestrate")
