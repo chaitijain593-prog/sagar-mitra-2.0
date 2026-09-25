@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<link rel="stylesheet" href="ocean-shared.css">
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1193,7 +1194,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   <button class="map-ctrl-btn" id="resetViewBtn" title="Reset Indian Ocean Basin View">⟲</button>
 </div>
 
-<!-- Top-right Action Buttons: Navigation, Theme Toggle, Logout -->
+<!-- Top-right Action Buttons: Navigation, News Feed, Switch Role, Theme Toggle, Logout -->
 <div class="actions">
   <button class="ctrl-btn nav-trigger" id="trigger" aria-label="Open navigation menu">
     <span class="ctrl-icon">
@@ -1204,6 +1205,73 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     </span>
     <span class="ctrl-label">Navigation</span>
   </button>
+
+  <button class="ctrl-btn news-trigger" id="newsTrigger" aria-label="Open Ocean News Feed">
+    <span class="ctrl-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>
+        <path d="M18 14h-8"/>
+        <path d="M15 18h-5"/>
+        <path d="M10 6h8v4h-8z"/>
+      </svg>
+    </span>
+    <span class="ctrl-label">News Feed</span>
+  </button>
+
+  <div class="role-dropdown-wrapper">
+    <button class="ctrl-btn role-trigger" id="roleTrigger" aria-label="Switch User Persona Role">
+      <span class="ctrl-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+      </span>
+      <span class="ctrl-label">Switch Role</span>
+    </button>
+    <div class="role-dropdown-menu" id="roleDropdown">
+      <div class="role-dropdown-header">SELECT USER PERSONA</div>
+      <div class="role-dropdown-item" data-role="primary_student">
+        <span class="role-item-emoji">🐬</span>
+        <div class="role-item-details">
+          <div class="role-item-title">Primary Grade Student</div>
+          <div class="role-item-caption">Creative, child-like & curious ocean buddy</div>
+        </div>
+        <span class="role-item-check">✓</span>
+      </div>
+      <div class="role-dropdown-item" data-role="high_school">
+        <span class="role-item-emoji">🔬</span>
+        <div class="role-item-details">
+          <div class="role-item-title">High School Student</div>
+          <div class="role-item-caption">Coursework, STEM projects & lab formulas</div>
+        </div>
+        <span class="role-item-check">✓</span>
+      </div>
+      <div class="role-dropdown-item" data-role="researcher">
+        <span class="role-item-emoji">🏛️</span>
+        <div class="role-item-details">
+          <div class="role-item-title">Researcher</div>
+          <div class="role-item-caption">Multiple notebooks, external web sources</div>
+        </div>
+        <span class="role-item-check">✓</span>
+      </div>
+      <div class="role-dropdown-item" data-role="coastal_community">
+        <span class="role-item-emoji">⚓</span>
+        <div class="role-item-details">
+          <div class="role-item-title">Coastal Community Resident</div>
+          <div class="role-item-caption">Local swell, PFZ fishing zones & safety</div>
+        </div>
+        <span class="role-item-check">✓</span>
+      </div>
+      <div class="role-dropdown-item" data-role="others">
+        <span class="role-item-emoji">🌐</span>
+        <div class="role-item-details">
+          <div class="role-item-title">Others / General Explorer</div>
+          <div class="role-item-caption">Versatile Claude-inspired ocean assistant</div>
+        </div>
+        <span class="role-item-check">✓</span>
+      </div>
+    </div>
+  </div>
 
   <button class="ctrl-btn theme-toggle" id="themeToggle" aria-label="Toggle theme">
     <span class="ctrl-icon" id="themeIconSlot"></span>
@@ -2839,5 +2907,6 @@ async function fetchAndRenderOBISData(speciesFilter = "all", regionFilter = "ind
 }
 
 </script>
+<script src="ocean-shared.js"></script>
 </body>
 </html>

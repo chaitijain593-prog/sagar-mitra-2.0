@@ -6,62 +6,472 @@
 <title>Sagar Mitra — Question the Unexplored</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--blue:#38bdf8;--dark:#111;--muted:#687783;--input:#f7fbfd;--line:#c9edf9}
-html,body{min-height:100%;background:#fff;color:var(--dark);font-family:"DM Sans",sans-serif}
+
+:root {
+  --blue: #38bdf8;
+  --blue-hover: #0ea5e9;
+  --blue-dark: #0284c7;
+  --blue-glow: rgba(56, 189, 248, 0.35);
+  --bg: #ffffff;
+  --dark: #0f172a;
+  --muted: #64748b;
+  --input: #f8fafc;
+  --input-focus: #ffffff;
+  --line: #c9edf9;
+  --card-bg: #ffffff;
+  --card-border: #c9edf9;
+  --card-shadow: 0 8px 30px rgba(56, 189, 248, 0.12);
+  --error-bg: #fef2f2;
+  --error-border: #fecaca;
+  --error-text: #b91c1c;
+  --success-bg: #f0fdf4;
+  --success-border: #bbf7d0;
+  --success-text: #15803d;
+}
+
+[data-theme="dark"] {
+  --blue: #38bdf8;
+  --blue-hover: #0ea5e9;
+  --blue-dark: #0284c7;
+  --blue-glow: rgba(56, 189, 248, 0.5);
+  --bg: #141413;
+  --dark: #f4f4f5;
+  --muted: #9ca3af;
+  --input: #181816;
+  --input-focus: #1f1f1c;
+  --line: #2c2c28;
+  --card-bg: #181816;
+  --card-border: #33332e;
+  --card-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+  --error-bg: #450a0a;
+  --error-border: #7f1d1d;
+  --error-text: #fca5a5;
+  --success-bg: #052e16;
+  --success-border: #14532d;
+  --success-text: #86efac;
+}
+
+html,body{
+  min-height:100%;
+  background:var(--bg);
+  color:var(--dark);
+  font-family:"DM Sans",sans-serif;
+  transition:background .25s ease, color .25s ease;
+}
 body{overflow-x:hidden}
 .page{min-height:100svh;padding:18px 34px 22px}
-header{height:38px;display:flex;align-items:center}
+
+header{
+  height:44px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
 .brand{display:flex;align-items:center;gap:10px}
-.logo{width:34px;height:34px;object-fit:contain}
-.brand-name{font:500 27px "Playfair Display",serif;letter-spacing:-.7px;min-width:150px}
-.hero{width:100%;max-width:1500px;margin:25px auto 0;display:grid;grid-template-columns:1fr .88fr;gap:55px;align-items:center;min-height:calc(100svh - 83px)}
-.left{display:flex;flex-direction:column;align-items:center;min-width:0}
-.intro{width:100%;max-width:720px;text-align:center;margin-bottom:22px}
-.intro h1{font:400 clamp(46px,4.1vw,68px)/.94 "Playfair Display",serif;letter-spacing:-2.8px}
-.intro p{margin-top:17px;font:19px/1.3 "Playfair Display",serif;color:#273640}
-.auth{width:min(100%,560px)}
-.form{display:none;width:100%;padding:23px 28px 24px;border:1px solid var(--line);border-radius:24px}
-.form.active{display:block}
-.label{font:500 12px "DM Mono",monospace;letter-spacing:3px;color:var(--blue);margin-bottom:8px}
-.form h2{font-size:31px;line-height:1.05;letter-spacing:-1px;margin-bottom:7px}
-.desc{color:var(--muted);font-size:14px;line-height:1.4;margin-bottom:17px}
-.input{width:100%;height:48px;border:1px solid #e4f1f5;border-radius:11px;outline:0;background:var(--input);color:var(--dark);padding:0 15px;font:14px "DM Mono",monospace;margin-bottom:10px}
-.input::placeholder{color:#8798a5}
-.input:focus{background:#fff;border-color:#b8e6f7}
-.otp{display:none}
-.otp.visible{display:block}
-.bottom{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-top:18px}
-.switch{border:0;background:none;color:#526573;font:600 14px "DM Sans",sans-serif;cursor:pointer;padding:5px 0}
-.switch:hover{color:#159bd4}
-.primary{border:0;background:var(--blue);color:#07151c;min-width:110px;height:46px;padding:0 21px;border-radius:25px;font:600 15px "DM Sans",sans-serif;cursor:pointer;transition:.2s}
-.primary:hover{background:#24aee7;transform:translateY(-1px)}
-.video{width:100%;height:min(78svh,760px);overflow:hidden;border-radius:24px;background:#fff;position:relative}
-.video iframe{position:absolute;width:177.78%;height:100%;left:-38.89%;top:0;border:0;pointer-events:none}
+.logo{
+  width:34px;
+  height:34px;
+  object-fit:contain;
+  filter:drop-shadow(0 2px 6px rgba(56,189,248,.35));
+}
+.brand-name{
+  font:500 27px "Playfair Display",serif;
+  letter-spacing:-.7px;
+  min-width:150px;
+  color:var(--dark);
+}
+
+.theme-toggle-btn{
+  height:36px;
+  padding:0 14px;
+  border-radius:20px;
+  background:var(--input);
+  border:1px solid var(--line);
+  color:var(--dark);
+  font:600 12px "DM Mono",monospace;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  cursor:pointer;
+  transition:all .2s ease;
+}
+.theme-toggle-btn:hover{
+  border-color:var(--blue);
+  background:rgba(56,189,248,0.12);
+  color:var(--blue-dark);
+}
+[data-theme="dark"] .theme-toggle-btn:hover{color:var(--blue)}
+.theme-toggle-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+
+.hero{
+  width:100%;
+  max-width:1500px;
+  margin:25px auto 0;
+  display:grid;
+  grid-template-columns:1fr .88fr;
+  gap:55px;
+  align-items:center;
+  min-height:calc(100svh - 89px);
+}
+.left{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  min-width:0;
+}
+.intro{
+  width:100%;
+  max-width:720px;
+  text-align:center;
+  margin-bottom:22px;
+}
+.intro h1{
+  font:400 clamp(44px,4.1vw,68px)/.94 "Playfair Display",serif;
+  letter-spacing:-2.8px;
+  color:var(--dark);
+}
+.intro p{
+  margin-top:16px;
+  font:18px/1.35 "Playfair Display",serif;
+  color:var(--muted);
+}
+
+/* ============================================================
+   AUTH CONTAINER & UNIFIED SAME-SPOT MULTI-STEP CARDS
+   ============================================================ */
+.auth{
+  width:min(100%, 560px);
+  position:relative;
+}
+
+.auth-card{
+  display:none;
+  width:100%;
+  padding:26px 28px 24px;
+  border:1px solid var(--card-border);
+  background:var(--card-bg);
+  border-radius:24px;
+  box-shadow:var(--card-shadow);
+  animation:cardFadeIn .3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.auth-card.active{
+  display:block;
+}
+
+@keyframes cardFadeIn{
+  from{opacity:0;transform:translateY(8px) scale(0.985)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+
+/* Step tracker indicator */
+.step-tracker{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:12px;
+}
+.step-label{
+  font:600 11px "DM Mono",monospace;
+  letter-spacing:2.5px;
+  color:var(--blue);
+  text-transform:uppercase;
+}
+.step-bars{
+  display:flex;
+  align-items:center;
+  gap:5px;
+}
+.step-bar{
+  width:20px;
+  height:3px;
+  border-radius:2px;
+  background:var(--line);
+  transition:all .25s ease;
+}
+.step-bar.active{
+  background:var(--blue);
+  width:32px;
+}
+
+.auth-card h2{
+  font-size:29px;
+  line-height:1.1;
+  letter-spacing:-1px;
+  margin-bottom:6px;
+  color:var(--dark);
+}
+.desc{
+  color:var(--muted);
+  font-size:13.5px;
+  line-height:1.45;
+  margin-bottom:18px;
+}
+
+/* Input Fields */
+.input{
+  width:100%;
+  height:46px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  outline:0;
+  background:var(--input);
+  color:var(--dark);
+  padding:0 15px;
+  font:14px "DM Mono",monospace;
+  margin-bottom:10px;
+  transition:border-color .2s ease, background .2s ease, box-shadow .2s ease;
+}
+.input::placeholder{color:var(--muted)}
+.input:focus{
+  background:var(--input-focus);
+  border-color:var(--blue);
+  box-shadow:0 0 12px var(--blue-glow);
+}
+
+/* Alert Notification Banner */
+.auth-alert{
+  display:none;
+  align-items:center;
+  gap:8px;
+  padding:10px 14px;
+  border-radius:10px;
+  font:500 12px/1.4 "DM Sans",sans-serif;
+  margin-bottom:14px;
+}
+.auth-alert.error{
+  display:flex;
+  background:var(--error-bg);
+  border:1px solid var(--error-border);
+  color:var(--error-text);
+}
+.auth-alert.success{
+  display:flex;
+  background:var(--success-bg);
+  border:1px solid var(--success-border);
+  color:var(--success-text);
+}
+.auth-alert svg{width:16px;height:16px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:2}
+
+/* Bottom Controls */
+.bottom{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+  margin-top:18px;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+}
+.switch{
+  border:0;
+  background:none;
+  color:var(--muted);
+  font:600 13px "DM Sans",sans-serif;
+  cursor:pointer;
+  padding:6px 0;
+  transition:color .2s ease;
+}
+.switch:hover{color:var(--blue-dark)}
+[data-theme="dark"] .switch:hover{color:var(--blue)}
+
+.primary{
+  border:0;
+  background:var(--blue);
+  color:#07151c;
+  min-width:120px;
+  height:44px;
+  padding:0 22px;
+  border-radius:22px;
+  font:600 14px "DM Sans",sans-serif;
+  cursor:pointer;
+  transition:all .2s ease;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+}
+.primary:hover{
+  background:var(--blue-hover);
+  transform:translateY(-1px);
+  box-shadow:0 4px 16px var(--blue-glow);
+}
+.primary:active{transform:translateY(0)}
+
+/* ============================================================
+   ROLE SELECTION CARDS (Signup Step 2)
+   ============================================================ */
+.role-options-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-bottom:16px;
+  max-height:280px;
+  overflow-y:auto;
+  padding-right:4px;
+}
+.role-options-list::-webkit-scrollbar{width:4px}
+.role-options-list::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+
+.role-option-card{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:11px 14px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:var(--input);
+  cursor:pointer;
+  transition:all .2s ease;
+  text-align:left;
+  user-select:none;
+}
+.role-option-card:hover{
+  border-color:var(--blue);
+  background:rgba(56,189,248,0.08);
+  transform:translateY(-1px);
+}
+.role-option-card.selected{
+  border-color:var(--blue);
+  background:rgba(56,189,248,0.15);
+  box-shadow:0 3px 12px var(--blue-glow);
+}
+.role-card-emoji{font-size:22px;flex-shrink:0}
+.role-card-info{flex:1;min-width:0}
+.role-card-title{font:600 13px "DM Sans",sans-serif;color:var(--dark);margin-bottom:2px}
+.role-card-sub{font:11px/1.3 "DM Sans",sans-serif;color:var(--muted)}
+.role-card-check{
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  border:1.5px solid var(--line);
+  display:grid;
+  place-items:center;
+  font-size:11px;
+  color:transparent;
+  transition:all .2s ease;
+}
+.role-option-card.selected .role-card-check{
+  background:var(--blue);
+  border-color:var(--blue);
+  color:#07151c;
+}
+
+/* ============================================================
+   TOPIC OF INTEREST CHIPS (Signup Step 3)
+   ============================================================ */
+.topics-grid{
+  display:grid;
+  grid-template-columns:repeat(2, 1fr);
+  gap:8px;
+  margin-bottom:16px;
+  max-height:260px;
+  overflow-y:auto;
+  padding-right:4px;
+}
+.topics-grid::-webkit-scrollbar{width:4px}
+.topics-grid::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+
+.topic-card{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:10px 12px;
+  border-radius:10px;
+  border:1px solid var(--line);
+  background:var(--input);
+  cursor:pointer;
+  transition:all .2s ease;
+  user-select:none;
+}
+.topic-card:hover{
+  border-color:var(--blue);
+  background:rgba(56,189,248,0.08);
+}
+.topic-card.selected{
+  border-color:var(--blue);
+  background:rgba(56,189,248,0.16);
+  box-shadow:0 2px 10px var(--blue-glow);
+}
+.topic-icon{font-size:16px;flex-shrink:0}
+.topic-name{font:500 12px "DM Sans",sans-serif;color:var(--dark);flex:1}
+.topic-card.selected .topic-name{font-weight:600;color:var(--blue-dark)}
+[data-theme="dark"] .topic-card.selected .topic-name{color:var(--blue)}
+.topic-check{font-size:11px;color:transparent;transition:.2s}
+.topic-card.selected .topic-check{color:var(--blue-dark)}
+[data-theme="dark"] .topic-card.selected .topic-check{color:var(--blue)}
+
+/* Success State View */
+.success-state{
+  text-align:center;
+  padding:32px 12px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:12px;
+}
+.success-icon-badge{
+  width:64px;
+  height:64px;
+  border-radius:50%;
+  background:rgba(56,189,248,0.15);
+  border:2.5px solid var(--blue);
+  color:var(--blue);
+  display:grid;
+  place-items:center;
+  font-size:28px;
+  animation:pulse 1.8s infinite;
+}
+@keyframes pulse{
+  0%,100%{transform:scale(1);box-shadow:0 0 12px var(--blue-glow)}
+  50%{transform:scale(1.08);box-shadow:0 0 24px var(--blue-glow)}
+}
+
+.video{
+  width:100%;
+  height:min(78svh,760px);
+  overflow:hidden;
+  border-radius:24px;
+  background:var(--card-bg);
+  border:1px solid var(--card-border);
+  position:relative;
+}
+.video iframe{
+  position:absolute;
+  width:177.78%;
+  height:100%;
+  left:-38.89%;
+  top:0;
+  border:0;
+  pointer-events:none;
+}
+
 @media(max-width:1050px){
-.page{padding:18px 25px 25px}
-.hero{grid-template-columns:1fr;gap:35px;margin-top:30px;min-height:auto}
-.video{height:min(70svh,650px);max-width:720px;margin:auto}
-.intro h1{font-size:clamp(46px,8vw,65px)}
-.auth{max-width:600px}
+  .page{padding:18px 25px 25px}
+  .hero{grid-template-columns:1fr;gap:35px;margin-top:30px;min-height:auto}
+  .video{height:min(70svh,650px);max-width:720px;margin:auto}
+  .intro h1{font-size:clamp(44px,8vw,65px)}
+  .auth{max-width:600px}
 }
 @media(max-width:600px){
-.page{padding:15px 18px 25px}
-.brand-name{font-size:24px}
-.logo{width:31px;height:31px}
-.hero{margin-top:25px;gap:25px}
-.intro{margin-bottom:12px}
-.intro h1{font-size:44px;letter-spacing:-2px}
-.intro p{font-size:17px;margin-top:13px}
-.form{padding:20px 18px;border-radius:20px}
-.form h2{font-size:28px}
-.bottom{flex-direction:column-reverse;align-items:stretch;gap:10px}
-.primary,.switch{width:100%;text-align:center}
-.video{height:65svh;border-radius:18px}
+  .page{padding:15px 18px 25px}
+  .brand-name{font-size:24px}
+  .logo{width:31px;height:31px}
+  .hero{margin-top:25px;gap:25px}
+  .intro{margin-bottom:12px}
+  .intro h1{font-size:42px;letter-spacing:-2px}
+  .intro p{font-size:16px;margin-top:12px}
+  .auth-card{padding:20px 18px;border-radius:20px}
+  .auth-card h2{font-size:26px}
+  .topics-grid{grid-template-columns:1fr}
+  .bottom{flex-direction:column-reverse;align-items:stretch;gap:10px}
+  .primary,.switch{width:100%;text-align:center}
+  .video{height:65svh;border-radius:18px}
 }
+
 #cursorTrailCanvas{
   position:fixed;
   top:0;
@@ -81,10 +491,15 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 <main class="page">
 
 <header>
-<div class="brand">
-<img src="assets/logo.svg" alt="Sagar Mitra" class="logo">
-<span class="brand-name" id="brandName">सागर मित्र</span>
-</div>
+  <div class="brand">
+    <img src="assets/logo.svg" alt="Sagar Mitra" class="logo">
+    <span class="brand-name" id="brandName">सागर मित्र</span>
+  </div>
+
+  <button class="theme-toggle-btn" id="themeToggle" aria-label="Toggle light or dark theme">
+    <span id="themeIconSlot"></span>
+    <span id="themeLabel">Dark Mode</span>
+  </button>
 </header>
 
 <section class="hero">
@@ -92,114 +507,632 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 <div class="left">
 
 <div class="intro">
-<h1>Question the Unexplored</h1>
-<p>Your curiosity partner for everything ocean related</p>
+  <h1>Question the Unexplored</h1>
+  <p>Your curiosity partner for everything ocean related</p>
 </div>
 
+<!-- ============================================================
+     THE SAME AUTH SPOT: Login -> Step 1 -> Step 2 -> Step 3
+     ============================================================ -->
 <div class="auth">
 
-<form id="loginForm" class="form active" autocomplete="off">
-<div class="label">LOG IN</div>
-<h2>Welcome back</h2>
-<p class="desc">Log in with your credentials. We'll verify your account.</p>
+  <!-- 1. LOGIN CARD -->
+  <form id="loginCard" class="auth-card active" autocomplete="off">
+    <div class="step-tracker">
+      <div class="step-label">PORTAL LOGIN</div>
+    </div>
+    <h2>Welcome back</h2>
+    <p class="desc">Enter your registered credentials to access Sagar Mitra.</p>
 
-<input id="loginUsername" class="input" type="text" placeholder="Username" required>
-<input id="loginPassword" class="input" type="password" placeholder="Password" required>
+    <div class="auth-alert error" id="loginAlert">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span id="loginAlertText">Invalid username or password.</span>
+    </div>
 
-<div class="bottom">
-<button type="button" class="switch" id="showSignup">New here? Create account</button>
-<button type="submit" class="primary">Log in</button>
-</div>
-</form>
+    <input id="loginUsername" class="input" type="text" placeholder="Username or Email" required autofocus>
+    <input id="loginPassword" class="input" type="password" placeholder="Password" required>
 
-<form id="signupForm" class="form" autocomplete="off">
-<div class="label">SIGN UP</div>
-<h2>Create your account</h2>
-<p class="desc">Register with your email. We'll send a verification code.</p>
+    <div class="bottom">
+      <button type="button" class="switch" id="btnShowSignup">New here? Create account</button>
+      <button type="submit" class="primary" id="btnLoginSubmit">Log in →</button>
+    </div>
+  </form>
 
-<input id="fullName" class="input" type="text" placeholder="Full name" required>
-<input id="signupUsername" class="input" type="text" placeholder="Username" required>
-<input id="signupEmail" class="input" type="email" placeholder="Email" required>
-<input id="signupPassword" class="input" type="password" placeholder="Password" required>
-<input id="confirmPassword" class="input" type="password" placeholder="Confirm password" required>
-<input id="otp" class="input otp" type="text" placeholder="Enter OTP" maxlength="4" inputmode="numeric">
+  <!-- 2. SIGNUP STEP 1: ACCOUNT CREDENTIALS -->
+  <form id="signupStep1Card" class="auth-card" autocomplete="off">
+    <div class="step-tracker">
+      <div class="step-label">STEP 1 OF 3 · ACCOUNT</div>
+      <div class="step-bars">
+        <span class="step-bar active"></span>
+        <span class="step-bar"></span>
+        <span class="step-bar"></span>
+      </div>
+    </div>
+    <h2>Create your account</h2>
+    <p class="desc">Enter your account credentials to begin your oceanographic voyage.</p>
 
-<div class="bottom">
-<button type="button" class="switch" id="showLogin">Have an account? Log in</button>
-<button type="submit" class="primary">Send OTP</button>
-</div>
-</form>
+    <div class="auth-alert error" id="signupStep1Alert">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span id="signupStep1AlertText">Please fill in all fields.</span>
+    </div>
+
+    <input id="signupFullName" class="input" type="text" placeholder="Full name (e.g. Aarya Doshi)" required>
+    <input id="signupUsername" class="input" type="text" placeholder="Choose a username / ID" required>
+    <input id="signupEmail" class="input" type="email" placeholder="Email address" required>
+    <input id="signupPassword" class="input" type="password" placeholder="Create password (min 4 chars)" required>
+    <input id="signupConfirm" class="input" type="password" placeholder="Confirm password" required>
+
+    <div class="bottom">
+      <button type="button" class="switch" id="btnBackToLogin">Have an account? Log in</button>
+      <button type="button" class="primary" id="btnToStep2">Next: Choose Role →</button>
+    </div>
+  </form>
+
+  <!-- 3. SIGNUP STEP 2: SELECT USER PERSONA -->
+  <div id="signupStep2Card" class="auth-card">
+    <div class="step-tracker">
+      <div class="step-label">STEP 2 OF 3 · SELECT ROLE</div>
+      <div class="step-bars">
+        <span class="step-bar active"></span>
+        <span class="step-bar active"></span>
+        <span class="step-bar"></span>
+      </div>
+    </div>
+    <h2>Select your persona</h2>
+    <p class="desc">Choose how Sagar Mitra should tailor its intelligence, tools, and UI for you:</p>
+
+    <div class="role-options-list" id="roleOptionsList">
+      
+      <div class="role-option-card" data-role="primary_student">
+        <span class="role-card-emoji">🐬</span>
+        <div class="role-card-info">
+          <div class="role-card-title">Primary Grade Student</div>
+          <div class="role-card-sub">Creative, child-like & curious ocean buddy with magical coral adventures</div>
+        </div>
+        <span class="role-card-check">✓</span>
+      </div>
+
+      <div class="role-option-card" data-role="high_school">
+        <span class="role-card-emoji">🔬</span>
+        <div class="role-card-info">
+          <div class="role-card-title">High School Student</div>
+          <div class="role-card-sub">Coursework, fluid dynamics, tidal mechanics & STEM project lab reports</div>
+        </div>
+        <span class="role-card-check">✓</span>
+      </div>
+
+      <div class="role-option-card selected" data-role="researcher">
+        <span class="role-card-emoji">🏛️</span>
+        <div class="role-card-info">
+          <div class="role-card-title">Researcher</div>
+          <div class="role-card-sub">Multiple notebook tabs, external web sources manager & netCDF data</div>
+        </div>
+        <span class="role-card-check">✓</span>
+      </div>
+
+      <div class="role-option-card" data-role="coastal_community">
+        <span class="role-card-emoji">⚓</span>
+        <div class="role-card-info">
+          <div class="role-card-title">Coastal Community Resident</div>
+          <div class="role-card-sub">Local sea swell, Potential Fishing Zones (PFZ) & high-tide safety bulletins</div>
+        </div>
+        <span class="role-card-check">✓</span>
+      </div>
+
+      <div class="role-option-card" data-role="others">
+        <span class="role-card-emoji">🌐</span>
+        <div class="role-card-info">
+          <div class="role-card-title">Others / General Explorer</div>
+          <div class="role-card-sub">Versatile Claude-inspired ocean assistant for all curiosity seekers</div>
+        </div>
+        <span class="role-card-check">✓</span>
+      </div>
+
+    </div>
+
+    <div class="bottom">
+      <button type="button" class="switch" id="btnBackToStep1">← Back</button>
+      <button type="button" class="primary" id="btnToStep3">Next: Ocean Topics →</button>
+    </div>
+  </div>
+
+  <!-- 4. SIGNUP STEP 3: SELECT TOPICS TO READ -->
+  <div id="signupStep3Card" class="auth-card">
+    <div class="step-tracker">
+      <div class="step-label">STEP 3 OF 3 · OCEAN DOMAINS</div>
+      <div class="step-bars">
+        <span class="step-bar active"></span>
+        <span class="step-bar active"></span>
+        <span class="step-bar active"></span>
+      </div>
+    </div>
+    <h2>Topics you want to read</h2>
+    <p class="desc">Select specialized ocean domains to curate your personalized news feed and telemetry:</p>
+
+    <div class="topics-grid" id="topicsGrid">
+      <div class="topic-card selected" data-topic="Satellite & Remote Sensing">
+        <span class="topic-icon">🛰️</span>
+        <span class="topic-name">Satellite & Remote Sensing</span>
+        <span class="topic-check">✓</span>
+      </div>
+      <div class="topic-card selected" data-topic="Marine Ecology & Corals">
+        <span class="topic-icon">🌿</span>
+        <span class="topic-name">Marine Ecology & Corals</span>
+        <span class="topic-check">✓</span>
+      </div>
+      <div class="topic-card" data-topic="Ports, Harbors & Shipping">
+        <span class="topic-icon">🚢</span>
+        <span class="topic-name">Ports & Shipping</span>
+        <span class="topic-check">✓</span>
+      </div>
+      <div class="topic-card selected" data-topic="Pelagic Fisheries & PFZ">
+        <span class="topic-icon">🐟</span>
+        <span class="topic-name">Pelagic Fisheries & PFZ</span>
+        <span class="topic-check">✓</span>
+      </div>
+      <div class="topic-card" data-topic="Cyclone & Meteorology">
+        <span class="topic-icon">🌀</span>
+        <span class="topic-name">Cyclone & Meteorology</span>
+        <span class="topic-check">✓</span>
+      </div>
+      <div class="topic-card selected" data-topic="Deep-Sea Sonar & Trenches">
+        <span class="topic-icon">🗻</span>
+        <span class="topic-name">Deep-Sea & Bathymetry</span>
+        <span class="topic-check">✓</span>
+      </div>
+      <div class="topic-card selected" data-topic="ARGO Telemetry & Ocean Buoys">
+        <span class="topic-icon">🌊</span>
+        <span class="topic-name">ARGO Telemetry Arrays</span>
+        <span class="topic-check">✓</span>
+      </div>
+      <div class="topic-card" data-topic="Offshore Renewable Energy">
+        <span class="topic-icon">⚡</span>
+        <span class="topic-name">Offshore Energy</span>
+        <span class="topic-check">✓</span>
+      </div>
+    </div>
+
+    <div class="bottom">
+      <button type="button" class="switch" id="btnBackToStep2">← Back</button>
+      <button type="button" class="primary" id="btnCompleteSignup">Complete & Dive In →</button>
+    </div>
+  </div>
+
+  <!-- 5. SIGNUP SUCCESS STATE -->
+  <div id="signupSuccessCard" class="auth-card">
+    <div class="success-state">
+      <div class="success-icon-badge">✓</div>
+      <h2>Welcome Aboard!</h2>
+      <p class="desc" id="successDesc">Your account has been logged in the ocean database. Initializing your tailored persona...</p>
+    </div>
+  </div>
 
 </div>
 </div>
 
 <div class="video">
-<iframe src="https://www.youtube.com/embed/ALbM9_cF7YQ?autoplay=1&mute=1&controls=0&loop=1&playlist=ALbM9_cF7YQ&start=10&end=40&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0" title="Ocean video" allow="autoplay" tabindex="-1"></iframe>
+  <iframe src="https://www.youtube.com/embed/ALbM9_cF7YQ?autoplay=1&mute=1&controls=0&loop=1&playlist=ALbM9_cF7YQ&start=10&end=40&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0" title="Ocean video" allow="autoplay" tabindex="-1"></iframe>
 </div>
 
 </section>
 </main>
 
 <script>
-const languages=["सागर मित्र","Sagar Mitra","সাগর মিত্র","સાગર મિત્ર","சாகர் மித்ரா","సాగర్ మిత్ర","ಸಾಗರ ಮಿತ್ರ","സാഗർ മിത്ര","ਸਾਗਰ ਮਿੱਤਰ","ସାଗର ମିତ୍ର"];
-const brand=document.getElementById("brandName");
-let i=0;
-setInterval(()=>{i=(i+1)%languages.length;brand.textContent=languages[i]},2000);
+// ============================================================
+// 1. BRAND TEXT ROTATION (10 Indian Languages)
+// ============================================================
+const languages = [
+  "सागर मित्र", "Sagar Mitra", "সাগর মিত্র", "સાગર મિત્ર", "சாகர் மித்ரா",
+  "సాగర్ మిత్ర", "ಸಾಗರ ಮಿತ್ರ", "സാഗർ മിത്ര", "ਸਾਗਰ ਮਿੱਤਰ", "ସାଗର ମିତ୍ର"
+];
+const brand = document.getElementById("brandName");
+let langIdx = 0;
+setInterval(() => {
+  langIdx = (langIdx + 1) % languages.length;
+  brand.textContent = languages[langIdx];
+}, 2000);
 
-const login=document.getElementById("loginForm"),signup=document.getElementById("signupForm");
+// ============================================================
+// 2. THEME ENGINE (Light / Dark Mode)
+// ============================================================
+function initTheme(){
+  const saved = localStorage.getItem("sagarMitraTheme") || "light";
+  applyTheme(saved);
+}
 
-document.getElementById("showSignup").onclick=()=>{
- login.classList.remove("active");
- signup.classList.add("active");
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("sagarMitraTheme", theme);
+  const icon = document.getElementById("themeIconSlot");
+  const label = document.getElementById("themeLabel");
+  if(theme === "dark"){
+    if(icon) icon.innerHTML = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`;
+    if(label) label.textContent = "Light Mode";
+  } else {
+    if(icon) icon.innerHTML = `<svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+    if(label) label.textContent = "Dark Mode";
+  }
+}
+
+document.getElementById("themeToggle").onclick = () => {
+  const cur = document.documentElement.getAttribute("data-theme") || "light";
+  applyTheme(cur === "dark" ? "light" : "dark");
 };
+initTheme();
 
-document.getElementById("showLogin").onclick=()=>{
- signup.classList.remove("active");
- login.classList.add("active");
-};
+// ============================================================
+// 3. SAGAR MITRA DATABASE ENGINE & PERSISTENCE
+// Connects to /api/auth/ and maintains a browser database
+// storing users, credentials, assigned personas, and topic preferences.
+// ============================================================
+const SagarDatabase = {
+  dbKey: "sagarMitraUsersDB",
 
-login.onsubmit=e=>{
- e.preventDefault();
- const username=document.getElementById("loginUsername").value.trim();
- const password=document.getElementById("loginPassword").value;
- if(!username||!password)return alert("Please enter your username and password.");
+  // Seed default registered users matching backend/users.json
+  defaultUsers: [
+    {
+      name: "Aarya Doshi",
+      username: "Aarya Doshi",
+      email: "aaryadoshi7@gmail.com",
+      password: "password123",
+      roleId: "high_school",
+      roleTitle: "High School Student",
+      topics: ["Satellite & Remote Sensing", "Marine Ecology & Corals"]
+    },
+    {
+      name: "Aarya Doshi",
+      username: "aari",
+      email: "aaryadoshi7@gmail.com",
+      password: "password123",
+      roleId: "researcher",
+      roleTitle: "Researcher",
+      topics: ["Deep-Sea Sonar & Trenches", "Pelagic Fisheries & PFZ"]
+    },
+    {
+      name: "Sagar Researcher",
+      username: "sagar123",
+      email: "chaitijain593@gmail.com",
+      password: "password123",
+      roleId: "researcher",
+      roleTitle: "Researcher",
+      topics: ["ARGO Telemetry & Ocean Buoys", "Deep-Sea Sonar & Trenches"]
+    },
+    {
+      name: "Ocean Administrator",
+      username: "admin",
+      email: "admin@sagarmitra.gov.in",
+      password: "admin",
+      roleId: "researcher",
+      roleTitle: "Researcher",
+      topics: ["Satellite & Remote Sensing", "Cyclone & Meteorology", "ARGO Telemetry & Ocean Buoys"]
+    },
+    {
+      name: "Primary Ocean Explorer",
+      username: "student",
+      email: "explorer@ocean.edu",
+      password: "student",
+      roleId: "primary_student",
+      roleTitle: "Primary Grade Student",
+      topics: ["Marine Ecology & Corals", "Pelagic Fisheries & PFZ"]
+    },
+    {
+      name: "Coastal Navigator",
+      username: "coastal",
+      email: "navigator@coastal.in",
+      password: "coastal",
+      roleId: "coastal_community",
+      roleTitle: "Coastal Community Resident",
+      topics: ["Pelagic Fisheries & PFZ", "Cyclone & Meteorology", "Ports, Harbors & Shipping"]
+    }
+  ],
 
- localStorage.setItem("sagarMitraLoggedIn","true");
- document.body.classList.add("page-exit");
- setTimeout(()=>location.href="main.html",450);
-};
+  getUsers(){
+    try {
+      const stored = localStorage.getItem(this.dbKey);
+      if(!stored){
+        localStorage.setItem(this.dbKey, JSON.stringify(this.defaultUsers));
+        return this.defaultUsers;
+      }
+      return JSON.parse(stored);
+    } catch(e){
+      return this.defaultUsers;
+    }
+  },
 
-signup.onsubmit=e=>{
- e.preventDefault();
+  async login(identifier, password){
+    const cleanId = identifier.trim().toLowerCase();
+    const cleanPw = password.trim();
 
- const name=document.getElementById("fullName").value.trim();
- const username=document.getElementById("signupUsername").value.trim();
- const email=document.getElementById("signupEmail").value.trim();
- const password=document.getElementById("signupPassword").value;
- const confirm=document.getElementById("confirmPassword").value;
- const otp=document.getElementById("otp");
+    // 1. Try local database verification first
+    const users = this.getUsers();
+    const match = users.find(u => 
+      (u.username.toLowerCase() === cleanId || u.email.toLowerCase() === cleanId) &&
+      u.password === cleanPw
+    );
 
- if(!name||!username||!email||!password||!confirm)
-  return alert("Please fill in all required fields.");
+    if(match){
+      return { success: true, user: match };
+    }
 
- if(password!==confirm)
-  return alert("Passwords do not match.");
+    // 2. Try FastAPI backend endpoint if active
+    try {
+      const resp = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: identifier.trim(), password: cleanPw })
+      });
+      if(resp.ok){
+        const data = await resp.json();
+        return {
+          success: true,
+          user: {
+            username: identifier.trim(),
+            name: identifier.trim(),
+            roleId: "researcher",
+            topics: ["ARGO Telemetry & Ocean Buoys"]
+          }
+        };
+      }
+    } catch(err){
+      // Server not reachable; local fallback already checked
+    }
 
- if(!otp.classList.contains("visible")){
-  otp.classList.add("visible");
-  return alert("OTP generation will be connected later.");
- }
+    return {
+      success: false,
+      message: "No user found with matching credentials in the ocean database."
+    };
+  },
 
- if(!otp.value.trim())
-  return alert("Please enter the OTP.");
+  async signup(newUser){
+    const users = this.getUsers();
+    
+    // Check for duplicate username or email
+    const exists = users.some(u => 
+      u.username.toLowerCase() === newUser.username.trim().toLowerCase() ||
+      u.email.toLowerCase() === newUser.email.trim().toLowerCase()
+    );
 
- localStorage.setItem("sagarMitraLoggedIn","true");
- document.body.classList.add("page-exit");
- setTimeout(()=>location.href="main.html",450);
+    if(exists){
+      return {
+        success: false,
+        message: "Username or email is already registered in the database."
+      };
+    }
+
+    // Add to persistent database
+    users.push(newUser);
+    localStorage.setItem(this.dbKey, JSON.stringify(users));
+
+    // Optional asynchronous sync with backend /api/auth/signup
+    try {
+      fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newUser.name,
+          username: newUser.username,
+          email: newUser.email,
+          password: newUser.password
+        })
+      }).catch(() => {});
+    } catch(e){}
+
+    return { success: true, user: newUser };
+  }
 };
 
 // ============================================================
-// RADIANT LIGHT-BLUE CURSOR GLOW
+// 4. MULTI-STEP FLOW CONTROLLER (Same Spot In `.auth`)
+// Step 0: Login Card
+// Step 1: Signup Credentials
+// Step 2: Role Selection (5 options)
+// Step 3: Ocean Topics Selection (multi-select)
+// Step 4: Success Teleportation to Homepage
+// ============================================================
+const cards = {
+  login: document.getElementById("loginCard"),
+  step1: document.getElementById("signupStep1Card"),
+  step2: document.getElementById("signupStep2Card"),
+  step3: document.getElementById("signupStep3Card"),
+  success: document.getElementById("signupSuccessCard")
+};
+
+function showCard(cardKey){
+  Object.values(cards).forEach(c => {
+    if(c) c.classList.remove("active");
+  });
+  if(cards[cardKey]){
+    cards[cardKey].classList.add("active");
+  }
+}
+
+// Temporary registration store across steps
+const signupDraft = {
+  name: "",
+  username: "",
+  email: "",
+  password: "",
+  roleId: "researcher",
+  roleTitle: "Researcher",
+  topics: ["Satellite & Remote Sensing", "Marine Ecology & Corals", "Pelagic Fisheries & PFZ", "Deep-Sea Sonar & Trenches", "ARGO Telemetry & Ocean Buoys"]
+};
+
+// Navigation between Login and Step 1
+document.getElementById("btnShowSignup").onclick = () => {
+  hideAlerts();
+  showCard("step1");
+};
+document.getElementById("btnBackToLogin").onclick = () => {
+  hideAlerts();
+  showCard("login");
+};
+
+// Login form submission
+cards.login.onsubmit = async (e) => {
+  e.preventDefault();
+  hideAlerts();
+  const id = document.getElementById("loginUsername").value.trim();
+  const pw = document.getElementById("loginPassword").value;
+
+  const btn = document.getElementById("btnLoginSubmit");
+  btn.textContent = "Verifying...";
+  btn.style.opacity = "0.7";
+
+  const res = await SagarDatabase.login(id, pw);
+
+  btn.textContent = "Log in →";
+  btn.style.opacity = "1";
+
+  if(res.success){
+    // Store user login state & preferences
+    localStorage.setItem("sagarMitraLoggedIn", "true");
+    localStorage.setItem("sagarMitraRole", res.user.roleId || "researcher");
+    if(res.user.topics){
+      localStorage.setItem("sagarMitraTopics", JSON.stringify(res.user.topics));
+    }
+    localStorage.setItem("sagarMitraCurrentUser", res.user.name || res.user.username);
+
+    // Direct transition to homepage
+    document.body.classList.add("page-exit");
+    setTimeout(() => location.href = "main.html", 400);
+  } else {
+    showAlert("loginAlert", res.message || "Invalid username or password.");
+  }
+};
+
+// Step 1: Validate credentials and move to Step 2
+document.getElementById("btnToStep2").onclick = () => {
+  hideAlerts();
+  const name = document.getElementById("signupFullName").value.trim();
+  const username = document.getElementById("signupUsername").value.trim();
+  const email = document.getElementById("signupEmail").value.trim();
+  const password = document.getElementById("signupPassword").value;
+  const confirm = document.getElementById("signupConfirm").value;
+
+  if(!name || !username || !email || !password || !confirm){
+    showAlert("signupStep1Alert", "Please fill in all account fields.");
+    return;
+  }
+  if(password.length < 4){
+    showAlert("signupStep1Alert", "Password must be at least 4 characters long.");
+    return;
+  }
+  if(password !== confirm){
+    showAlert("signupStep1Alert", "Passwords do not match. Please re-check.");
+    return;
+  }
+  if(!email.includes("@") || !email.includes(".")){
+    showAlert("signupStep1Alert", "Please provide a valid email address.");
+    return;
+  }
+
+  // Check if username/email already taken in database
+  const users = SagarDatabase.getUsers();
+  if(users.some(u => u.username.toLowerCase() === username.toLowerCase())){
+    showAlert("signupStep1Alert", "This username is already taken. Please choose another.");
+    return;
+  }
+
+  signupDraft.name = name;
+  signupDraft.username = username;
+  signupDraft.email = email;
+  signupDraft.password = password;
+
+  showCard("step2");
+};
+
+// Step 2: Role selection handling
+document.getElementById("btnBackToStep1").onclick = () => {
+  showCard("step1");
+};
+
+const roleCards = document.querySelectorAll(".role-option-card");
+roleCards.forEach(card => {
+  card.onclick = () => {
+    roleCards.forEach(c => c.classList.remove("selected"));
+    card.classList.add("selected");
+    signupDraft.roleId = card.getAttribute("data-role");
+    signupDraft.roleTitle = card.querySelector(".role-card-title").textContent;
+  };
+});
+
+document.getElementById("btnToStep3").onclick = () => {
+  showCard("step3");
+};
+
+// Step 3: Ocean topics selection handling (multi-select)
+document.getElementById("btnBackToStep2").onclick = () => {
+  showCard("step2");
+};
+
+const topicCards = document.querySelectorAll(".topic-card");
+topicCards.forEach(card => {
+  card.onclick = () => {
+    card.classList.toggle("selected");
+  };
+});
+
+document.getElementById("btnCompleteSignup").onclick = async () => {
+  // Collect selected topics
+  const selectedTopics = [];
+  document.querySelectorAll(".topic-card.selected").forEach(card => {
+    selectedTopics.push(card.getAttribute("data-topic"));
+  });
+
+  if(selectedTopics.length === 0){
+    selectedTopics.push("Satellite & Remote Sensing", "ARGO Telemetry & Ocean Buoys");
+  }
+
+  signupDraft.topics = selectedTopics;
+
+  const btn = document.getElementById("btnCompleteSignup");
+  btn.textContent = "Registering in database...";
+  btn.style.opacity = "0.7";
+
+  const res = await SagarDatabase.signup(signupDraft);
+
+  btn.textContent = "Complete & Dive In →";
+  btn.style.opacity = "1";
+
+  if(res.success){
+    // Save session in localStorage
+    localStorage.setItem("sagarMitraLoggedIn", "true");
+    localStorage.setItem("sagarMitraRole", signupDraft.roleId);
+    localStorage.setItem("sagarMitraTopics", JSON.stringify(signupDraft.topics));
+    localStorage.setItem("sagarMitraCurrentUser", signupDraft.name || signupDraft.username);
+
+    // Show Success in the same spot
+    const desc = document.getElementById("successDesc");
+    if(desc){
+      desc.textContent = `Welcome ${signupDraft.name}! Account registered as ${signupDraft.roleTitle} with ${signupDraft.topics.length} curated topics. Teleporting to home...`;
+    }
+    showCard("success");
+
+    // Transition smoothly to homepage
+    setTimeout(() => {
+      document.body.classList.add("page-exit");
+      setTimeout(() => location.href = "main.html", 400);
+    }, 1100);
+  } else {
+    alert(res.message || "Could not register account. Please try again.");
+    showCard("step1");
+  }
+};
+
+function showAlert(elId, msg){
+  const el = document.getElementById(elId);
+  if(el){
+    el.querySelector("span").textContent = msg;
+    el.style.display = "flex";
+  }
+}
+
+function hideAlerts(){
+  document.querySelectorAll(".auth-alert").forEach(a => a.style.display = "none");
+}
+
+// ============================================================
+// 5. RADIANT LIGHT-BLUE CURSOR GLOW
 // Follows behind cursor with smooth delay, soft opacity & faded edges.
 // ============================================================
 (function initLightBlueGlowCursor(){
@@ -251,7 +1184,6 @@ signup.onsubmit=e=>{
     ctx.clearRect(0, 0, width, height);
 
     if(hasPointer){
-      // Smooth delayed follow behind the cursor
       const ease = 0.15;
       glowX += (targetX - glowX) * ease;
       glowY += (targetY - glowY) * ease;
@@ -261,7 +1193,7 @@ signup.onsubmit=e=>{
         trail.push({
           x: glowX,
           y: glowY,
-          alpha: 0.52, // Soft, less opaque
+          alpha: 0.52,
           radius: 38
         });
         lastTrailX = glowX;
@@ -292,7 +1224,6 @@ signup.onsubmit=e=>{
         continue;
       }
 
-      // Soft light-blue bloom with seamlessly faded edges
       const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
       grad.addColorStop(0, `rgba(224, 242, 254, ${p.alpha * 0.55})`);
       grad.addColorStop(0.25, `rgba(56, 189, 248, ${p.alpha * 0.42})`);
@@ -306,7 +1237,6 @@ signup.onsubmit=e=>{
       ctx.fill();
     }
 
-    // Radiant light-blue lead glow following behind cursor position
     if(leadGlowAlpha > 0.008 && hasPointer){
       const leadRadius = 50;
       const leadGrad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, leadRadius);

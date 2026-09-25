@@ -1,0 +1,960 @@
+/* ============================================================
+   SAGAR MITRA CHATBOT — PERSONAS & 3/5 SPLIT MAP STYLES
+   ============================================================ */
+
+/* ============================================================
+   1. 3/5 CHAT & 2/5 MAP SPLIT VIEW LAYOUT
+   ============================================================ */
+.app-container {
+  display: flex !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  overflow: hidden !important;
+  position: relative;
+}
+
+.chat-main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--main-bg);
+  transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+              flex 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+              max-width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: relative;
+  z-index: 10;
+}
+
+/* Split View Active: Left sidebar closes automatically */
+.app-container.split-view-active .sidebar {
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  border-right-color: transparent !important;
+  transform: translateX(-20px);
+}
+
+/* Chatbot shifts to the left 3/5th (60%) of viewport */
+.app-container.split-view-active .chat-main {
+  width: 60vw !important;
+  max-width: 60vw !important;
+  flex: 0 0 60vw !important;
+}
+
+/* Map shifts to the right 2/5th (40%) of viewport */
+.chatbot-map-split {
+  width: 0;
+  flex: 0 0 0;
+  max-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: #06111a;
+  border-left: 1px solid var(--sidebar-border, rgba(56, 189, 248, 0.25));
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+              flex 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+              max-width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+              opacity 0.28s ease;
+  z-index: 20;
+}
+
+.app-container.split-view-active .chatbot-map-split {
+  width: 40vw !important;
+  max-width: 40vw !important;
+  flex: 0 0 40vw !important;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Split Map Header */
+.split-map-header {
+  padding: 14px 16px;
+  background: rgba(10, 22, 32, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  z-index: 1000;
+  flex-shrink: 0;
+}
+
+.split-map-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.split-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 10px #10b981;
+  animation: pulseLive 1.8s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulseLive {
+  0%, 100% { transform: scale(0.9); opacity: 0.6; }
+  50% { transform: scale(1.2); opacity: 1; }
+}
+
+.split-map-title {
+  font: 700 11px "DM Mono", monospace;
+  letter-spacing: 1px;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.split-map-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.split-coords-badge {
+  font: 500 11px "DM Mono", monospace;
+  color: var(--blue, #38bdf8);
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+
+.split-expand-btn,
+.split-close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.split-expand-btn:hover {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: var(--blue, #38bdf8);
+  color: var(--blue, #38bdf8);
+}
+
+.split-close-btn:hover {
+  background: rgba(255, 64, 80, 0.25);
+  border-color: #ff4050;
+  color: #ff4050;
+}
+
+/* Split Viewport Map Element */
+.split-map-viewport {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  background: #040d14;
+  position: relative;
+  z-index: 1;
+}
+
+/* Scaled-Down Mode Selector in Split Map */
+.split-modes-bar {
+  position: absolute;
+  top: 60px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 1000;
+  background: rgba(8, 20, 30, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 6px;
+  border-radius: 20px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.split-mode-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f8fafc;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.split-mode-btn:hover {
+  border-color: var(--blue, #38bdf8);
+  background: rgba(56, 189, 248, 0.2);
+  transform: scale(1.08);
+}
+
+.split-mode-btn.active {
+  background: var(--blue, #38bdf8);
+  border-color: #fff;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+  transform: scale(1.05);
+}
+
+/* Scaled-down Dynamic Legend Bar */
+.split-legend-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  background: rgba(8, 20, 30, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 10px;
+  padding: 8px 12px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.split-legend-label {
+  font: 700 9px "DM Mono", monospace;
+  color: #e2e8f0;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+}
+
+.split-legend-gradient {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, #001020, #004080, #0080c0, #20c0f0, #e0f8ff);
+}
+
+.split-legend-val {
+  font: 500 9px "DM Mono", monospace;
+  color: var(--blue, #38bdf8);
+  white-space: nowrap;
+}
+
+/* Map Preview Card in Chat Message */
+.map-preview-card {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.12) 0%, rgba(14, 165, 233, 0.05) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  cursor: pointer;
+  transition: all 0.22s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.map-preview-card:hover {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(14, 165, 233, 0.1) 100%);
+  border-color: var(--blue, #38bdf8);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.2);
+}
+
+.mp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 700 11px "DM Mono", monospace;
+  color: var(--blue, #38bdf8);
+}
+
+.mp-badge {
+  font-size: 10px;
+  background: rgba(56, 189, 248, 0.2);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.mp-coords {
+  font: 500 12px "DM Mono", monospace;
+  color: var(--ink);
+}
+
+.mp-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  background: var(--blue, #38bdf8);
+  color: #07151c;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font: 600 11px "DM Sans", sans-serif;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ============================================================
+   2. PERSONA UI ADAPTATIONS
+   ============================================================ */
+
+/* --- A. PRIMARY GRADE STUDENT --- */
+.persona-primary {
+  --blue: #38bdf8;
+  --bubble-color: rgba(56, 189, 248, 0.15);
+}
+
+.persona-primary .greeting-title {
+  font-family: "DM Sans", sans-serif !important;
+  font-weight: 700 !important;
+  color: #0284c7 !important;
+}
+[data-theme="dark"] .persona-primary .greeting-title {
+  color: #38bdf8 !important;
+}
+
+.persona-primary .mode-card {
+  border-radius: 20px !important;
+  border-width: 2px !important;
+  background: linear-gradient(145deg, rgba(56, 189, 248, 0.08) 0%, rgba(255, 255, 255, 0.8) 100%) !important;
+  box-shadow: 0 6px 18px rgba(56, 189, 248, 0.12) !important;
+}
+
+[data-theme="dark"] .persona-primary .mode-card {
+  background: linear-gradient(145deg, rgba(56, 189, 248, 0.12) 0%, rgba(28, 28, 26, 0.9) 100%) !important;
+}
+
+.primary-bubble-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font: 700 12px "DM Sans", sans-serif;
+  background: linear-gradient(135deg, #fbcfe8, #bae6fd);
+  color: #0369a1;
+  margin-bottom: 12px;
+}
+
+/* Floating Cute Bubbles in Background */
+.primary-bubbles-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.sea-bubble {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.8), rgba(56, 189, 248, 0.25));
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 12px rgba(56, 189, 248, 0.2);
+  animation: floatUpward 10s infinite linear;
+}
+
+@keyframes floatUpward {
+  0% { transform: translateY(105vh) scale(0.6); opacity: 0; }
+  15% { opacity: 0.7; }
+  85% { opacity: 0.7; }
+  100% { transform: translateY(-10vh) scale(1.2); opacity: 0; }
+}
+
+/* --- B. HIGH SCHOOL STUDENT --- */
+.persona-highschool .greeting-title {
+  font-size: clamp(32px, 4.5vw, 48px) !important;
+}
+
+.highschool-stem-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font: 600 11px "DM Mono", monospace;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  margin-bottom: 14px;
+}
+
+/* --- C. RESEARCHER: MULTIPLE NOTEBOOKS & EXTERNAL SOURCES --- */
+.research-notebooks-bar {
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 0 6px;
+  border-bottom: 1px solid var(--sidebar-border, rgba(56, 189, 248, 0.2));
+}
+
+.research-notebooks-bar::-webkit-scrollbar {
+  height: 3px;
+}
+.research-notebooks-bar::-webkit-scrollbar-thumb {
+  background: var(--blue, #38bdf8);
+  border-radius: 2px;
+}
+
+.notebook-tab {
+  padding: 6px 14px;
+  border-radius: 8px 8px 0 0;
+  background: var(--surface-card, rgba(26, 26, 24, 0.7));
+  border: 1px solid var(--sidebar-border, rgba(56, 189, 248, 0.25));
+  border-bottom: none;
+  font: 500 12px "DM Mono", monospace;
+  color: var(--text-muted, #9ca3af);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.notebook-tab:hover {
+  background: rgba(56, 189, 248, 0.1);
+  color: var(--blue, #38bdf8);
+}
+
+.notebook-tab.active {
+  background: var(--main-bg);
+  border-color: var(--blue, #38bdf8);
+  color: var(--blue, #38bdf8);
+  box-shadow: 0 -2px 10px rgba(56, 189, 248, 0.15);
+}
+
+.nb-badge {
+  font-size: 9px;
+  background: rgba(56, 189, 248, 0.25);
+  color: var(--blue, #38bdf8);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.new-notebook-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px dashed var(--sidebar-border, rgba(56, 189, 248, 0.4));
+  color: var(--blue, #38bdf8);
+  font: 600 11px "DM Mono", monospace;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.new-notebook-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: var(--blue, #38bdf8);
+  transform: translateY(-1px);
+}
+
+/* Research External Sources Bar */
+.research-sources-bar {
+  padding: 8px 12px;
+  background: rgba(56, 189, 248, 0.05);
+  border: 1px solid var(--sidebar-border, rgba(56, 189, 248, 0.2));
+  border-radius: 10px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sources-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sources-label {
+  font: 600 10px "DM Mono", monospace;
+  letter-spacing: 1px;
+  color: var(--text-dim, #94a3b8);
+  text-transform: uppercase;
+}
+
+.sources-chips-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.source-chip {
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: var(--surface-card, rgba(26, 26, 24, 0.8));
+  border: 1px solid var(--sidebar-border, rgba(56, 189, 248, 0.3));
+  font: 500 11px "DM Mono", monospace;
+  color: var(--ink, #f4f4f5);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sc-remove {
+  color: #ff4050;
+  cursor: pointer;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.add-source-btn {
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid var(--blue, #38bdf8);
+  color: var(--blue, #38bdf8);
+  font: 600 11px "DM Mono", monospace;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.add-source-btn:hover {
+  background: var(--blue, #38bdf8);
+  color: #05151e;
+}
+
+/* ============================================================
+   RESEARCHER: SEARCHBAR NOTEBOOK BUTTON & TOP-RIGHT SOURCES BAR
+   ============================================================ */
+.sidebar-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.sidebar-search input {
+  padding-right: 98px !important;
+}
+.search-new-notebook-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: var(--blue-dark, #0284c7);
+  font: 600 11px "DM Mono", monospace;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+[data-theme="dark"] .search-new-notebook-btn {
+  color: var(--blue, #38bdf8);
+}
+.search-new-notebook-btn:hover {
+  background: var(--blue, #38bdf8);
+  color: #fff;
+  border-color: var(--blue, #38bdf8);
+  box-shadow: 0 2px 10px rgba(56, 189, 248, 0.4);
+  transform: translateY(-50%) scale(1.02);
+}
+
+/* Top-Right Sub-Bar: External Sources Manager beneath Navbar */
+.research-top-sources {
+  position: absolute;
+  top: 56px;
+  right: 28px;
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface-card, #ffffff);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--surface-border, rgba(56, 189, 248, 0.28));
+  border-radius: 14px;
+  padding: 8px 12px;
+  max-width: 380px;
+  box-shadow: 0 6px 24px rgba(56, 189, 248, 0.15);
+  transition: all 0.25s ease;
+  animation: fadeInDown 0.3s ease;
+}
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.top-sources-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.top-sources-title {
+  font: 600 10.5px "DM Mono", monospace;
+  letter-spacing: 1px;
+  color: var(--blue-dark, #0284c7);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+}
+[data-theme="dark"] .top-sources-title {
+  color: var(--blue, #38bdf8);
+}
+.top-add-source-btn {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid var(--blue, #38bdf8);
+  color: var(--blue-dark, #0284c7);
+  font: 600 10.5px "DM Mono", monospace;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+[data-theme="dark"] .top-add-source-btn {
+  color: var(--blue, #38bdf8);
+}
+.top-add-source-btn:hover {
+  background: var(--blue, #38bdf8);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.top-sources-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 80px;
+  overflow-y: auto;
+}
+.top-sources-chips::-webkit-scrollbar { width: 3px; }
+.top-sources-chips::-webkit-scrollbar-thumb { background: var(--blue, #38bdf8); border-radius: 2px; }
+
+/* ============================================================
+   PRIMARY GRADE STUDENT: ANIMATED AQUARIUM, FISHES & CORALS
+   ============================================================ */
+.primary-aquarium-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.aquarium-creature {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.16));
+  transition: transform 0.2s ease;
+  user-select: none;
+}
+.aquarium-creature:hover {
+  transform: scale(1.18) !important;
+  filter: drop-shadow(0 8px 20px rgba(56, 189, 248, 0.65));
+}
+
+/* 1. Clownfish (Nemo) - Swimming Left to Right */
+.fish-clownfish {
+  top: 36%;
+  left: -80px;
+  width: 58px;
+  height: 38px;
+  animation: swimL2R 16s infinite linear;
+}
+@keyframes swimL2R {
+  0% { transform: translate(-100px, 0) scaleX(1); }
+  45% { transform: translate(calc(100vw + 80px), -25px) scaleX(1); }
+  50% { transform: translate(calc(100vw + 80px), 10px) scaleX(-1); }
+  95% { transform: translate(-100px, 35px) scaleX(-1); }
+  100% { transform: translate(-100px, 0) scaleX(1); }
+}
+
+/* 2. Blue Tang (Dory) - Upper Water Swimmer */
+.fish-bluetang {
+  top: 18%;
+  right: -90px;
+  width: 54px;
+  height: 36px;
+  animation: swimR2L 20s infinite linear 2s;
+}
+@keyframes swimR2L {
+  0% { transform: translate(100px, 0) scaleX(1); }
+  45% { transform: translate(calc(-100vw - 80px), 30px) scaleX(1); }
+  50% { transform: translate(calc(-100vw - 80px), -15px) scaleX(-1); }
+  95% { transform: translate(100px, -20px) scaleX(-1); }
+  100% { transform: translate(100px, 0) scaleX(1); }
+}
+
+/* 3. Sea Turtle (Shelly) - Diagonal gliding */
+.turtle-shelly {
+  bottom: 22%;
+  left: -120px;
+  width: 78px;
+  height: 52px;
+  animation: turtleGlide 28s infinite linear 1s;
+}
+@keyframes turtleGlide {
+  0% { transform: translate(-120px, 0) rotate(8deg); }
+  45% { transform: translate(calc(100vw + 120px), -80px) rotate(4deg); }
+  50% { transform: translate(calc(100vw + 120px), -40px) scaleX(-1) rotate(-6deg); }
+  95% { transform: translate(-120px, 40px) scaleX(-1) rotate(-8deg); }
+  100% { transform: translate(-120px, 0) rotate(8deg); }
+}
+
+/* 4. Jumping Dolphin (Echo) */
+.dolphin-echo {
+  top: 8%;
+  left: -140px;
+  width: 86px;
+  height: 48px;
+  animation: dolphinLeap 24s infinite ease-in-out 6s;
+}
+@keyframes dolphinLeap {
+  0% { transform: translate(-140px, 40px) rotate(15deg); }
+  20% { transform: translate(25vw, -30px) rotate(-15deg); }
+  25% { transform: translate(32vw, 35px) rotate(20deg); }
+  50% { transform: translate(65vw, -25px) rotate(-20deg); }
+  55% { transform: translate(72vw, 30px) rotate(15deg); }
+  80% { transform: translate(calc(100vw + 140px), 10px) rotate(0deg); }
+  100% { transform: translate(calc(100vw + 140px), 10px); }
+}
+
+/* 5. Glowing Jellyfish (Luna) */
+.jellyfish-luna {
+  top: 52%;
+  right: 5%;
+  width: 44px;
+  height: 64px;
+  animation: jellyPulse 4.5s infinite ease-in-out;
+}
+@keyframes jellyPulse {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  50% { transform: translateY(-38px) scale(0.92, 1.15); filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.9)); }
+}
+
+/* 6. Playful Baby Octopus in Corner */
+.octopus-inky {
+  bottom: 8px;
+  left: 24px;
+  width: 52px;
+  height: 52px;
+  animation: octopusWiggle 3.5s infinite ease-in-out;
+}
+@keyframes octopusWiggle {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-6px) rotate(5deg); }
+}
+
+/* Sea Floor Reef Silhouettes */
+.cartoon-reef-floor {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120' preserveAspectRatio='none'%3E%3Cpath d='M0,120 L0,70 C40,75 80,60 120,68 C160,76 200,90 240,82 C280,74 320,55 360,65 C400,75 440,88 480,80 C520,72 560,58 600,64 C640,70 680,85 720,78 C760,71 800,56 840,62 C880,68 920,82 960,76 C1000,70 1040,55 1080,66 C1120,77 1160,86 1200,74 L1200,120 Z' fill='%2338bdf8' fill-opacity='0.16'/%3E%3Cpath d='M0,120 L0,85 C60,90 120,75 180,82 C240,89 300,98 360,90 C420,82 480,70 540,78 C600,86 660,94 720,88 C780,82 840,72 900,79 C960,86 1020,95 1080,89 C1140,83 1170,88 1200,85 L1200,120 Z' fill='%230284c7' fill-opacity='0.22'/%3E%3C/svg%3E");
+  background-size: cover;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Shimmering Caustics (Sunbeams) */
+.ocean-sunbeams {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 240px;
+  background: radial-gradient(ellipse at 50% -20%, rgba(254, 240, 138, 0.18) 0%, rgba(56, 189, 248, 0.08) 55%, transparent 80%);
+  animation: causticsShimmer 6s infinite ease-in-out alternate;
+  pointer-events: none;
+  z-index: 1;
+}
+@keyframes causticsShimmer {
+  0% { opacity: 0.5; transform: scaleX(0.95); }
+  100% { opacity: 0.95; transform: scaleX(1.05); }
+}
+
+@keyframes floatUp {
+  0% { transform: translateY(0) scale(0.7); opacity: 0; }
+  15% { opacity: 0.75; }
+  85% { opacity: 0.75; }
+  100% { transform: translateY(-110vh) scale(1.15); opacity: 0; }
+}
+
+/* Interactive Fish Speech Bubble Popover */
+.fish-speech-bubble {
+  position: absolute;
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 2px solid var(--blue, #38bdf8);
+  box-shadow: 0 8px 24px rgba(56, 189, 248, 0.4);
+  color: #0c4a6e;
+  font: 600 12px/1.4 "DM Sans", sans-serif;
+  max-width: 240px;
+  z-index: 1000;
+  pointer-events: none;
+  animation: popBubble 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+@keyframes popBubble {
+  from { opacity: 0; transform: scale(0.6) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Playful Primary Mode Cards with Joyful Bounce */
+.persona-primary .mode-card {
+  border: 2px solid rgba(56, 189, 248, 0.45) !important;
+  border-radius: 18px !important;
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.4) 0%, rgba(224, 242, 254, 0.6) 100%) !important;
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+[data-theme="dark"] .persona-primary .mode-card {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(251, 146, 60, 0.12) 100%) !important;
+  border-color: rgba(56, 189, 248, 0.5) !important;
+}
+.persona-primary .mode-card:hover {
+  transform: translateY(-6px) scale(1.03) !important;
+  box-shadow: 0 12px 28px rgba(56, 189, 248, 0.35) !important;
+  border-color: var(--blue, #38bdf8) !important;
+}
+.persona-primary .greeting-title {
+  color: #0284c7 !important;
+  font-family: "DM Sans", sans-serif !important;
+  font-weight: 700 !important;
+  letter-spacing: -1px !important;
+}
+[data-theme="dark"] .persona-primary .greeting-title {
+  color: #38bdf8 !important;
+}
+
+/* Modals for Sources & Notebooks */
+.ocean-prompt-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 12, 18, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 100020;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.25s ease;
+}
+
+.ocean-prompt-modal-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.ocean-prompt-modal {
+  width: 100%;
+  max-width: 480px;
+  background: var(--bg, #141413);
+  border: 1px solid var(--sidebar-border, rgba(56, 189, 248, 0.4));
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(56, 189, 248, 0.25);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.prompt-modal-title {
+  font: 600 18px "Playfair Display", serif;
+  color: var(--ink, #f4f4f5);
+}
+
+.prompt-modal-input {
+  width: 100%;
+  height: 42px;
+  border-radius: 8px;
+  background: var(--surface-card, rgba(26, 26, 24, 0.8));
+  border: 1px solid var(--sidebar-border, rgba(56, 189, 248, 0.3));
+  padding: 0 14px;
+  color: var(--ink, #f4f4f5);
+  font: 13px "DM Sans", sans-serif;
+  outline: none;
+}
+
+.prompt-modal-input:focus {
+  border-color: var(--blue, #38bdf8);
+}
+
+.prompt-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.prompt-modal-cancel {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--sidebar-border, rgba(255, 255, 255, 0.2));
+  color: var(--text-muted, #9ca3af);
+  cursor: pointer;
+  font: 600 12px "DM Sans", sans-serif;
+}
+
+.prompt-modal-submit {
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: var(--blue, #38bdf8);
+  border: none;
+  color: #04121a;
+  cursor: pointer;
+  font: 600 12px "DM Sans", sans-serif;
+  transition: transform 0.2s;
+}
+
+.prompt-modal-submit:hover {
+  transform: translateY(-1px);
+}
+
+/* --- D. COASTAL COMMUNITY RESIDENT --- */
+.coastal-alert-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font: 700 11px "DM Mono", monospace;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  margin-bottom: 12px;
+}
