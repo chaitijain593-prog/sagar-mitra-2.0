@@ -1,52 +1,85 @@
 // ============================================================
-// SAGAR MITRA — SHARED CONTROLS & NEWS FEED ENGINE
-// Role Switcher & Multi-Domain Specialized Ocean News Feed
+// SAGAR MITRA — SHARED CONTROLS & LIVE INTELLIGENCE ENGINE
+// Role Switcher, Ocean Soundscape, Morning Dispatch & Live News
 // ============================================================
 
 (function initSagarSharedControls() {
+  const API_BASE = window.location.origin.includes(":8000") ? window.location.origin : "http://127.0.0.1:8000";
+
   // ------------------------------------------------------------
-  // 1. PERSONA ROLES CONFIGURATION
+  // 1. PERSONA ROLES CONFIGURATION (Aligned with LangGraph)
   // ------------------------------------------------------------
+  function normalizeSagarRole(roleId) {
+    if (!roleId) return "researcher";
+    const cleaned = String(roleId).toLowerCase().trim();
+    const valid = [
+      "primary_student",
+      "high_school",
+      "researcher",
+      "fisherman",
+      "coastal_community",
+      "authority",
+      "others"
+    ];
+    if (valid.includes(cleaned)) return cleaned;
+    if (cleaned === "student") return "primary_student";
+    if (cleaned === "fisher") return "fisherman";
+    return "researcher";
+  }
+
   const ROLES = [
     {
       id: "primary_student",
       name: "Primary Grade Student",
       emoji: "🐬",
-      desc: "Creative, child-like & curious ocean buddy exploration"
+      desc: "Creative, child-like & curious ocean buddy with swimming aquarium"
     },
     {
       id: "high_school",
       name: "High School Student",
       emoji: "🔬",
-      desc: "Coursework, STEM oceanography & science lab experiments"
+      desc: "Coursework, STEM projects, physics formulas & tidal dynamics"
     },
     {
       id: "researcher",
-      name: "Researcher",
+      name: "Researcher / Oceanographer",
       emoji: "🏛️",
-      desc: "Multiple research notebooks, external sources & deep telemetry"
+      desc: "Deep telemetry, ARGO anomaly models, NetCDF arrays & indexed sources"
+    },
+    {
+      id: "fisherman",
+      name: "Fisherman / Navigator",
+      emoji: "🎣",
+      desc: "PFZ fishing zones, ocean weather & safe navigation routes"
     },
     {
       id: "coastal_community",
       name: "Coastal Community Resident",
       emoji: "⚓",
-      desc: "Local swell, fishing zone advisories & cyclone safety alerts"
+      desc: "Local sea swell, harbor advisories & cyclone safety bulletins"
+    },
+    {
+      id: "authority",
+      name: "Coastal / Port Authority",
+      emoji: "🛡️",
+      desc: "EEZ boundary geofencing, hazard reporting & incident logs"
     },
     {
       id: "others",
       name: "Others / Ocean Explorer",
       emoji: "🌐",
-      desc: "General versatile Claude-inspired ocean AI assistant"
+      desc: "Versatile ocean assistant & multi-modal intelligence"
     }
   ];
 
-  // Get or set current persona
-  let currentRole = localStorage.getItem("sagarMitraRole") || "researcher";
+  // Get or set current persona with normalized key
+  let currentRole = normalizeSagarRole(localStorage.getItem("sagarMitraRole") || "researcher");
+  localStorage.setItem("sagarMitraRole", currentRole);
 
   // ------------------------------------------------------------
-  // 2. NEWS ARTICLES DATA CATALOG
+  // 2. LIVE NEWS FEED & BACKEND DOMAINS CATALOG
   // ------------------------------------------------------------
-  const NEWS_DOMAINS = [
+  let NEWS_DOMAINS = [
     { id: "all", label: "All Domains", emoji: "🌐" },
     { id: "satellite", label: "Satellite Oceanography", emoji: "🛰️" },
     { id: "ecology", label: "Marine Ecology & Corals", emoji: "🌊" },
@@ -58,7 +91,7 @@
     { id: "energy", label: "Blue Economy & Energy", emoji: "⚡" }
   ];
 
-  const NEWS_ARTICLES = [
+  let FALLBACK_ARTICLES = [
     {
       id: 1,
       domains: ["satellite", "ecology"],
@@ -66,7 +99,8 @@
       time: "2 hours ago",
       title: "ISRO & INCOIS Deploy OceanSat-3 Thermal Radiometers to Track Indian Ocean Marine Heatwaves",
       excerpt: "High-resolution thermal infrared bands are now transmitting sub-surface thermal gradients across the Bay of Bengal, providing 6-hour interval boundary current telemetry to coastal researchers.",
-      source: "INCOIS Remote Sensing Lab"
+      source: "INCOIS Remote Sensing Lab",
+      link: "#"
     },
     {
       id: 2,
@@ -75,7 +109,8 @@
       time: "3 hours ago",
       title: "Central Arabian Sea ARGO Array Detects Salinity Intrusion at 1,200m Depth",
       excerpt: "Profilers #290145 and #290148 recorded an anomalous pulse of high-salinity Persian Gulf outflow water, modulating sound velocity profiles and mesopelagic sonic layer acoustics.",
-      source: "Global ARGO Data Repository"
+      source: "Global ARGO Data Repository",
+      link: "#"
     },
     {
       id: 3,
@@ -84,7 +119,8 @@
       time: "5 hours ago",
       title: "Real-Time Potential Fishing Zone (PFZ) Advisories Released for Konkan & Gujarat Fleets",
       excerpt: "Composite chlorophyll and ocean temperature front analyses highlight massive pelagic fish aggregations off the continental shelf break, cutting fleet fuel consumption by an estimated 28%.",
-      source: "National Marine Fisheries Advisory"
+      source: "National Marine Fisheries Advisory",
+      link: "#"
     },
     {
       id: 4,
@@ -93,7 +129,8 @@
       time: "Yesterday",
       title: "Lakshadweep Coral Bleaching Recovery Rate Increases 18% Following Deep Cold Upwelling",
       excerpt: "Autonomous glider surveys at Kadmat and Kavaratti atolls indicate stabilized zooxanthellae density after southwest monsoon currents pumped cooler mesopelagic water onto shallow reef flats.",
-      source: "Marine Biodiversity Research Centre"
+      source: "Marine Biodiversity Research Centre",
+      link: "#"
     },
     {
       id: 5,
@@ -102,7 +139,8 @@
       time: "Yesterday",
       title: "Deep Depression Over South Andaman Sea Intensifying; Coastal Swell Surge Alert Active",
       excerpt: "Wave rider buoys report significant wave heights climbing to 4.2 meters off Tamil Nadu and Andhra coasts. Automated safety dispatches have been transmitted to port authorities and regional rescue cells.",
-      source: "Regional Meteorological Centre"
+      source: "Regional Meteorological Centre",
+      link: "#"
     },
     {
       id: 6,
@@ -111,7 +149,8 @@
       time: "2 days ago",
       title: "JNPT Mumbai Inaugurates AI-Optimized Green Shipping Corridor to Singapore",
       excerpt: "Dynamic voyage planning integrating real-time ocean surface currents, bathymetric waypoints, and wind vectors is projected to reduce bunker fuel emissions by 14% on the Malacca Strait route.",
-      source: "International Maritime Organization"
+      source: "International Maritime Organization",
+      link: "#"
     },
     {
       id: 7,
@@ -120,20 +159,14 @@
       time: "3 days ago",
       title: "Samudrayaan Mission: Manned Submersible 'Matsya 6000' Completes 6,000m Pressure Validation",
       excerpt: "Engineered to explore polymetallic nodules and hydrothermal vent ecosystems in the Central Indian Ocean Basin, the titanium pressure hull successfully cleared rigorous hydrostatic chamber qualification.",
-      source: "National Institute of Ocean Technology"
-    },
-    {
-      id: 8,
-      domains: ["energy", "ecology"],
-      domainLabel: "⚡ Blue Economy & Clean Energy",
-      time: "4 days ago",
-      title: "100MW Ocean Thermal Energy Conversion (OTEC) Pilot Approved for Andaman Coast",
-      excerpt: "Utilizing the 21°C thermal gradient between warm surface waters and 1,000m-deep bathypelagic water to deliver continuous baseload renewable energy and municipal desalination.",
-      source: "Ministry of Earth Sciences"
+      source: "National Institute of Ocean Technology",
+      link: "#"
     }
   ];
 
+  let currentNewsArticles = [...FALLBACK_ARTICLES];
   let selectedDomains = new Set(["all"]);
+
   try {
     const savedTopics = JSON.parse(localStorage.getItem("sagarMitraTopics") || "[]");
     if (Array.isArray(savedTopics) && savedTopics.length > 0) {
@@ -155,6 +188,7 @@
     }
   } catch(e) {}
 
+  // ------------------------------------------------------------
   // 3. TOAST NOTIFICATION
   // ------------------------------------------------------------
   function showRoleToast(role) {
@@ -180,7 +214,30 @@
     const roleDropdown = document.getElementById("roleDropdown");
     if (!roleTrigger || !roleDropdown) return;
 
-    // Set initial active state
+    // Dynamically render dropdown content with the 5 canonical roles + Morning Dispatch button
+    let itemsHtml = `<div class="role-dropdown-header">SELECT USER PERSONA</div>`;
+    ROLES.forEach(r => {
+      itemsHtml += `
+        <div class="role-dropdown-item" data-role="${r.id}">
+          <span class="role-item-emoji">${r.emoji}</span>
+          <div class="role-item-details">
+            <div class="role-item-title">${r.name}</div>
+            <div class="role-item-caption">${r.desc}</div>
+          </div>
+          <span class="role-item-check">✓</span>
+        </div>
+      `;
+    });
+    itemsHtml += `
+      <div class="role-dispatch-footer">
+        <button type="button" class="role-dispatch-btn" id="roleMorningDispatchBtn">
+          <span>📄</span>
+          <span>Generate Morning Dispatch</span>
+        </button>
+      </div>
+    `;
+    roleDropdown.innerHTML = itemsHtml;
+
     updateDropdownActiveRole(currentRole);
 
     roleTrigger.addEventListener("click", (e) => {
@@ -188,12 +245,11 @@
       roleDropdown.classList.toggle("open");
     });
 
-    document.querySelectorAll(".role-dropdown-item").forEach(item => {
+    roleDropdown.querySelectorAll(".role-dropdown-item").forEach(item => {
       item.addEventListener("click", (e) => {
         e.stopPropagation();
-        const roleId = item.getAttribute("data-role");
-        const found = ROLES.find(r => r.id === roleId);
-        if (!found) return;
+        const roleId = normalizeSagarRole(item.getAttribute("data-role"));
+        const found = ROLES.find(r => r.id === roleId) || ROLES[1];
 
         currentRole = roleId;
         localStorage.setItem("sagarMitraRole", roleId);
@@ -201,10 +257,18 @@
         roleDropdown.classList.remove("open");
         showRoleToast(found);
 
-        // Notify page / chatbot of role change
         window.dispatchEvent(new CustomEvent("sagarRoleChanged", { detail: { role: roleId, roleData: found } }));
       });
     });
+
+    const dispatchBtn = document.getElementById("roleMorningDispatchBtn");
+    if (dispatchBtn) {
+      dispatchBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        roleDropdown.classList.remove("open");
+        generateAndDisplayMorningDispatch();
+      });
+    }
 
     document.addEventListener("click", (e) => {
       if (!roleDropdown.contains(e.target) && e.target !== roleTrigger) {
@@ -220,14 +284,468 @@
   }
 
   function updateDropdownActiveRole(roleId) {
+    const norm = normalizeSagarRole(roleId);
     document.querySelectorAll(".role-dropdown-item").forEach(item => {
-      item.classList.toggle("active", item.getAttribute("data-role") === roleId);
+      const itemRole = normalizeSagarRole(item.getAttribute("data-role"));
+      item.classList.toggle("active", itemRole === norm);
     });
   }
 
   // ------------------------------------------------------------
-  // 5. NEWS FEED MODAL INITIALIZATION
+  // 5. AMBIENT OCEAN SOUNDSCAPE WIDGET (Web Audio API Synthesizer)
   // ------------------------------------------------------------
+  let audioCtx = null;
+  let noiseNode = null;
+  let masterGain = null;
+  let isAudioPlaying = false;
+
+  function createOceanSound() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const bufferSize = audioCtx.sampleRate * 5;
+    const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + white * 0.0555179;
+      b1 = 0.99332 * b1 + white * 0.0750759;
+      b2 = 0.96900 * b2 + white * 0.1538520;
+      b3 = 0.86650 * b3 + white * 0.3104856;
+      b4 = 0.55000 * b4 + white * 0.5329522;
+      b5 = -0.7616 * b5 - white * 0.0168980;
+      output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.08;
+      b6 = white * 0.115926;
+    }
+
+    noiseNode = audioCtx.createBufferSource();
+    noiseNode.buffer = noiseBuffer;
+    noiseNode.loop = true;
+
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(380, audioCtx.currentTime);
+
+    const lfo = audioCtx.createOscillator();
+    const lfoGain = audioCtx.createGain();
+    lfo.frequency.setValueAtTime(0.12, audioCtx.currentTime);
+    lfoGain.gain.setValueAtTime(220, audioCtx.currentTime);
+    lfo.connect(filter.frequency);
+
+    masterGain = audioCtx.createGain();
+    masterGain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+
+    noiseNode.connect(filter);
+    filter.connect(masterGain);
+    masterGain.connect(audioCtx.destination);
+
+    noiseNode.start();
+    lfo.start();
+  }
+
+  function toggleOceanSoundscape(widgetEl) {
+    if (!isAudioPlaying) {
+      if (!audioCtx) createOceanSound();
+      else if (audioCtx.state === "suspended") audioCtx.resume();
+
+      if (masterGain && audioCtx) {
+        masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+        masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime);
+        masterGain.gain.linearRampToValueAtTime(0.65, audioCtx.currentTime + 0.8);
+      }
+      isAudioPlaying = true;
+      if (widgetEl) widgetEl.classList.add("playing");
+    } else {
+      if (masterGain && audioCtx) {
+        masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+        masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime);
+        masterGain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+        setTimeout(() => {
+          if (!isAudioPlaying && audioCtx && audioCtx.state === "running") {
+            audioCtx.suspend();
+          }
+        }, 650);
+      }
+      isAudioPlaying = false;
+      if (widgetEl) widgetEl.classList.remove("playing");
+    }
+  }
+
+  function initSoundscapeWidget() {
+    const actions = document.querySelector(".actions");
+    if (!actions) return;
+
+    let soundBtn = document.getElementById("soundToggle");
+    if (!soundBtn) {
+      const themeToggle = document.getElementById("themeToggle");
+      soundBtn = document.createElement("button");
+      soundBtn.type = "button";
+      soundBtn.className = "ctrl-btn soundscape-widget";
+      soundBtn.id = "soundToggle";
+      soundBtn.setAttribute("title", "Toggle Ambient Ocean Soundscape");
+      soundBtn.setAttribute("aria-label", "Toggle Ambient Ocean Soundscape");
+      soundBtn.innerHTML = `
+        <span class="ctrl-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 12c.6 0 1.2-.4 1.4-1 .9-2.5 3.3-4 6-4 2.6 0 4.9 1.4 5.9 3.7.3.7 1.1 1.3 1.9 1.3h.8c1.1 0 2 .9 2 2v1"/>
+            <path d="M2 16c1.5 0 2.8-.7 3.6-1.8.8-1.1 2.1-1.8 3.5-1.8 1.4 0 2.7.7 3.5 1.8.8 1.1 2.1 1.8 3.6 1.8 1.4 0 2.7-.7 3.5-1.8"/>
+            <path d="M2 20c1.5 0 2.8-.7 3.6-1.8.8-1.1 2.1-1.8 3.5-1.8 1.4 0 2.7.7 3.5 1.8.8 1.1 2.1 1.8 3.6 1.8 1.4 0 2.7-.7 3.5-1.8"/>
+          </svg>
+        </span>
+        <div class="sound-bars">
+          <span class="s-bar"></span>
+          <span class="s-bar"></span>
+          <span class="s-bar"></span>
+          <span class="s-bar"></span>
+        </div>
+        <span class="ctrl-label" id="soundLabel">Soundscape</span>
+      `;
+      if (themeToggle && themeToggle.nextSibling) {
+        actions.insertBefore(soundBtn, themeToggle.nextSibling);
+      } else {
+        actions.appendChild(soundBtn);
+      }
+    }
+
+    soundBtn.addEventListener("click", () => toggleOceanSoundscape(soundBtn));
+  }
+
+  // ------------------------------------------------------------
+  // 6. MORNING DISPATCH TRIGGER & FLOATING AUDIO PLAYER
+  // ------------------------------------------------------------
+  function initMorningDispatch() {
+    // 1. Dedicated button in .actions beside #newsTrigger to its left
+    const actions = document.querySelector(".actions");
+    const newsTrigger = document.getElementById("newsTrigger");
+    let dispatchBtn = document.getElementById("dispatchTrigger");
+
+    if (actions && !dispatchBtn) {
+      dispatchBtn = document.createElement("button");
+      dispatchBtn.type = "button";
+      dispatchBtn.className = "ctrl-btn dispatch-trigger";
+      dispatchBtn.id = "dispatchTrigger";
+      dispatchBtn.setAttribute("title", "Generate Morning Dispatch");
+      dispatchBtn.setAttribute("aria-label", "Generate Morning Dispatch");
+      dispatchBtn.innerHTML = `
+        <span class="ctrl-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+        </span>
+        <span class="ctrl-label">Dispatch</span>
+      `;
+      if (newsTrigger) {
+        actions.insertBefore(dispatchBtn, newsTrigger);
+      } else {
+        actions.appendChild(dispatchBtn);
+      }
+    }
+
+    if (dispatchBtn && !dispatchBtn.dataset.bound) {
+      dispatchBtn.dataset.bound = "true";
+      dispatchBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        generateAndDisplayMorningDispatch();
+      });
+    }
+
+    // 2. Also keep inside floating nav menu as a link
+    const nav = document.getElementById("nav");
+    if (nav && !document.getElementById("navMorningDispatchBtn")) {
+      const dispatchLink = document.createElement("a");
+      dispatchLink.href = "javascript:void(0)";
+      dispatchLink.id = "navMorningDispatchBtn";
+      dispatchLink.className = "dispatch-nav-btn";
+      dispatchLink.innerHTML = "<span>📄 DISPATCH</span>";
+      dispatchLink.addEventListener("click", () => {
+        if (nav.classList.contains("open")) nav.classList.remove("open");
+        generateAndDisplayMorningDispatch();
+      });
+      nav.appendChild(dispatchLink);
+    }
+  }
+
+  // ------------------------------------------------------------
+  // GLOBAL NAVIGATION BAR CONTROLLER (Fixes opening & bounds)
+  // ------------------------------------------------------------
+  function initGlobalNavigation() {
+    const nav = document.getElementById("nav");
+    if (!nav) return;
+
+    // Safety bounds check on saved coordinates
+    const savedX = parseInt(localStorage.getItem("navX"), 10);
+    const savedY = parseInt(localStorage.getItem("navY"), 10);
+    if (!isNaN(savedX) && !isNaN(savedY) && savedX >= 0 && savedX <= window.innerWidth - 80 && savedY >= 0 && savedY <= window.innerHeight - 40) {
+      nav.style.left = savedX + "px";
+      nav.style.top = savedY + "px";
+      nav.style.right = "auto";
+    } else {
+      nav.style.left = "";
+      nav.style.top = "";
+      nav.style.right = "88px";
+    }
+
+    // Handle clicks on any nav trigger (.nav-trigger, #trigger, #navTrigger)
+    document.addEventListener("click", (e) => {
+      const triggerBtn = e.target.closest(".nav-trigger, #trigger, #navTrigger");
+      if (triggerBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = nav.getBoundingClientRect();
+        if (rect.left < 0 || rect.right > window.innerWidth || rect.top < 0 || rect.bottom > window.innerHeight) {
+          nav.style.left = "";
+          nav.style.top = "";
+          nav.style.right = "88px";
+        }
+        nav.classList.toggle("open");
+      } else if (nav.classList.contains("open") && !nav.contains(e.target)) {
+        nav.classList.remove("open");
+      }
+    });
+  }
+
+  async function generateAndDisplayMorningDispatch() {
+    let player = document.getElementById("floatingDispatchPlayer");
+    if (!player) {
+      player = document.createElement("div");
+      player.id = "floatingDispatchPlayer";
+      player.className = "floating-dispatch-player";
+      document.body.appendChild(player);
+    }
+
+    player.innerHTML = `
+      <div class="dispatch-player-header">
+        <span>🌊 GENERATING MORNING DISPATCH...</span>
+        <button type="button" class="dispatch-player-close" id="closeDispatchPlayer">✕</button>
+      </div>
+      <p style="font-size:12px; color:var(--text-dim,#94a3b8); margin:0;">Synthesizing live oceanographic bulletin from coastal telemetry...</p>
+      <div style="height:4px; background:rgba(56,189,248,0.2); border-radius:2px; overflow:hidden;">
+        <div style="height:100%; width:60%; background:#38bdf8; animation:waveFlowWhite 1s infinite alternate;"></div>
+      </div>
+    `;
+    player.style.display = "flex";
+
+    document.getElementById("closeDispatchPlayer").onclick = () => {
+      player.style.display = "none";
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    };
+
+    let dispatchData = null;
+    try {
+      const lat = 15.2993, lon = 74.1240; // Default coastal station
+      const res = await fetch(`${API_BASE}/api/dispatch/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          coordinates: [lat, lon],
+          persona: currentRole,
+          language: "en"
+        })
+      });
+      if (res.ok) {
+        dispatchData = await res.json();
+      }
+    } catch (e) {
+      console.warn("Backend dispatch call failed, using synthetic fallback:", e);
+    }
+
+    if (!dispatchData) {
+      dispatchData = {
+        status: "success",
+        timestamp: new Date().toUTCString(),
+        vessel_persona: currentRole,
+        coordinates: [15.2993, 74.1240],
+        telemetry: {
+          wave_height: "1.42 m",
+          swell: "1.20 m @ 8.4s",
+          wind_speed: "14.2 kts",
+          sst: "28.4 °C",
+          chlorophyll: "1.350 mg/m³",
+          salinity: "35.2 PSU"
+        },
+        safety_and_routing: {
+          status: "NORMAL",
+          corridor: "Safe (Inside Indian EEZ)",
+          eez_distance: "64.2 km to boundary"
+        },
+        pfz_advisory: {
+          status: "High Density Chlorophyll Front",
+          recommended_heading: "245.0°",
+          distance_nm: "14.2 NM",
+          target_opportunity: "South Konkan Pelagic Zone"
+        },
+        summary: `Sagar Mitra Daily Marine Clearance: Current sea state normal with 1.4m wave height and 28.4°C surface temperature. Moderate chlorophyll front 14.2 nautical miles southwest. Navigation inside Indian EEZ clear with no active gale warnings.`
+      };
+    }
+
+    const t = dispatchData.telemetry || {};
+    const safe = dispatchData.safety_and_routing || {};
+    const pfz = dispatchData.pfz_advisory || {};
+
+    player.innerHTML = `
+      <div class="dispatch-player-header">
+        <span>🌊 SAGAR MITRA MORNING DISPATCH</span>
+        <button type="button" class="dispatch-player-close" id="closeDispatchPlayer">✕</button>
+      </div>
+      <p style="font-size:12px; color:var(--text-dim,#94a3b8); margin:0;">Position: 15.30°N, 74.12°E · ${safe.status || "NORMAL"}</p>
+      <div style="font-size:12px; color:var(--ink,#f4f4f5); line-height:1.4; max-height:80px; overflow-y:auto; padding:6px; background:rgba(0,0,0,0.2); border-radius:8px;">
+        ${dispatchData.summary || dispatchData.advisory}
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+        <button type="button" id="speakDispatchBtn" class="dispatch-download-link" style="background:#0284c7;">
+          <span>🔊</span> <span id="speakLabel">Read Aloud</span>
+        </button>
+        <button type="button" id="downloadPdfBtn" class="dispatch-download-link">
+          <span>📥</span> <span>Print / PDF</span>
+        </button>
+      </div>
+    `;
+
+    document.getElementById("closeDispatchPlayer").onclick = () => {
+      player.style.display = "none";
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    };
+
+    // Text to speech readout
+    const speakBtn = document.getElementById("speakDispatchBtn");
+    const speakLabel = document.getElementById("speakLabel");
+    if (speakBtn && 'speechSynthesis' in window) {
+      let isSpeaking = false;
+      speakBtn.onclick = () => {
+        if (!isSpeaking) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(dispatchData.summary || dispatchData.advisory);
+          utterance.rate = 0.95;
+          utterance.onend = () => {
+            isSpeaking = false;
+            speakLabel.textContent = "Read Aloud";
+          };
+          window.speechSynthesis.speak(utterance);
+          isSpeaking = true;
+          speakLabel.textContent = "Pause Voice";
+        } else {
+          window.speechSynthesis.cancel();
+          isSpeaking = false;
+          speakLabel.textContent = "Read Aloud";
+        }
+      };
+      // Auto-trigger voice read
+      setTimeout(() => speakBtn.click(), 400);
+    }
+
+    // PDF Print window
+    document.getElementById("downloadPdfBtn").onclick = () => {
+      const pw = window.open("", "_blank", "width=800,height=900");
+      if (!pw) {
+        alert("Please enable pop-ups to view/print the official PDF dispatch.");
+        return;
+      }
+      pw.document.write(`
+        <!doctype html><html><head><title>Sagar Mitra - Morning Dispatch</title>
+        <style>
+          @page{size:A4;margin:16mm}
+          body{font-family:Arial,sans-serif;color:#0f172a;line-height:1.5;margin:0;padding:20px}
+          header{border-bottom:3px solid #0284c7;padding-bottom:12px;margin-bottom:18px}
+          h1{font-size:20px;color:#0369a1;margin:0 0 6px}
+          table{width:100%;border-collapse:collapse;margin:12px 0 20px}
+          th,td{border:1px solid #cbd5e1;padding:8px 10px;text-align:left;font-size:13px}
+          th{background:#f0f9ff;color:#0369a1;width:35%}
+          .summary-box{padding:14px;background:#f8fafc;border-left:4px solid #0284c7;border-radius:4px;margin:15px 0;font-size:13px}
+          footer{margin-top:25px;font-size:11px;color:#64748b}
+        </style>
+        </head><body>
+        <header>
+          <h1>SAGAR MITRA · OPERATIONAL MARITIME CLEARANCE &amp; DISPATCH</h1>
+          <div><strong>Issued:</strong> ${dispatchData.timestamp} &nbsp;|&nbsp; <strong>Persona:</strong> ${dispatchData.vessel_persona}</div>
+          <div><strong>Vessel Coordinates:</strong> 15.30° N, 74.12° E · Indian Ocean Basin</div>
+        </header>
+        <div class="summary-box">
+          <strong>Pre-Sail Marine Advisory:</strong><br>${dispatchData.summary || dispatchData.advisory}
+        </div>
+        <h3>1. Sea State &amp; Oceanographic Telemetry</h3>
+        <table>
+          <tr><th>Sea Safety Condition</th><td>${safe.status || "NORMAL"}</td></tr>
+          <tr><th>Significant Wave Height</th><td>${t.wave_height || "1.42 m"}</td></tr>
+          <tr><th>Swell Period &amp; Height</th><td>${t.swell || "1.20 m @ 8.4s"}</td></tr>
+          <tr><th>Surface Wind Speed</th><td>${t.wind_speed || "14.2 kts"}</td></tr>
+          <tr><th>Sea Surface Temperature (SST)</th><td>${t.sst || "28.4 °C"}</td></tr>
+          <tr><th>Chlorophyll-a Gradient</th><td>${t.chlorophyll || "1.350 mg/m³"}</td></tr>
+        </table>
+        <h3>2. Potential Fishing Zone (PFZ) Opportunity</h3>
+        <table>
+          <tr><th>Target Opportunity</th><td>${pfz.target_opportunity || "South Konkan Pelagic Zone"}</td></tr>
+          <tr><th>Recommended Bearing</th><td>${pfz.recommended_heading || "245.0°"}</td></tr>
+          <tr><th>Distance to Feature</th><td>${pfz.distance_nm || "14.2 NM"}</td></tr>
+        </table>
+        <h3>3. Maritime EEZ Boundary Compliance</h3>
+        <table>
+          <tr><th>EEZ Compliance Corridor</th><td>${safe.corridor || "Safe (Inside Indian EEZ)"}</td></tr>
+          <tr><th>Boundary Proximity</th><td>${safe.eez_distance || "64.2 km to boundary"}</td></tr>
+        </table>
+        <footer>Confirm latest coastal notices with INCOIS, Indian Coast Guard and IMD prior to departure.</footer>
+        <script>window.onload = function() { window.print(); }<\/script>
+        </body></html>
+      `);
+      pw.document.close();
+    };
+  }
+
+  // ------------------------------------------------------------
+  // 7. NEWS FEED MODAL INITIALIZATION (Live API Connected)
+  // ------------------------------------------------------------
+  async function fetchLiveNews() {
+    try {
+      // 1. Fetch live domains
+      const dRes = await fetch(`${API_BASE}/api/news/domains`);
+      if (dRes.ok) {
+        const dData = await dRes.json();
+        if (Array.isArray(dData.domains) && dData.domains.length > 0) {
+          const liveDomains = [{ id: "all", label: "All Domains", emoji: "🌐" }];
+          const emojiMap = {
+            "satellite": "🛰️", "ecology": "🌊", "ports": "⚓", "fisheries": "🐟",
+            "weather": "🌪️", "deepsea": "🔬", "buoys": "🤖", "energy": "⚡", "ocean": "🌊"
+          };
+          dData.domains.forEach(d => {
+            const key = d.toLowerCase().replace(/[^a-z]/g, "");
+            liveDomains.push({
+              id: d,
+              label: d.replace(/[-_]/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+              emoji: emojiMap[key] || "🌊"
+            });
+          });
+          NEWS_DOMAINS = liveDomains;
+          renderDomainChips();
+        }
+      }
+
+      // 2. Fetch live articles
+      const aRes = await fetch(`${API_BASE}/api/news`);
+      if (aRes.ok) {
+        const aData = await aRes.json();
+        if (Array.isArray(aData.articles) && aData.articles.length > 0) {
+          currentNewsArticles = aData.articles.map((art, idx) => ({
+            id: idx + 1,
+            domains: art.domain ? [art.domain.toLowerCase()] : ["ocean"],
+            domainLabel: art.domain ? `🌊 ${art.domain}` : "🌐 Ocean Intelligence",
+            time: art.published ? new Date(art.published).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Recently updated",
+            title: art.title || "Marine Observation Bulletin",
+            excerpt: art.summary || art.description || "Live oceanographic dispatch from Indian Ocean coastal sensors.",
+            source: art.source || "INCOIS / Sagar Mitra Feed",
+            link: art.link || "#"
+          }));
+          renderNewsArticles();
+        }
+      }
+    } catch (e) {
+      console.warn("Live news fetch fallback to local catalog:", e);
+    }
+  }
+
   function initNewsFeedModal() {
     let modal = document.getElementById("oceanNewsModal");
     if (!modal) {
@@ -247,7 +765,7 @@
             <button class="news-modal-close" id="closeNewsModal" aria-label="Close News Feed">✕</button>
           </div>
 
-          <!-- Domain Selection Filter Bar (Multi-Select) -->
+          <!-- Domain Selection Filter Bar -->
           <div class="news-domains-section">
             <div class="news-domains-label">SELECT SPECIALIZED OCEAN DOMAINS (MULTI-SELECT):</div>
             <div class="news-domains-chips" id="newsDomainChips"></div>
@@ -268,6 +786,9 @@
 
     renderDomainChips();
     renderNewsArticles();
+
+    // Trigger async live fetch in background
+    fetchLiveNews();
 
     const newsTrigger = document.getElementById("newsTrigger");
     if (newsTrigger) {
@@ -305,6 +826,7 @@
     if (modal) {
       modal.classList.add("open");
       renderNewsArticles();
+      fetchLiveNews();
     }
   }
 
@@ -352,11 +874,11 @@
 
     const searchVal = (document.getElementById("newsSearchInput")?.value || "").toLowerCase().trim();
 
-    const filtered = NEWS_ARTICLES.filter(item => {
+    const filtered = currentNewsArticles.filter(item => {
       // Domain matching
       let matchesDomain = selectedDomains.has("all");
       if (!matchesDomain) {
-        matchesDomain = item.domains.some(d => selectedDomains.has(d));
+        matchesDomain = (item.domains || []).some(d => selectedDomains.has(d));
       }
       if (!matchesDomain) return false;
 
@@ -389,7 +911,7 @@
         <p class="news-card-excerpt">${item.excerpt}</p>
         <div class="news-card-footer">
           <span>${item.source}</span>
-          <button class="news-card-read-btn" onclick="alert('Displaying live scientific bulletin: ${item.title.replace(/'/g, "\\'")}')">
+          <button class="news-card-read-btn" onclick="alert('Viewing live scientific bulletin: ${item.title.replace(/'/g, "\\'")}')">
             <span>Dispatch</span>
             <span>→</span>
           </button>
@@ -399,31 +921,39 @@
   }
 
   // ------------------------------------------------------------
-  // 6. AUTO-INIT ON DOM READY
+  // 8. AUTO-INIT ON DOM READY
   // ------------------------------------------------------------
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => {
-      initRoleSwitcher();
-      initNewsFeedModal();
-    });
-  } else {
+  function initAll() {
     initRoleSwitcher();
+    initSoundscapeWidget();
+    initMorningDispatch();
     initNewsFeedModal();
+    initGlobalNavigation();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initAll);
+  } else {
+    initAll();
   }
 
   // Expose helper globally
   window.sagarControls = {
     getRole: () => currentRole,
     setRole: (roleId) => {
-      const found = ROLES.find(r => r.id === roleId);
-      if (found) {
-        currentRole = roleId;
-        localStorage.setItem("sagarMitraRole", roleId);
-        updateDropdownActiveRole(roleId);
-        window.dispatchEvent(new CustomEvent("sagarRoleChanged", { detail: { role: roleId, roleData: found } }));
-      }
+      const norm = normalizeSagarRole(roleId);
+      const found = ROLES.find(r => r.id === norm) || ROLES[1];
+      currentRole = norm;
+      localStorage.setItem("sagarMitraRole", norm);
+      updateDropdownActiveRole(norm);
+      window.dispatchEvent(new CustomEvent("sagarRoleChanged", { detail: { role: norm, roleData: found } }));
     },
     openNews: openNewsModal,
-    closeNews: closeNewsModal
+    closeNews: closeNewsModal,
+    triggerDispatch: generateAndDisplayMorningDispatch,
+    toggleSoundscape: () => {
+      const btn = document.getElementById("soundToggle");
+      if (btn) toggleOceanSoundscape(btn);
+    }
   };
 })();

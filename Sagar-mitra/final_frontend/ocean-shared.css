@@ -3,14 +3,33 @@
    Role Switcher Dropdown & Multi-Domain Ocean News Feed
    ============================================================ */
 
-/* Expanding Buttons: News Feed & Switch Role */
+/* Expanding Buttons: News Feed, Switch Role & Morning Dispatch */
 .actions .news-trigger .ctrl-icon svg,
-.actions .role-trigger .ctrl-icon svg {
+.actions .role-trigger .ctrl-icon svg,
+.actions .dispatch-trigger .ctrl-icon svg {
   stroke: var(--blue, #38bdf8);
+}
+
+.actions .dispatch-trigger:hover {
+  border-color: var(--blue, #38bdf8);
+  box-shadow: 0 4px 16px var(--blue-glow, rgba(56, 189, 248, 0.4));
 }
 
 .actions .ctrl-btn:hover .ctrl-label {
   max-width: 120px !important;
+  opacity: 1 !important;
+  margin-left: 8px !important;
+}
+
+/* Ensure Floating Navigation Bar is on top and visible */
+.nav {
+  z-index: 100000 !important;
+}
+.nav.open {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+  pointer-events: auto !important;
 }
 
 /* Role Dropdown Wrapper & Menu */
@@ -428,3 +447,188 @@
     right: -60px;
   }
 }
+
+/* ============================================================
+   AMBIENT OCEAN SOUNDSCAPE WIDGET
+   ============================================================ */
+.actions .soundscape-widget .ctrl-icon svg {
+  stroke: var(--blue, #38bdf8);
+}
+
+.soundscape-widget {
+  height: 48px;
+  border-radius: 24px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  background: var(--ctrl-bg, rgba(26, 26, 24, 0.88));
+  border: 1px solid var(--ctrl-border, rgba(56, 189, 248, 0.35));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 3px 14px rgba(0,0,0,.08);
+  color: var(--ctrl-text, #f4f4f5);
+  overflow: hidden;
+  transition: all .25s ease;
+  user-select: none;
+}
+
+.soundscape-widget:hover .ctrl-label {
+  max-width: 120px !important;
+  opacity: 1 !important;
+  margin-left: 8px !important;
+}
+
+.soundscape-widget.playing {
+  border-color: var(--blue, #38bdf8);
+  box-shadow: 0 0 16px var(--blue-glow, rgba(56, 189, 248, 0.45));
+}
+
+.sound-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 16px;
+  margin-left: 6px;
+}
+
+.s-bar {
+  width: 2.5px;
+  background: var(--blue, #38bdf8);
+  border-radius: 2px;
+  height: 4px;
+  animation: soundwave 1.2s infinite ease-in-out;
+  animation-play-state: paused;
+}
+
+.soundscape-widget.playing .s-bar {
+  animation-play-state: running;
+}
+
+.s-bar:nth-child(1) { height: 4px; animation-delay: 0.0s; }
+.s-bar:nth-child(2) { height: 14px; animation-delay: 0.2s; }
+.s-bar:nth-child(3) { height: 8px; animation-delay: 0.4s; }
+.s-bar:nth-child(4) { height: 12px; animation-delay: 0.1s; }
+
+@keyframes soundwave {
+  0%, 100% { height: 4px; }
+  50% { height: 15px; }
+}
+
+/* ============================================================
+   MORNING DISPATCH TRIGGER & FLOATING AUDIO PLAYER
+   ============================================================ */
+.role-dispatch-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sidebar-border, rgba(56, 189, 248, 0.2));
+}
+
+.role-dispatch-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18) 0%, rgba(2, 132, 199, 0.28) 100%);
+  border: 1px solid var(--blue, #38bdf8);
+  color: var(--blue, #38bdf8);
+  font: 600 12px "DM Mono", monospace;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.role-dispatch-btn:hover {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.32) 0%, rgba(2, 132, 199, 0.45) 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px var(--blue-glow, rgba(56, 189, 248, 0.3));
+}
+
+.nav a.dispatch-nav-btn {
+  color: var(--blue, #38bdf8) !important;
+  font-weight: 700 !important;
+  border-left: 2px solid var(--blue, #38bdf8);
+  padding-left: 12px;
+}
+
+.floating-dispatch-player {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 370px;
+  max-width: calc(100vw - 48px);
+  background: var(--nav-bg, rgba(20, 20, 19, 0.95));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1.5px solid var(--blue, #38bdf8);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 25px var(--blue-glow, rgba(56, 189, 248, 0.35));
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: slideUpFloat 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes slideUpFloat {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.dispatch-player-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 600 12px "DM Mono", monospace;
+  color: var(--blue, #38bdf8);
+  letter-spacing: 0.5px;
+}
+
+.dispatch-player-close {
+  background: none;
+  border: none;
+  color: var(--text-dim, #94a3b8);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.2s;
+}
+
+.dispatch-player-close:hover {
+  color: #fff;
+}
+
+.floating-dispatch-player audio {
+  width: 100%;
+  height: 38px;
+  border-radius: 8px;
+  outline: none;
+}
+
+.dispatch-download-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: 600 11px "DM Sans", sans-serif;
+  color: #fff;
+  background: rgba(34, 197, 94, 0.9);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.dispatch-download-link:hover {
+  background: #16a34a;
+  transform: translateY(-1px);
+}
+

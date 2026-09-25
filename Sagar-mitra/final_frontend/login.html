@@ -587,7 +587,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
         <span class="role-card-emoji">🐬</span>
         <div class="role-card-info">
           <div class="role-card-title">Primary Grade Student</div>
-          <div class="role-card-sub">Creative, child-like & curious ocean buddy with magical coral adventures</div>
+          <div class="role-card-sub">Creative, child-like & curious ocean buddy with swimming aquarium</div>
         </div>
         <span class="role-card-check">✓</span>
       </div>
@@ -596,7 +596,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
         <span class="role-card-emoji">🔬</span>
         <div class="role-card-info">
           <div class="role-card-title">High School Student</div>
-          <div class="role-card-sub">Coursework, fluid dynamics, tidal mechanics & STEM project lab reports</div>
+          <div class="role-card-sub">Coursework, STEM projects, lab formulas & tidal physics</div>
         </div>
         <span class="role-card-check">✓</span>
       </div>
@@ -604,8 +604,17 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
       <div class="role-option-card selected" data-role="researcher">
         <span class="role-card-emoji">🏛️</span>
         <div class="role-card-info">
-          <div class="role-card-title">Researcher</div>
-          <div class="role-card-sub">Multiple notebook tabs, external web sources manager & netCDF data</div>
+          <div class="role-card-title">Researcher / Oceanographer</div>
+          <div class="role-card-sub">Deep telemetry, ARGO anomaly models, NetCDF arrays & indexed sources</div>
+        </div>
+        <span class="role-card-check">✓</span>
+      </div>
+
+      <div class="role-option-card" data-role="fisherman">
+        <span class="role-card-emoji">🎣</span>
+        <div class="role-card-info">
+          <div class="role-card-title">Fisherman / Navigator</div>
+          <div class="role-card-sub">Potential Fishing Zones (PFZ), sea swell, weather & safe navigation routes</div>
         </div>
         <span class="role-card-check">✓</span>
       </div>
@@ -614,7 +623,16 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
         <span class="role-card-emoji">⚓</span>
         <div class="role-card-info">
           <div class="role-card-title">Coastal Community Resident</div>
-          <div class="role-card-sub">Local sea swell, Potential Fishing Zones (PFZ) & high-tide safety bulletins</div>
+          <div class="role-card-sub">Local sea swell, harbor advisories, high-tide & cyclone safety bulletins</div>
+        </div>
+        <span class="role-card-check">✓</span>
+      </div>
+
+      <div class="role-option-card" data-role="authority">
+        <span class="role-card-emoji">🛡️</span>
+        <div class="role-card-info">
+          <div class="role-card-title">Coastal / Port Authority</div>
+          <div class="role-card-sub">EEZ boundary monitoring, crowdsourced hazard mesh & emergency logging</div>
         </div>
         <span class="role-card-check">✓</span>
       </div>
@@ -623,7 +641,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
         <span class="role-card-emoji">🌐</span>
         <div class="role-card-info">
           <div class="role-card-title">Others / General Explorer</div>
-          <div class="role-card-sub">Versatile Claude-inspired ocean assistant for all curiosity seekers</div>
+          <div class="role-card-sub">Versatile Claude-inspired ocean assistant & general sea exploration</div>
         </div>
         <span class="role-card-check">✓</span>
       </div>
@@ -1046,18 +1064,37 @@ cards.login.onsubmit = async (e) => {
   btn.textContent = "Log in →";
   btn.style.opacity = "1";
 
+function normalizeSagarRole(roleId) {
+  if (!roleId) return "researcher";
+  const cleaned = String(roleId).toLowerCase().trim();
+  const valid = [
+    "primary_student",
+    "high_school",
+    "researcher",
+    "fisherman",
+    "coastal_community",
+    "authority",
+    "others"
+  ];
+  if (valid.includes(cleaned)) return cleaned;
+  if (cleaned === "student") return "primary_student";
+  if (cleaned === "fisher") return "fisherman";
+  return "researcher";
+}
+
   if(res.success){
-    // Store user login state & preferences
+    // Store user login state & preferences with canonical LangGraph persona key
     localStorage.setItem("sagarMitraLoggedIn", "true");
-    localStorage.setItem("sagarMitraRole", res.user.roleId || "researcher");
+    localStorage.setItem("sagarMitraRole", normalizeSagarRole(res.user.roleId));
     if(res.user.topics){
       localStorage.setItem("sagarMitraTopics", JSON.stringify(res.user.topics));
     }
     localStorage.setItem("sagarMitraCurrentUser", res.user.name || res.user.username);
 
-    // Direct transition to homepage
+    // Direct transition to homepage with ocean verbs loader
+    sessionStorage.setItem("sagarMitraShowTransition", "true");
     document.body.classList.add("page-exit");
-    setTimeout(() => location.href = "main.html", 400);
+    setTimeout(() => location.href = "main.html", 350);
   } else {
     showAlert("loginAlert", res.message || "Invalid username or password.");
   }
@@ -1158,9 +1195,9 @@ document.getElementById("btnCompleteSignup").onclick = async () => {
   btn.style.opacity = "1";
 
   if(res.success){
-    // Save session in localStorage
+    // Save session in localStorage with canonical LangGraph persona key
     localStorage.setItem("sagarMitraLoggedIn", "true");
-    localStorage.setItem("sagarMitraRole", signupDraft.roleId);
+    localStorage.setItem("sagarMitraRole", normalizeSagarRole(signupDraft.roleId));
     localStorage.setItem("sagarMitraTopics", JSON.stringify(signupDraft.topics));
     localStorage.setItem("sagarMitraCurrentUser", signupDraft.name || signupDraft.username);
 
@@ -1171,7 +1208,8 @@ document.getElementById("btnCompleteSignup").onclick = async () => {
     }
     showCard("success");
 
-    // Transition smoothly to homepage
+    // Transition smoothly to homepage with ocean verbs loader
+    sessionStorage.setItem("sagarMitraShowTransition", "true");
     setTimeout(() => {
       document.body.classList.add("page-exit");
       setTimeout(() => location.href = "main.html", 400);

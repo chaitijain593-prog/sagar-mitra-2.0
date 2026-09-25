@@ -1169,6 +1169,19 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
           <span class="ctrl-label">Navigation</span>
         </button>
 
+        <button class="ctrl-btn dispatch-trigger" id="dispatchTrigger" aria-label="Generate Morning Dispatch" title="Generate Morning Dispatch">
+          <span class="ctrl-icon">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+          </span>
+          <span class="ctrl-label">Dispatch</span>
+        </button>
+
         <button class="ctrl-btn news-trigger" id="newsTrigger" aria-label="Open Ocean News Feed">
           <span class="ctrl-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1263,20 +1276,27 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
       <a href="chatbot.html" class="active">CHATBOT</a>
     </nav>
 
-    <!-- Researcher External Web Sources Bar (Positioned in Top Right Corner beneath the Navbar) -->
-    <div class="research-top-sources" id="researchSourcesBar" style="display:none;">
-      <div class="top-sources-header">
-        <div class="top-sources-title">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          <span>INDEXED SOURCES (<span id="topSourcesCount">2</span>)</span>
+    <!-- Researcher Indexed Sources Collapsible Widget (Separated below the Floating Navbar) -->
+    <div class="indexed-sources-widget" id="researchSourcesBar" style="display:none;">
+      <button type="button" class="indexed-sources-toggle-btn" id="indexedSourcesToggleBtn" title="Toggle Indexed Sources">
+        <span class="sources-btn-plus">+</span>
+        <span class="sources-btn-text">Indexed Sources</span>
+        <span class="sources-btn-count" id="topSourcesCount">2</span>
+      </button>
+
+      <div class="indexed-sources-dropdown" id="indexedSourcesDropdown">
+        <div class="sources-dropdown-header">
+          <div class="sources-dropdown-title">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span>ACTIVE INDEXED SOURCES</span>
+          </div>
+          <button type="button" class="sources-add-action-btn" id="addSourceBtn" title="Index external ocean database, website or DOI">
+            <span>+ Add Source</span>
+          </button>
         </div>
-        <button class="top-add-source-btn" id="addSourceBtn" title="Index external ocean database, website or DOI">
-          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-          <span>+ Add Source</span>
-        </button>
-      </div>
-      <div class="top-sources-chips" id="sourcesChipsList">
-        <!-- Rendered dynamically -->
+        <div class="top-sources-chips" id="sourcesChipsList">
+          <!-- Rendered dynamically -->
+        </div>
       </div>
     </div>
 
@@ -1284,31 +1304,6 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <div class="chat-scroll-area" id="chatScrollArea">
       
       <div class="chat-center-column">
-
-        <!-- Researcher Multiple Notebooks Bar (Visible for Researcher Persona) -->
-        <div class="research-notebooks-bar" id="researchNotebooksBar" style="display:none;">
-          <div class="research-notebooks-list" id="researchNotebooksList">
-            <div class="notebook-tab active" data-notebook="arabian">
-              <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              <span>Arabian Sea Thermocline.nb</span>
-              <span class="notebook-close" title="Close Notebook">×</span>
-            </div>
-            <div class="notebook-tab" data-notebook="bengal">
-              <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              <span>Bengal Cyclone Storm Surge.nb</span>
-              <span class="notebook-close" title="Close Notebook">×</span>
-            </div>
-            <div class="notebook-tab" data-notebook="argo">
-              <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              <span>ARGO Array #2901542 Salinity.nb</span>
-              <span class="notebook-close" title="Close Notebook">×</span>
-            </div>
-          </div>
-          <button class="add-notebook-btn" id="addNotebookBtn" title="Create New Research Notebook">
-            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-            <span>+ New Notebook</span>
-          </button>
-        </div>
 
         <!-- Large Time-Aware Ocean Greeting -->
         <section class="greeting-section" id="greetingSection">
@@ -2357,6 +2352,25 @@ if(addSourceForm){
   };
 }
 
+const indexedSourcesToggleBtn = document.getElementById("indexedSourcesToggleBtn");
+const indexedSourcesDropdown = document.getElementById("indexedSourcesDropdown");
+const indexedSourcesWidget = document.getElementById("researchSourcesBar");
+
+if(indexedSourcesToggleBtn && indexedSourcesDropdown){
+  indexedSourcesToggleBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    indexedSourcesDropdown.classList.toggle("open");
+    if(indexedSourcesWidget) indexedSourcesWidget.classList.toggle("open");
+  });
+
+  document.addEventListener("click", (e) => {
+    if(!indexedSourcesDropdown.contains(e.target) && e.target !== indexedSourcesToggleBtn){
+      indexedSourcesDropdown.classList.remove("open");
+      if(indexedSourcesWidget) indexedSourcesWidget.classList.remove("open");
+    }
+  });
+}
+
 renderNotebooks();
 renderSourcesChips();
 
@@ -3100,6 +3114,7 @@ function generateOceanResponse(query, depth){
         </a>
       </div>
     `;
+  }
   return null;
 }
 
@@ -3334,10 +3349,16 @@ nav.onpointerup=()=>{
   localStorage.setItem("navX",nav.offsetLeft);
   localStorage.setItem("navY",nav.offsetTop);
 };
-if(localStorage.navX){
-  nav.style.left=localStorage.navX+"px";
-  nav.style.top=localStorage.navY+"px";
-  nav.style.right="auto";
+const savedX = parseInt(localStorage.getItem("navX"), 10);
+const savedY = parseInt(localStorage.getItem("navY"), 10);
+if(!isNaN(savedX) && !isNaN(savedY) && savedX >= 0 && savedX <= window.innerWidth - 80 && savedY >= 0 && savedY <= window.innerHeight - 40){
+  nav.style.left = savedX + "px";
+  nav.style.top = savedY + "px";
+  nav.style.right = "auto";
+} else {
+  nav.style.left = "";
+  nav.style.top = "";
+  nav.style.right = "88px";
 }
 </script>
 </body>
