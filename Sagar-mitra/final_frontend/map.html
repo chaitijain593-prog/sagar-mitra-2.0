@@ -25,6 +25,27 @@
   --panel-glow:0 8px 32px rgba(0,0,0,0.45);
   --line:#ccecf7;
   --active-glow:0 0 20px rgba(57,189,242,0.65), inset 0 0 10px rgba(57,189,242,0.25);
+  --ctrl-bg:rgba(12,24,34,.84);
+  --ctrl-border:rgba(57,189,242,.35);
+  --ctrl-text:#ffffff;
+  --nav-bg:rgba(12,24,34,.88);
+  --nav-border:rgba(57,189,242,.35);
+  --nav-link:#d4e7f2;
+  --brand-text:#ffffff;
+}
+
+[data-theme="dark"]{
+  --blue:#38bdf8;
+  --blue2:#0284c7;
+  --panel-bg:rgba(20,20,19,0.9);
+  --panel-border:rgba(56,189,248,0.35);
+  --ctrl-bg:rgba(26,26,24,0.88);
+  --ctrl-border:rgba(56,189,248,0.35);
+  --ctrl-text:#f4f4f5;
+  --nav-bg:rgba(20,20,19,0.92);
+  --nav-border:rgba(56,189,248,0.45);
+  --nav-link:#d4d4d8;
+  --brand-text:#f4f4f5;
 }
 
 html,body{
@@ -78,82 +99,111 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   text-decoration:none;
 }
 .logo{
-  width:56px;
-  height:56px;
+  width:48px;
+  height:48px;
   object-fit:contain;
   filter:drop-shadow(0 2px 10px rgba(0,0,0,.5));
   transition:transform .2s ease;
 }
 .logo-container:hover .logo{transform:scale(1.05)}
+.logo-text{
+  font:600 15px/1 "DM Mono", monospace;
+  letter-spacing:2px;
+  color:var(--brand-text);
+  white-space:nowrap;
+  user-select:none;
+}
 
-/* Top Right Actions */
+/* Expanding Top-Right Controls */
 .actions{
   position:fixed;
   top:27px;
   right:28px;
   display:flex;
-  gap:16px;
+  align-items:center;
+  gap:12px;
   z-index:40;
 }
-button{border:0;cursor:pointer}
-.logout,.nav-trigger{
-  position:relative;
-  width:48px;
+.ctrl-btn{
   height:48px;
-  border-radius:12px;
-  background:rgba(12,24,34,.84);
+  border-radius:24px;
+  padding:0 12px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:flex-start;
+  cursor:pointer;
+  background:var(--ctrl-bg);
+  border:1px solid var(--ctrl-border);
   backdrop-filter:blur(14px);
-  border:1px solid var(--panel-border);
+  box-shadow:0 4px 15px rgba(0,0,0,.3);
+  color:var(--ctrl-text);
+  overflow:hidden;
+  transition:padding .3s cubic-bezier(0.2, 0.8, 0.2, 1),
+              background .25s ease,
+              border-color .25s ease,
+              box-shadow .25s ease,
+              transform .2s ease;
+  white-space:nowrap;
+  user-select:none;
+}
+.ctrl-icon{
+  width:24px;
+  height:24px;
   display:grid;
   place-items:center;
-  transition:all .2s ease;
-  box-shadow:0 4px 15px rgba(0,0,0,.3);
+  flex-shrink:0;
+  transition:transform .2s ease;
 }
-.logout:hover,.nav-trigger:hover{
-  background:#142b3d;
+.ctrl-icon svg{width:22px;height:22px}
+.nav-trigger .ctrl-icon svg{stroke:var(--blue)}
+.theme-toggle .ctrl-icon svg{stroke:var(--blue)}
+[data-theme="dark"] .theme-toggle .ctrl-icon svg{stroke:#facc15}
+.logout .ctrl-icon svg{stroke:#ff4050;fill:none}
+
+.ctrl-label{
+  max-width:0;
+  opacity:0;
+  white-space:nowrap;
+  overflow:hidden;
+  font:600 12px "DM Mono",monospace;
+  letter-spacing:.8px;
+  margin-left:0;
+  color:var(--ctrl-text);
+  transition:max-width .3s cubic-bezier(0.2, 0.8, 0.2, 1),
+              opacity .22s ease,
+              margin-left .3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.ctrl-btn:hover{
+  padding:0 16px 0 13px;
   transform:translateY(-2px);
   border-color:var(--blue);
   box-shadow:0 6px 20px rgba(57,189,242,.35);
 }
-.logout svg{width:26px;stroke:#ff4050;fill:none;stroke-width:2}
-.nav-trigger{background:var(--blue);border-color:transparent}
-.nav-trigger svg{width:29px;stroke:#fff;fill:none;stroke-width:2.5}
-.nav-trigger:hover{background:var(--blue2)}
-
-.tooltip{
-  position:absolute;
-  top:56px;
-  right:0;
-  background:rgba(12,24,34,.95);
-  color:#fff;
-  padding:7px 11px;
-  border-radius:7px;
-  font:500 11px/1 "DM Mono",monospace;
-  opacity:0;
-  pointer-events:none;
-  white-space:nowrap;
-  box-shadow:0 4px 15px rgba(0,0,0,.4);
-  border:1px solid var(--panel-border);
-  transform:translateY(-4px);
-  transition:.2s;
-  z-index:60;
+.ctrl-btn:hover .ctrl-label{
+  max-width:95px;
+  opacity:1;
+  margin-left:8px;
 }
-button:hover .tooltip{opacity:1;transform:none}
+.logout:hover{
+  border-color:rgba(255,64,80,.5);
+  box-shadow:0 6px 20px rgba(255,64,80,.25);
+}
 
-/* Draggable Navigation Bar */
+/* Thinner Draggable Navigation Bar */
 .nav{
   position:fixed;
   right:88px;
   top:88px;
   width:max-content;
-  min-width:410px;
-  padding:15px 18px;
+  min-width:380px;
+  padding:7px 12px;
   display:flex;
-  gap:7px;
-  background:rgba(12,24,34,.88);
+  gap:4px;
+  align-items:center;
+  background:var(--nav-bg);
   backdrop-filter:blur(20px);
-  border:1px solid var(--panel-border);
-  border-radius:14px;
+  border:1px solid var(--nav-border);
+  border-radius:12px;
   box-shadow:0 8px 35px rgba(0,0,0,.5);
   z-index:50;
   cursor:grab;
@@ -164,22 +214,33 @@ button:hover .tooltip{opacity:1;transform:none}
 }
 .nav.open{opacity:1;visibility:visible;transform:none}
 .nav.dragging{cursor:grabbing}
+.nav:hover{z-index:100}
+
+/* Navbar buttons: light-blue subtle glow on hover */
 .nav a{
   flex:1;
   text-align:center;
   text-decoration:none;
   white-space:nowrap;
-  color:#d4e7f2;
-  font:600 13px "DM Mono",monospace;
-  letter-spacing:1.2px;
-  padding:11px 10px;
+  color:var(--nav-link);
+  font:600 12px "DM Mono",monospace;
+  letter-spacing:1.4px;
+  padding:8px 14px;
   border-radius:8px;
-  transition:.2s;
+  border:1px solid transparent;
+  transition:all .2s ease;
 }
-.nav a:hover,.nav a.active{
-  background:rgba(57,189,242,.18);
+.nav a:hover{
+  background:rgba(57,189,242,.15);
   color:var(--blue);
-  border:1px solid rgba(57,189,242,.4);
+  border-color:rgba(57,189,242,.55);
+  box-shadow:0 0 16px rgba(57,189,242,.45), inset 0 0 8px rgba(57,189,242,.15);
+  transform:translateY(-1px);
+}
+.nav a.active{
+  background:rgba(57,189,242,.22);
+  color:var(--blue);
+  border-color:rgba(57,189,242,.5);
 }
 
 /* ============================================================
@@ -668,6 +729,7 @@ button:hover .tooltip{opacity:1;transform:none}
 <!-- Top Branding -->
 <a href="main.html" class="logo-container" title="Back to Homepage">
   <img src="assets/logo.svg" onerror="this.onerror=null;this.src='assets/logo.png';" class="logo" alt="Sagar Mitra">
+  <span class="logo-text">SAGAR MITRA</span>
 </a>
 
 <!-- Live Coordinates & Telemetry HUD -->
@@ -686,23 +748,32 @@ button:hover .tooltip{opacity:1;transform:none}
   <button class="map-ctrl-btn" id="resetViewBtn" title="Reset Indian Ocean Basin View">⟲</button>
 </div>
 
-<!-- Top-right Action Buttons -->
+<!-- Top-right Action Buttons: Navigation, Theme Toggle, Logout -->
 <div class="actions">
-  <button class="nav-trigger" id="trigger" aria-label="Open navigation menu">
-    <svg viewBox="0 0 40 40">
-      <path d="M4 25c5-11 12-15 18-10 4 3 6 8 14 3"/>
-      <path d="M4 30c7-7 12-8 18-4 5 3 9 3 14-2"/>
-    </svg>
-    <span class="tooltip">Navigation</span>
+  <button class="ctrl-btn nav-trigger" id="trigger" aria-label="Open navigation menu">
+    <span class="ctrl-icon">
+      <svg viewBox="0 0 40 40" fill="none" stroke-width="2.5">
+        <path d="M4 25c5-11 12-15 18-10 4 3 6 8 14 3"/>
+        <path d="M4 30c7-7 12-8 18-4 5 3 9 3 14-2"/>
+      </svg>
+    </span>
+    <span class="ctrl-label">Navigation</span>
   </button>
-  
-  <button class="logout" id="logout" aria-label="Log out">
-    <svg viewBox="0 0 32 32">
-      <path d="M13 5H7a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h6"/>
-      <path d="M18 10l7 6-7 6"/>
-      <path d="M25 16H11"/>
-    </svg>
-    <span class="tooltip">Log out</span>
+
+  <button class="ctrl-btn theme-toggle" id="themeToggle" aria-label="Toggle theme">
+    <span class="ctrl-icon" id="themeIconSlot"></span>
+    <span class="ctrl-label" id="themeLabel">Theme</span>
+  </button>
+
+  <button class="ctrl-btn logout" id="logout" aria-label="Log out">
+    <span class="ctrl-icon">
+      <svg viewBox="0 0 32 32" stroke-width="2">
+        <path d="M13 5H7a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h6"/>
+        <path d="M18 10l7 6-7 6"/>
+        <path d="M25 16H11"/>
+      </svg>
+    </span>
+    <span class="ctrl-label">Log Out</span>
   </button>
 </div>
 
@@ -858,7 +929,39 @@ button:hover .tooltip{opacity:1;transform:none}
 
 <script>
 // ============================================================
-// PAGE TRANSITIONS & NAVIGATION
+// 1. THEME MANAGEMENT (Light / Dark - Claude charcoal)
+// ============================================================
+function initTheme(){
+  const saved = localStorage.getItem("sagarMitraTheme") || "light";
+  applyTheme(saved);
+}
+
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("sagarMitraTheme", theme);
+
+  const iconSlot = document.getElementById("themeIconSlot");
+  const label = document.getElementById("themeLabel");
+  if(theme === "dark"){
+    if(iconSlot) iconSlot.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`;
+    if(label) label.textContent = "Light Mode";
+  } else {
+    if(iconSlot) iconSlot.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+    if(label) label.textContent = "Dark Mode";
+  }
+}
+
+const themeBtn = document.getElementById("themeToggle");
+if(themeBtn){
+  themeBtn.onclick = () => {
+    const cur = document.documentElement.getAttribute("data-theme") || "light";
+    applyTheme(cur === "dark" ? "light" : "dark");
+  };
+}
+initTheme();
+
+// ============================================================
+// 2. PAGE TRANSITIONS & NAVIGATION
 // ============================================================
 const pages=["main.html","about.html","map.html","chatbot.html"];
 const current=2;
@@ -908,14 +1011,15 @@ document.addEventListener("keydown",e=>{
 });
 
 // CTRL + 2-FINGER SWIPE: Horizontal page navigation
-// Prevents normal vertical navigation from being affected
+// Intercept in capture phase so Leaflet doesn't swallow or block when Ctrl is held
 let swipeLock = false;
 window.addEventListener("wheel", e => {
   // Only trigger when Ctrl is held AND gesture is predominantly horizontal
-  if (!e.ctrlKey) return; // Normal vertical navigation unaffected!
+  if (!e.ctrlKey) return; // Normal map pan/zoom untouched!
   if (Math.abs(e.deltaX) < 16 || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // Normal vertical navigation unaffected!
 
   e.preventDefault();
+  e.stopPropagation();
   if (swipeLock || transitioning) return;
 
   const dir = e.deltaX > 0 ? 1 : -1; // deltaX > 0: swipe left (next page); deltaX < 0: swipe right (prev page)
@@ -925,7 +1029,7 @@ window.addEventListener("wheel", e => {
   swipeLock = true;
   transitioning = true;
   triggerWaveTransition(dir, pages[n]);
-}, { passive: false });
+}, { capture: true, passive: false });
 
 // Floating nav drag persistence
 let drag=false,sx,sy,ox,oy;
