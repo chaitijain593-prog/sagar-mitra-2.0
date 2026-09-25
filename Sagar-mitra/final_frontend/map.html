@@ -889,9 +889,10 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 /* Redesigned Rationale Card: Nautical Logbook Interface */
 .reasoning-drawer-wrapper {
   position: fixed;
-  left: 455px;
+  right: 85px;
   top: 100px;
-  width: 410px;
+  left: auto;
+  width: 380px;
   max-height: 365px;
   z-index: 35;
   background: linear-gradient(145deg, rgba(8, 20, 30, 0.72) 0%, rgba(4, 12, 20, 0.82) 100%);
@@ -907,8 +908,8 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   gap: 12px;
   opacity: 0;
   visibility: hidden;
-  transform: translateX(-15px);
-  transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1);
+  transform: translateX(15px);
+  transition: opacity 0.3s cubic-bezier(0.2, 0.9, 0.4, 1), transform 0.3s cubic-bezier(0.2, 0.9, 0.4, 1);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(57,189,242,0.4) transparent;
@@ -1066,10 +1067,11 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 /* Glassmorphic OBIS Marine Biodiversity Dashboard Card (Positioned below reasoning drawer) */
 .obis-panel-wrapper {
   position: fixed;
-  left: 455px;
-  top: 480px;
-  width: 410px;
-  max-height: calc(100vh - 500px);
+  right: 85px;
+  top: 485px;
+  left: auto;
+  width: 380px;
+  max-height: calc(100vh - 510px);
   z-index: 35;
   background: linear-gradient(145deg, rgba(8, 20, 30, 0.72) 0%, rgba(4, 12, 20, 0.82) 100%);
   backdrop-filter: blur(24px) saturate(1.2);
@@ -1084,8 +1086,8 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   gap: 12px;
   opacity: 0;
   visibility: hidden;
-  transform: translateX(-15px);
-  transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1);
+  transform: translateX(15px);
+  transition: opacity 0.3s cubic-bezier(0.2, 0.9, 0.4, 1), transform 0.3s cubic-bezier(0.2, 0.9, 0.4, 1);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(57,189,242,0.4) transparent;
@@ -1096,8 +1098,9 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   transform: none;
 }
 .obis-panel-wrapper.standalone {
-  left: 80px;
+  right: 85px;
   top: 100px;
+  left: auto;
   width: 370px;
   max-height: calc(100vh - 140px);
 }
@@ -1543,7 +1546,10 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
         <span class="reasoning-sub-title">Nautical Logbook & XAI Intentions</span>
       </div>
     </div>
-    <div class="carousel-counter-badge" id="carouselCounter">ENTRY 01 / 01</div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="carousel-counter-badge" id="carouselCounter">ENTRY 01 / 01</div>
+      <button id="closeReasoningDrawerBtn" title="Close Voyage Rationale" style="background:none;border:none;color:#94a3b8;font-size:16px;cursor:pointer;padding:0 2px;line-height:1;transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#94a3b8'">✕</button>
+    </div>
   </div>
 
   <!-- Nautical Step-Tracker Bar -->
@@ -3244,7 +3250,107 @@ window.addEventListener("load", () => {
 
       fetchAndRenderParetoRoute();
     }
+  } else if (params.has("lat") && params.has("lon")) {
+    const lat = parseFloat(params.get("lat"));
+    const lon = parseFloat(params.get("lon"));
+    const zoom = parseInt(params.get("zoom")) || 8;
+    const title = params.get("title") || "Target Location";
+    const mode = params.get("mode") || "ocean";
+
+    if (!isNaN(lat) && !isNaN(lon)) {
+      setTimeout(() => {
+        map.setView([lat, lon], zoom);
+        
+        const pinMarker = L.marker([lat, lon], {
+          icon: L.divIcon({
+            className: 'split-radar-marker',
+            html: `
+              <div style="position:relative;width:24px;height:24px;">
+                <div style="position:absolute;inset:0;border-radius:50%;background:#0284c7;border:2.5px solid #ffffff;box-shadow:0 0 16px rgba(56,189,248,0.85);display:grid;place-items:center;">
+                  <div style="width:7px;height:7px;border-radius:50%;background:#38bdf8;animation:pulse 1.3s infinite;"></div>
+                </div>
+              </div>
+            `,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          })
+        }).addTo(map);
+
+        pinMarker.bindPopup(`
+          <div style="font-family:'DM Sans',sans-serif;min-width:180px;padding:4px 2px;">
+            <div style="font:600 13px 'DM Mono',monospace;color:#0284c7;margin-bottom:4px;">📍 ${escapeHtml(title)}</div>
+            <div style="font:500 11px 'DM Mono',monospace;color:#94a3b8;">Coords: ${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E</div>
+          </div>
+        `).openPopup();
+
+        if (["ocean", "satellite", "nautical", "bathymetry"].includes(mode)) {
+          switchBasemap(mode);
+        } else if (["weather", "currents", "marine"].includes(mode)) {
+          toggleOverlay(mode);
+        }
+      }, 350);
+    }
   }
+
+  // Draggable Floating Cards Utility & Close Handlers
+  function makeCardDraggable(cardEl, handleEl) {
+    if (!cardEl) return;
+    if (!handleEl) handleEl = cardEl;
+    handleEl.style.cursor = "move";
+
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let initialLeft = 0, initialTop = 0;
+
+    handleEl.addEventListener("mousedown", (e) => {
+      if (e.target.tagName === "BUTTON" || e.target.tagName === "SELECT" || e.target.closest("button") || e.target.closest("select")) return;
+      isDragging = true;
+      const rect = cardEl.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      initialLeft = rect.left;
+      initialTop = rect.top;
+
+      cardEl.style.left = `${initialLeft}px`;
+      cardEl.style.top = `${initialTop}px`;
+      cardEl.style.right = "auto";
+      cardEl.style.bottom = "auto";
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+      e.preventDefault();
+    });
+
+    function onMouseMove(e) {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const newLeft = Math.max(10, Math.min(window.innerWidth - cardEl.offsetWidth - 10, initialLeft + dx));
+      const newTop = Math.max(10, Math.min(window.innerHeight - cardEl.offsetHeight - 10, initialTop + dy));
+      cardEl.style.left = `${newLeft}px`;
+      cardEl.style.top = `${newTop}px`;
+    }
+
+    function onMouseUp() {
+      isDragging = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    }
+  }
+
+  const closeReasoningDrawerBtn = document.getElementById("closeReasoningDrawerBtn");
+  if (closeReasoningDrawerBtn) {
+    closeReasoningDrawerBtn.onclick = () => {
+      const rd = document.getElementById("reasoningDrawer");
+      if (rd) rd.classList.remove("open");
+    };
+  }
+
+  const rdEl = document.getElementById("reasoningDrawer");
+  if (rdEl) makeCardDraggable(rdEl, rdEl.querySelector(".reasoning-header"));
+
+  const obisEl = document.getElementById("obisPanel");
+  if (obisEl) makeCardDraggable(obisEl, obisEl.querySelector(".obis-header"));
 });
 </script>
 <script src="ocean-shared.js"></script>
