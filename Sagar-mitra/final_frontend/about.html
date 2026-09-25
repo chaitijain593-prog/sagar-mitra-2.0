@@ -1106,7 +1106,26 @@ const current=1;
 const nav=document.getElementById("nav");
 const trigger=document.getElementById("trigger");
 
-trigger.onclick=()=>nav.classList.toggle("open");
+function positionNavBelowActions(){
+  const actions = document.querySelector(".actions");
+  if(actions){
+    const aRect = actions.getBoundingClientRect();
+    nav.style.top = Math.round(aRect.bottom + 8) + "px";
+    nav.style.right = Math.max(16, Math.round(window.innerWidth - aRect.right)) + "px";
+    nav.style.left = "auto";
+  } else {
+    nav.style.top = "76px";
+    nav.style.right = "28px";
+    nav.style.left = "auto";
+  }
+}
+positionNavBelowActions();
+
+trigger.onclick=(e)=>{
+  if(e) e.stopPropagation();
+  positionNavBelowActions();
+  nav.classList.toggle("open");
+};
 
 document.getElementById("logout").onclick=()=>{
   localStorage.removeItem("sagarMitraLoggedIn");

@@ -34,55 +34,65 @@
   overflow: hidden !important;
   border-right-color: transparent !important;
   transform: translateX(-20px);
+  display: none !important;
 }
 
-/* Chatbot shifts to the left 3/5th (60%) of viewport */
-.app-container.split-view-active .chat-main {
+/* Chatbot shifts to the right 3/5th (60%) of viewport */
+.app-container.split-view-active .chat-main,
+.app-container.split-view-active .chat-workspace {
   width: 60vw !important;
   max-width: 60vw !important;
   flex: 0 0 60vw !important;
+  order: 1 !important;
 }
 
-/* Map shifts to the right 2/5th (40%) of viewport */
+/* Map opens from LEFT side, taking 2/5th (40vw) of viewport width and full 100vh height */
 .chatbot-map-split {
+  order: -1 !important;
   width: 0;
   flex: 0 0 0;
   max-width: 0;
+  height: 100vh !important;
   opacity: 0;
   pointer-events: none;
   overflow: hidden;
   background: #06111a;
-  border-left: 1px solid var(--sidebar-border, rgba(56, 189, 248, 0.25));
+  border-right: 1.5px solid var(--sidebar-border, rgba(56, 189, 248, 0.3));
+  border-left: none;
   display: flex;
   flex-direction: column;
   position: relative;
-  transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
-              flex 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
-              max-width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+  transform: translateX(-100%);
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              flex 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              max-width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
               opacity 0.28s ease;
-  z-index: 20;
+  z-index: 25;
 }
 
 .app-container.split-view-active .chatbot-map-split {
   width: 40vw !important;
   max-width: 40vw !important;
   flex: 0 0 40vw !important;
+  transform: translateX(0);
   opacity: 1;
   pointer-events: auto;
+  box-shadow: 10px 0 35px rgba(0, 0, 0, 0.5), 0 0 20px rgba(56, 189, 248, 0.15);
 }
 
-/* Split Map Header */
-.split-map-header {
-  height: 48px;
-  padding: 0 16px;
-  background: rgba(10, 22, 32, 0.94);
+/* Scaled-down Split Map Header */
+.chatbot-map-split .split-map-header {
+  height: 38px;
+  padding: 0 10px;
+  background: rgba(10, 22, 32, 0.95);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(56, 189, 248, 0.3);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.25);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   z-index: 1000;
   flex-shrink: 0;
 }
@@ -90,16 +100,16 @@
 .split-map-title-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
 .split-live-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #10b981;
-  box-shadow: 0 0 10px #10b981;
+  box-shadow: 0 0 8px #10b981;
   animation: pulseLive 1.8s infinite;
   flex-shrink: 0;
 }
@@ -109,49 +119,49 @@
   50% { transform: scale(1.2); opacity: 1; }
 }
 
-.split-map-title {
-  font: 700 11px "DM Mono", monospace;
-  letter-spacing: 1px;
+.chatbot-map-split .split-map-title {
+  font: 700 10px "DM Mono", monospace;
+  letter-spacing: 0.8px;
   color: #f8fafc;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
-.split-map-title svg {
-  width: 16px !important;
-  height: 16px !important;
+.chatbot-map-split .split-map-title svg {
+  width: 14px !important;
+  height: 14px !important;
   flex-shrink: 0 !important;
   stroke: var(--blue, #38bdf8);
 }
 
-.split-map-controls,
-.split-map-actions {
+.chatbot-map-split .split-map-controls,
+.chatbot-map-split .split-map-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-.split-map-badge,
-.split-coords-badge {
-  font: 600 10px "DM Mono", monospace;
+.chatbot-map-split .split-map-badge,
+.chatbot-map-split .split-coords-badge {
+  font: 600 8.5px "DM Mono", monospace;
   color: var(--blue, #38bdf8);
-  background: rgba(56, 189, 248, 0.14);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  padding: 3px 8px;
-  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 2px 6px;
+  border-radius: 8px;
   text-transform: uppercase;
 }
 
-.split-expand-btn,
-.split-close-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+.chatbot-map-split .split-expand-btn,
+.chatbot-map-split .split-close-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.08);
   color: #f8fafc;
@@ -159,53 +169,77 @@
   place-items: center;
   cursor: pointer;
   text-decoration: none;
-  font-size: 14px;
+  font-size: 11px;
   transition: all 0.2s ease;
 }
 
-.split-expand-btn:hover {
+.chatbot-map-split .split-expand-btn svg,
+.chatbot-map-split .split-close-btn svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.chatbot-map-split .split-expand-btn:hover {
   background: rgba(56, 189, 248, 0.25);
   border-color: var(--blue, #38bdf8);
   color: var(--blue, #38bdf8);
 }
 
-.split-close-btn:hover {
+.chatbot-map-split .split-close-btn:hover {
   background: rgba(255, 64, 80, 0.25);
   border-color: #ff4050;
   color: #ff4050;
+}
+
+/* Scaled-down Split Pane Tabs */
+.chatbot-map-split .split-pane-tabs {
+  padding: 5px 8px !important;
+  gap: 6px !important;
+}
+
+.chatbot-map-split .split-tab-btn {
+  padding: 4px 8px !important;
+  font: 600 10.5px 'DM Sans', sans-serif !important;
+  border-radius: 6px !important;
+  gap: 5px !important;
+}
+
+.chatbot-map-split .split-tab-btn svg {
+  width: 12px !important;
+  height: 12px !important;
 }
 
 /* Split Viewport Map Element */
 .split-map-viewport {
   flex: 1;
   width: 100%;
-  height: calc(100% - 48px);
+  height: calc(100% - 38px);
   background: #040d14;
   position: relative;
   z-index: 1;
 }
 
 /* Scaled-Down Mode Selector in Split Map */
-.split-modes-bar {
+.chatbot-map-split .split-modes-bar {
   position: absolute;
-  top: 60px;
-  right: 12px;
+  top: 48px;
+  right: 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   z-index: 1000;
-  background: rgba(8, 20, 30, 0.85);
+  background: rgba(8, 20, 30, 0.88);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  padding: 6px;
-  border-radius: 20px;
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+  border-radius: 16px;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
-.split-mode-btn {
-  width: 32px;
-  height: 32px;
+.chatbot-map-split .split-mode-btn {
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.05);
@@ -216,77 +250,105 @@
   transition: all 0.2s ease;
 }
 
-.split-mode-btn span {
+.chatbot-map-split .split-mode-btn span {
   display: none !important;
 }
 
-.split-mode-btn svg {
-  width: 16px !important;
-  height: 16px !important;
+.chatbot-map-split .split-mode-btn svg {
+  width: 13px !important;
+  height: 13px !important;
   stroke: currentColor;
   fill: none;
   stroke-width: 2;
   flex-shrink: 0;
 }
 
-.split-mode-btn:hover {
+.chatbot-map-split .split-mode-btn:hover {
   border-color: var(--blue, #38bdf8);
   background: rgba(56, 189, 248, 0.2);
-  transform: scale(1.08);
+  transform: scale(1.06);
 }
 
-.split-mode-btn.active {
+.chatbot-map-split .split-mode-btn.active {
   background: var(--blue, #38bdf8);
   border-color: #fff;
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
-  transform: scale(1.05);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.55);
+  transform: scale(1.04);
 }
 
 /* Scaled-down Dynamic Legend Bar */
-.split-legend-bar {
+.chatbot-map-split .split-legend-bar {
   position: absolute;
-  bottom: 14px;
-  left: 14px;
-  right: 14px;
-  background: rgba(6, 16, 26, 0.88);
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  background: rgba(6, 16, 26, 0.9);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  border-radius: 10px;
-  padding: 8px 12px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 8px;
+  padding: 5px 8px;
   z-index: 1000;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  gap: 3px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
-.split-legend-title {
-  font: 700 9px "DM Mono", monospace;
+.chatbot-map-split .split-legend-title {
+  font: 700 8px "DM Mono", monospace;
   color: #38bdf8;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.6px;
   text-transform: uppercase;
 }
 
-.split-legend-ramp {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.split-ramp-gradient {
+.chatbot-map-split .split-ramp-gradient {
   width: 100%;
-  height: 6px;
-  border-radius: 3px;
+  height: 4px;
+  border-radius: 2px;
   background: linear-gradient(to right, #0284c7, #0369a1, #075985, #082f49);
 }
 
-.split-ramp-labels {
+.chatbot-map-split .split-ramp-labels {
   display: flex;
   justify-content: space-between;
-  font: 500 8.5px "DM Mono", monospace;
+  font: 500 7.5px "DM Mono", monospace;
   color: #94a3b8;
 }
+
+/* Scaled-down Leaflet Controls */
+.chatbot-map-split .leaflet-control-zoom {
+  transform: scale(0.78);
+  transform-origin: top left;
+  margin: 8px 0 0 8px !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 6px !important;
+  overflow: hidden;
+}
+
+.chatbot-map-split .leaflet-control-zoom a {
+  background: rgba(10, 22, 32, 0.92) !important;
+  color: #38bdf8 !important;
+  border-bottom-color: rgba(56, 189, 248, 0.2) !important;
+  width: 25px !important;
+  height: 25px !important;
+  line-height: 25px !important;
+  font-size: 13px !important;
+}
+
+/* Split Toggle Button: Themewise Correct in Navbar */
+.actions .split-toggle-btn .ctrl-icon svg,
+.split-toggle-btn .ctrl-icon svg {
+  stroke: var(--blue, #38bdf8) !important;
+}
+
+.app-container.split-view-active .actions .split-toggle-btn {
+  border-color: var(--blue, #38bdf8) !important;
+  background: rgba(56, 189, 248, 0.16) !important;
+  box-shadow: 0 0 12px var(--blue-glow, rgba(56, 189, 248, 0.4)) !important;
+}
+
 
 /* Map Preview Card in Chat Message */
 .map-preview-card {

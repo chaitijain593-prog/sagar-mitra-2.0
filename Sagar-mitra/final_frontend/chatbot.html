@@ -407,6 +407,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 }
 .ctrl-icon svg{width:20px;height:20px}
 .nav-trigger .ctrl-icon svg{stroke:var(--blue)}
+.split-toggle-btn .ctrl-icon svg{stroke:var(--blue)}
 .theme-toggle .ctrl-icon svg{stroke:var(--blue)}
 [data-theme="dark"] .theme-toggle .ctrl-icon svg{stroke:#facc15}
 .logout .ctrl-icon svg{stroke:#ff4050;fill:none}
@@ -440,8 +441,8 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 /* Thinner Draggable Navigation Bar */
 .nav{
   position:fixed;
-  right:88px;
-  top:80px;
+  right:28px;
+  top:76px;
   width:max-content;
   min-width:380px;
   padding:7px 12px;
@@ -3022,8 +3023,8 @@ function initSplitLeafletMap(){
   if(!container) return;
 
   splitMap = L.map("splitLeafletMap", {
-    center: [14.0, 77.0],
-    zoom: 5,
+    center: [15.2, 74.8],
+    zoom: 5.2,
     zoomControl: true,
     attributionControl: false
   });
@@ -3133,11 +3134,12 @@ window.triggerSplitMap = function(lat, lng, title, details, mode){
   // 5. Switch to designated mode if given
   if(mode) setSplitMode(mode);
 
-  // 6. Smoothly fly to target coordinates after CSS transition settles
+  // 6. Smoothly adapt and fly to target coordinates as map slides out from left
+  setTimeout(() => { if(splitMap) splitMap.invalidateSize(); }, 120);
   setTimeout(() => {
     if(splitMap){
       splitMap.invalidateSize();
-      splitMap.flyTo([lat, lng], 6, { duration: 1.2 });
+      splitMap.flyTo([lat, lng], 5.5, { duration: 1.2 });
 
       // Clean previous markers
       if(splitMarker) splitMap.removeLayer(splitMarker);
@@ -3198,9 +3200,10 @@ if(splitMapToggleBtn){
     const isSplit = appContainer.classList.contains("split-view-active");
     if(isSplit){
       appContainer.classList.remove("split-view-active");
-      setTimeout(() => { if(splitMap) splitMap.invalidateSize(); }, 380);
+      setTimeout(() => { if(splitMap) splitMap.invalidateSize(); }, 120);
+      setTimeout(() => { if(splitMap) splitMap.invalidateSize(); }, 400);
     } else {
-      window.triggerSplitMap(14.0, 77.0, "Indian Ocean Hydro-Basin", "Live spatial telemetry synchronized with current chat workspace.", "ocean");
+      window.triggerSplitMap(15.2993, 74.1240, "Indian Coastline & Marine Basin", "Live spatial telemetry synchronized along the Indian coastline.", "ocean");
     }
   };
 }
@@ -4683,7 +4686,26 @@ const current=3;
 const nav=document.getElementById("nav");
 const trigger=document.getElementById("trigger");
 
-trigger.onclick=()=>nav.classList.toggle("open");
+function positionNavBelowActions(){
+  const actions = document.querySelector(".actions");
+  if(actions){
+    const aRect = actions.getBoundingClientRect();
+    nav.style.top = Math.round(aRect.bottom + 8) + "px";
+    nav.style.right = Math.max(16, Math.round(window.innerWidth - aRect.right)) + "px";
+    nav.style.left = "auto";
+  } else {
+    nav.style.top = "76px";
+    nav.style.right = "28px";
+    nav.style.left = "auto";
+  }
+}
+positionNavBelowActions();
+
+trigger.onclick=(e)=>{
+  if(e) e.stopPropagation();
+  positionNavBelowActions();
+  nav.classList.toggle("open");
+};
 document.getElementById("logout").onclick=()=>{
   localStorage.removeItem("sagarMitraLoggedIn");
   location.href="login.html";
@@ -4768,9 +4790,7 @@ if(!isNaN(savedX) && !isNaN(savedY) && savedX >= 0 && savedX <= window.innerWidt
   nav.style.top = savedY + "px";
   nav.style.right = "auto";
 } else {
-  nav.style.left = "";
-  nav.style.top = "";
-  nav.style.right = "88px";
+  positionNavBelowActions();
 }
 </script>
 </body>

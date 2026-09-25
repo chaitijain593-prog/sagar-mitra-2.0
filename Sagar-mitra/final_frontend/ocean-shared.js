@@ -453,63 +453,65 @@
         generateAndDisplayMorningDispatch();
       });
     }
+    window.generateAndDisplayMorningDispatch = generateAndDisplayMorningDispatch;
 
-    // 2. Also keep inside floating nav menu as a link
-    const nav = document.getElementById("nav");
-    if (nav && !document.getElementById("navMorningDispatchBtn")) {
-      const dispatchLink = document.createElement("a");
-      dispatchLink.href = "javascript:void(0)";
-      dispatchLink.id = "navMorningDispatchBtn";
-      dispatchLink.className = "dispatch-nav-btn";
-      dispatchLink.innerHTML = "<span>📄 DISPATCH</span>";
-      dispatchLink.addEventListener("click", () => {
-        if (nav.classList.contains("open")) nav.classList.remove("open");
-        generateAndDisplayMorningDispatch();
-      });
-      nav.appendChild(dispatchLink);
-    }
   }
 
   // ------------------------------------------------------------
-  // GLOBAL NAVIGATION BAR CONTROLLER (Fixes opening & bounds)
+  // GLOBAL NAVIGATION BAR CONTROLLER
   // ------------------------------------------------------------
   function initGlobalNavigation() {
     const nav = document.getElementById("nav");
     if (!nav) return;
 
-    // Safety bounds check on saved coordinates
-    const savedX = parseInt(localStorage.getItem("navX"), 10);
-    const savedY = parseInt(localStorage.getItem("navY"), 10);
-    if (!isNaN(savedX) && !isNaN(savedY) && savedX >= 0 && savedX <= window.innerWidth - 80 && savedY >= 0 && savedY <= window.innerHeight - 40) {
-      nav.style.left = savedX + "px";
-      nav.style.top = savedY + "px";
-      nav.style.right = "auto";
-    } else {
-      nav.style.left = "";
-      nav.style.top = "";
-      nav.style.right = "88px";
+    // Function: dynamically position nav directly below the navigation icons row (.actions)
+    function positionNavBelowActions() {
+      const actions = document.querySelector(".actions");
+      if (actions) {
+        const aRect = actions.getBoundingClientRect();
+        nav.style.top = Math.round(aRect.bottom + 8) + "px";
+        nav.style.right = Math.max(16, Math.round(window.innerWidth - aRect.right)) + "px";
+        nav.style.left = "auto";
+      } else {
+        nav.style.top = "76px";
+        nav.style.right = "28px";
+        nav.style.left = "auto";
+      }
     }
 
-    // Handle clicks on any nav trigger (.nav-trigger, #trigger, #navTrigger)
-    document.addEventListener("click", (e) => {
-      const triggerBtn = e.target.closest(".nav-trigger, #trigger, #navTrigger");
-      if (triggerBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        const rect = nav.getBoundingClientRect();
-        if (rect.left < 0 || rect.right > window.innerWidth || rect.top < 0 || rect.bottom > window.innerHeight) {
-          nav.style.left = "";
-          nav.style.top = "";
-          nav.style.right = "88px";
+    // Default position directly below actions
+    positionNavBelowActions();
+
+    // Bind trigger directly, position below icons, and prevent double-toggling
+    const trigger = document.getElementById("trigger") || document.getElementById("navTrigger") || document.querySelector(".nav-trigger");
+    if (trigger) {
+      trigger.onclick = (e) => {
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
         }
+        positionNavBelowActions();
         nav.classList.toggle("open");
-      } else if (nav.classList.contains("open") && !nav.contains(e.target)) {
+      };
+    }
+
+    // Close floating nav when clicking outside
+    document.addEventListener("click", (e) => {
+      if (nav.classList.contains("open") && !nav.contains(e.target) && !e.target.closest(".nav-trigger, #trigger, #navTrigger")) {
         nav.classList.remove("open");
+      }
+    });
+
+    // Auto-reposition on window resize if open
+    window.addEventListener("resize", () => {
+      if (nav.classList.contains("open")) {
+        positionNavBelowActions();
       }
     });
   }
 
   async function generateAndDisplayMorningDispatch() {
+    window.generateAndDisplayMorningDispatch = generateAndDisplayMorningDispatch;
     let player = document.getElementById("floatingDispatchPlayer");
     if (!player) {
       player = document.createElement("div");

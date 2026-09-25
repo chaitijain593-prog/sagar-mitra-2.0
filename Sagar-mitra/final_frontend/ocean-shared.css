@@ -3,13 +3,15 @@
    Role Switcher Dropdown & Multi-Domain Ocean News Feed
    ============================================================ */
 
-/* Expanding Buttons: News Feed, Switch Role & Morning Dispatch */
+/* Expanding Buttons: Split Map, News Feed, Switch Role & Morning Dispatch */
+.actions .split-toggle-btn .ctrl-icon svg,
 .actions .news-trigger .ctrl-icon svg,
 .actions .role-trigger .ctrl-icon svg,
 .actions .dispatch-trigger .ctrl-icon svg {
   stroke: var(--blue, #38bdf8);
 }
 
+.actions .split-toggle-btn:hover,
 .actions .dispatch-trigger:hover {
   border-color: var(--blue, #38bdf8);
   box-shadow: 0 4px 16px var(--blue-glow, rgba(56, 189, 248, 0.4));
@@ -21,16 +23,6 @@
   margin-left: 8px !important;
 }
 
-/* Ensure Floating Navigation Bar is on top and visible */
-.nav {
-  z-index: 100000 !important;
-}
-.nav.open {
-  opacity: 1 !important;
-  visibility: visible !important;
-  transform: none !important;
-  pointer-events: auto !important;
-}
 
 /* Role Dropdown Wrapper & Menu */
 .role-dropdown-wrapper {
@@ -546,13 +538,6 @@
   background: linear-gradient(135deg, rgba(56, 189, 248, 0.32) 0%, rgba(2, 132, 199, 0.45) 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 14px var(--blue-glow, rgba(56, 189, 248, 0.3));
-}
-
-.nav a.dispatch-nav-btn {
-  color: var(--blue, #38bdf8) !important;
-  font-weight: 700 !important;
-  border-left: 2px solid var(--blue, #38bdf8);
-  padding-left: 12px;
 }
 
 .floating-dispatch-player {

@@ -559,6 +559,388 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   transform:translateY(-1px);
 }
 
+/* ============================================================
+   LEFT VERTICAL SENTRY & SAFETY DOCK
+   ============================================================ */
+.safety-dock-wrapper{
+  position:fixed;
+  left:28px;
+  top:248px;
+  z-index:35;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:10px;
+}
+
+.safety-dock-header{
+  font:600 9px "DM Mono",monospace;
+  letter-spacing:2px;
+  color:var(--blue);
+  text-transform:uppercase;
+  background:rgba(12,24,34,0.85);
+  padding:3px 8px;
+  border-radius:6px;
+  border:1px solid rgba(57,189,242,0.3);
+  pointer-events:none;
+  margin-bottom:2px;
+}
+
+.safety-btn{
+  position:relative;
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  background:var(--panel-bg);
+  backdrop-filter:blur(16px);
+  border:1.5px solid var(--panel-border);
+  color:#b8dbeb;
+  display:grid;
+  place-items:center;
+  box-shadow:0 4px 16px rgba(0,0,0,0.35);
+  cursor:pointer;
+  transition:all 0.22s cubic-bezier(0.2, 0.9, 0.4, 1);
+}
+
+.safety-btn svg{
+  width:20px;
+  height:20px;
+  stroke:currentColor;
+  transition:transform 0.2s ease, stroke 0.2s ease;
+}
+
+.safety-btn:hover{
+  background:#142939;
+  color:#fff;
+  border-color:var(--blue);
+  transform:scale(1.08);
+  box-shadow:0 6px 20px rgba(57,189,242,0.35);
+}
+
+.safety-btn:hover svg{
+  transform:scale(1.1);
+  stroke:var(--blue);
+}
+
+.safety-btn.active-base{
+  background:linear-gradient(135deg, rgba(57,189,242,0.35) 0%, rgba(13,169,223,0.18) 100%), #0d2232;
+  border-color:#39bdf2;
+  color:#39bdf2;
+  box-shadow:var(--active-glow), 0 4px 18px rgba(0,0,0,0.4);
+}
+
+/* SOS Emergency Style */
+.safety-btn-sos{
+  border-color:rgba(239,68,68,0.6);
+  color:#f87171;
+  background:rgba(220,38,38,0.16);
+  box-shadow:0 4px 16px rgba(220,38,38,0.35);
+}
+
+.safety-btn-sos:hover{
+  background:#7f1d1d;
+  color:#ffffff;
+  border-color:#ef4444;
+  box-shadow:0 0 22px rgba(239,68,68,0.7);
+}
+
+.safety-btn-sos:hover svg{
+  stroke:#ffffff;
+}
+
+/* Tooltip appearing to the right */
+.safety-tooltip{
+  position:absolute;
+  left:56px;
+  top:50%;
+  transform:translateY(-50%) translateX(-6px);
+  background:rgba(10,22,32,0.96);
+  backdrop-filter:blur(16px);
+  border:1px solid var(--panel-border);
+  padding:6px 12px;
+  border-radius:8px;
+  font:500 11px/1.3 "DM Mono",monospace;
+  letter-spacing:0.8px;
+  white-space:nowrap;
+  color:#fff;
+  box-shadow:0 6px 20px rgba(0,0,0,0.45);
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transition:all 0.18s ease;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  z-index:100;
+}
+
+.safety-btn:hover .safety-tooltip{
+  opacity:1;
+  visibility:visible;
+  transform:translateY(-50%) translateX(0);
+}
+
+/* ============================================================
+   FLOATING SAFETY BANNERS
+   ============================================================ */
+.floating-banners-stack{
+  position:fixed;
+  top:72px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:34;
+  display:flex;
+  gap:12px;
+  pointer-events:auto;
+  align-items:center;
+}
+
+.hazard-banner{
+  border-radius:24px;
+  padding:6px 14px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-weight:700;
+  letter-spacing:0.5px;
+  color:#ffffff;
+  background:rgba(12,24,34,0.88);
+  backdrop-filter:blur(16px);
+  border:1px solid rgba(57,189,242,0.35);
+  box-shadow:0 6px 24px rgba(0,0,0,0.4);
+  transition:all 0.3s ease;
+}
+
+.hazard-banner.hazard-safe{
+  border-color:rgba(34,197,94,0.5);
+  background:linear-gradient(135deg, rgba(22,101,52,0.7) 0%, rgba(12,24,34,0.88) 100%);
+  color:#86efac;
+}
+
+.hazard-banner.hazard-caution{
+  border-color:rgba(245,158,11,0.6);
+  background:linear-gradient(135deg, rgba(146,64,14,0.75) 0%, rgba(12,24,34,0.88) 100%);
+  color:#fde047;
+}
+
+.hazard-banner.hazard-hazardous{
+  border-color:rgba(239,68,68,0.8);
+  background:linear-gradient(135deg, rgba(185,28,28,0.85) 0%, rgba(127,29,29,0.9) 100%);
+  color:#fca5a5;
+  box-shadow:0 0 20px rgba(239,68,68,0.5);
+  animation:hazardPulse 1.6s infinite ease-in-out;
+}
+
+@keyframes hazardPulse{
+  0%,100%{transform:scale(1);box-shadow:0 0 16px rgba(239,68,68,0.4)}
+  50%{transform:scale(1.02);box-shadow:0 0 28px rgba(239,68,68,0.8)}
+}
+
+.hazard-banner-info{
+  display:flex;
+  flex-direction:column;
+}
+
+.hazard-banner-label{
+  font-size:8px;
+  font-family:"DM Mono",monospace;
+  font-weight:600;
+  opacity:0.85;
+  letter-spacing:1px;
+  text-transform:uppercase;
+}
+
+.hazard-banner-status{
+  font-size:11px;
+  font-family:"DM Mono",monospace;
+  font-weight:700;
+}
+
+.hazard-banner-icon{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:22px;
+  height:22px;
+  border-radius:50%;
+  background:rgba(255,255,255,0.14);
+  font-size:12px;
+  flex-shrink:0;
+}
+
+.hazard-banner-icon svg{
+  width:14px;
+  height:14px;
+}
+
+.disengage-anchor-mini-btn{
+  background:rgba(255,255,255,0.15);
+  border:none;
+  color:#fff;
+  border-radius:50%;
+  width:18px;
+  height:18px;
+  font-size:10px;
+  cursor:pointer;
+  display:grid;
+  place-items:center;
+  transition:all 0.2s;
+}
+
+.disengage-anchor-mini-btn:hover{
+  background:rgba(239,68,68,0.8);
+  transform:scale(1.15);
+}
+
+/* ============================================================
+   HAZARD REPORT MODAL OVERLAY
+   ============================================================ */
+.hazard-modal-overlay{
+  position:fixed;
+  inset:0;
+  z-index:10005;
+  background:rgba(3,8,14,0.72);
+  backdrop-filter:blur(8px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+}
+
+.hazard-modal{
+  width:100%;
+  max-width:440px;
+  background:linear-gradient(145deg, rgba(12,24,34,0.94) 0%, rgba(6,14,21,0.98) 100%);
+  border:1px solid rgba(57,189,242,0.4);
+  border-radius:16px;
+  padding:22px 24px;
+  box-shadow:0 20px 50px rgba(0,0,0,0.7), 0 0 30px rgba(57,189,242,0.2);
+  color:#fff;
+  animation:modalFadeIn 0.25s cubic-bezier(0.2, 0.9, 0.4, 1);
+}
+
+@keyframes modalFadeIn{
+  from{opacity:0;transform:scale(0.94) translateY(10px)}
+  to{opacity:1;transform:scale(1) translateY(0)}
+}
+
+.hazard-modal-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid rgba(57,189,242,0.2);
+  padding-bottom:10px;
+}
+
+.hazard-modal-close{
+  background:none;
+  border:none;
+  color:#94a3b8;
+  font-size:18px;
+  cursor:pointer;
+  padding:2px 6px;
+  transition:color 0.2s;
+}
+
+.hazard-modal-close:hover{
+  color:#fff;
+}
+
+.hazard-modal-coords{
+  background:rgba(6,14,21,0.7);
+  border:1px solid rgba(57,189,242,0.25);
+  border-radius:8px;
+  padding:8px 12px;
+  font:500 11px "DM Mono",monospace;
+  color:var(--blue);
+  margin-bottom:14px;
+}
+
+.hazard-modal-label{
+  display:block;
+  font:600 11px "DM Mono",monospace;
+  color:#cbd5e1;
+  margin-bottom:6px;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+}
+
+.hazard-modal-select{
+  width:100%;
+  background:rgba(10,22,32,0.9);
+  border:1px solid rgba(57,189,242,0.35);
+  border-radius:8px;
+  padding:10px 12px;
+  color:#fff;
+  font:500 13px "DM Sans",sans-serif;
+  outline:none;
+  margin-bottom:8px;
+}
+
+.hazard-modal-cancel{
+  background:rgba(255,255,255,0.08);
+  border:1px solid rgba(255,255,255,0.15);
+  color:#cbd5e1;
+  padding:9px 18px;
+  border-radius:8px;
+  font:600 12px "DM Mono",monospace;
+  cursor:pointer;
+  transition:all 0.2s;
+}
+
+.hazard-modal-cancel:hover{
+  background:rgba(255,255,255,0.16);
+  color:#fff;
+}
+
+.hazard-modal-submit{
+  background:linear-gradient(135deg, #0284c7 0%, #0da9df 100%);
+  border:none;
+  color:#fff;
+  padding:9px 20px;
+  border-radius:8px;
+  font:700 12px "DM Mono",monospace;
+  letter-spacing:0.5px;
+  cursor:pointer;
+  box-shadow:0 4px 14px rgba(2,132,199,0.4);
+  transition:all 0.2s;
+}
+
+.hazard-modal-submit:hover{
+  filter:brightness(1.15);
+  box-shadow:0 6px 18px rgba(57,189,242,0.5);
+}
+
+/* Hazard mesh markers on map */
+.hazard-mesh-marker{
+  font-size:20px;
+  line-height:1;
+  filter:drop-shadow(0 2px 8px rgba(0,0,0,0.8));
+  cursor:pointer;
+  transition:transform 0.2s;
+}
+
+.hazard-mesh-marker:hover{
+  transform:scale(1.3);
+}
+
+.hazard-popup-remove-btn{
+  margin-top:8px;
+  padding:4px 10px;
+  background:rgba(239,68,68,0.2);
+  border:1px solid rgba(239,68,68,0.5);
+  color:#fca5a5;
+  border-radius:6px;
+  font:600 10px "DM Mono",monospace;
+  cursor:pointer;
+  transition:all 0.2s;
+}
+
+.hazard-popup-remove-btn:hover{
+  background:#dc2626;
+  color:#fff;
+}
+
 /* Fixed Bottom-Right Arrow Navigators (Always fixed to viewport) */
 .arrows{
   position:fixed !important;
@@ -1230,11 +1612,111 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   <div class="hud-item"><span style="color:var(--blue)">STATUS:</span> <span>ORCA SATELLITE TELEMETRY ONLINE</span></div>
 </div>
 
+<!-- Floating Marine Safety & Drift Banners Stack -->
+<div class="floating-banners-stack" id="floatingBannersStack">
+  <!-- Marine Safety Status / EEZ Geofence Banner -->
+  <div class="hazard-banner hazard-safe" id="hazardBanner">
+    <div class="hazard-banner-info">
+      <span class="hazard-banner-label" id="hazardBannerLabel">Marine Safety Status</span>
+      <span class="hazard-banner-status" id="hazardBannerStatus">SAFE (INSIDE EEZ)</span>
+    </div>
+    <span id="hazardBannerIcon" class="hazard-banner-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+        <polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+    </span>
+  </div>
+
+  <!-- Anchor Drift Sentry Banner -->
+  <div class="hazard-banner hazard-safe" id="anchorDriftBanner" style="display: none;">
+    <div class="hazard-banner-info">
+      <span class="hazard-banner-label">Anchor Drift Sentry</span>
+      <span class="hazard-banner-status" id="anchorDriftBannerStatus">NO ANCHOR</span>
+    </div>
+    <span id="anchorDriftBannerIcon" class="hazard-banner-icon">⚓</span>
+    <button type="button" class="disengage-anchor-mini-btn" id="disengageAnchorMiniBtn" title="Disengage Anchor">✕</button>
+  </div>
+</div>
+
 <!-- Map Nav Controls (Zoom + / - / Reset) -->
 <div class="map-nav-controls">
   <button class="map-ctrl-btn" id="zoomInBtn" title="Zoom In">+</button>
   <button class="map-ctrl-btn" id="zoomOutBtn" title="Zoom Out">−</button>
   <button class="map-ctrl-btn" id="resetViewBtn" title="Reset Indian Ocean Basin View">⟲</button>
+</div>
+
+<!-- Left Sideline Sentry & Safety Dock -->
+<div class="safety-dock-wrapper" id="safetyDock">
+  <div class="safety-dock-header">SAFETY</div>
+
+  <!-- 1. Anchor Drift Sentry -->
+  <button class="safety-btn" id="setAnchorBtn" title="Drop a virtual anchor and monitor drift" aria-label="Set Anchor">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="5" r="2.5"/>
+      <line x1="12" y1="7.5" x2="12" y2="21"/>
+      <line x1="7" y1="11" x2="17" y2="11"/>
+      <path d="M5 15c0 4 3.5 6 7 6s7-2 7-6"/>
+    </svg>
+    <div class="safety-tooltip">
+      <span class="badge-tag badge-base">SENTRY</span>
+      <span>Anchor Drift Sentry</span>
+    </div>
+  </button>
+
+  <!-- 2. EEZ Geofence Sentinel -->
+  <button class="safety-btn" id="geofenceCheckBtn" title="Check Indian EEZ & MPA Geofence Status" aria-label="Geofence Check">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <path d="M12 8v4"/>
+      <path d="M12 16h.01"/>
+    </svg>
+    <div class="safety-tooltip">
+      <span class="badge-tag badge-base">GEOFENCE</span>
+      <span>EEZ Boundary Sentinel</span>
+    </div>
+  </button>
+
+  <!-- 3. Crowdsourced Hazard Reporting -->
+  <button class="safety-btn" id="reportHazardBtn" title="Report Maritime Hazard (Nets, Oil, Debris)" aria-label="Report Hazard">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+      <line x1="12" y1="9" x2="12" y2="13"/>
+      <line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    <div class="safety-tooltip">
+      <span class="badge-tag badge-overlay">HAZARDS</span>
+      <span>Report Hazard Mesh</span>
+    </div>
+  </button>
+
+  <!-- 4. Emergency Mayday / Coast Guard SOS -->
+  <button class="safety-btn safety-btn-sos" id="sosBtn" title="Broadcast Emergency MAYDAY to Indian Coast Guard" aria-label="Initiate SOS">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      <line x1="12" y1="2" x2="12" y2="4"/>
+    </svg>
+    <div class="safety-tooltip">
+      <span class="badge-tag" style="background:rgba(239,68,68,0.25);color:#ef4444">MAYDAY</span>
+      <span>Coast Guard SOS Protocol</span>
+    </div>
+  </button>
+
+  <!-- 5. Morning Dispatch Generator -->
+  <button class="safety-btn" id="mapDispatchBtn" title="Generate Daily Marine Dispatch & Audio Bulletin" aria-label="Morning Dispatch">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="16" y1="13" x2="8" y2="13"/>
+      <line x1="16" y1="17" x2="8" y2="17"/>
+      <polyline points="10 9 9 9 8 9"/>
+    </svg>
+    <div class="safety-tooltip">
+      <span class="badge-tag badge-base">DISPATCH</span>
+      <span>Morning Marine Bulletin</span>
+    </div>
+  </button>
 </div>
 
 <!-- Top-right Action Buttons: Navigation, News Feed, Switch Role, Theme Toggle, Logout -->
@@ -1673,6 +2155,33 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   <button class="arrow" id="next" aria-label="Next page (Chatbot)">→</button>
 </div>
 
+<!-- Hazard Reporting Modal Overlay -->
+<div class="hazard-modal-overlay" id="hazardModalOverlay" style="display: none;">
+  <div class="hazard-modal">
+    <div class="hazard-modal-header">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:18px;">⚠️</span>
+        <h4 style="font:600 16px 'Playfair Display',serif;margin:0;">Report Maritime Hazard</h4>
+      </div>
+      <button type="button" class="hazard-modal-close" id="hazardModalClose" aria-label="Close">✕</button>
+    </div>
+    <p style="font-size:12px;color:#94a3b8;margin:8px 0 14px;">Log an obstacle or hazard in the crowdsourced ocean mesh network for fellow vessels.</p>
+    <form class="hazard-modal-form" id="hazardModalForm">
+      <div class="hazard-modal-coords" id="hazardModalCoords">Coordinates: 15.3000°N, 74.1200°E</div>
+      <label class="hazard-modal-label" for="hazardTypeSelect">Hazard Classification</label>
+      <select id="hazardTypeSelect" class="hazard-modal-select">
+        <option value="net">🕸️ Ghost Fishing Net / Submerged Gear</option>
+        <option value="oil_slick">🛢️ Oil Slick / Chemical Spillage</option>
+        <option value="debris">🪵 Floating Debris / Container Obstacle</option>
+      </select>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+        <button type="button" class="hazard-modal-cancel" id="hazardModalCancel">Cancel</button>
+        <button type="submit" class="hazard-modal-submit">Broadcast to Mesh</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 // ============================================================
 // 1. THEME MANAGEMENT (Light / Dark - Claude charcoal)
@@ -1714,7 +2223,26 @@ const current=2;
 const nav=document.getElementById("nav");
 const trigger=document.getElementById("trigger");
 
-trigger.onclick=()=>nav.classList.toggle("open");
+function positionNavBelowActions(){
+  const actions = document.querySelector(".actions");
+  if(actions){
+    const aRect = actions.getBoundingClientRect();
+    nav.style.top = Math.round(aRect.bottom + 8) + "px";
+    nav.style.right = Math.max(16, Math.round(window.innerWidth - aRect.right)) + "px";
+    nav.style.left = "auto";
+  } else {
+    nav.style.top = "76px";
+    nav.style.right = "28px";
+    nav.style.left = "auto";
+  }
+}
+positionNavBelowActions();
+
+trigger.onclick=(e)=>{
+  if(e) e.stopPropagation();
+  positionNavBelowActions();
+  nav.classList.toggle("open");
+};
 
 document.getElementById("logout").onclick=()=>{
   localStorage.removeItem("sagarMitraLoggedIn");
@@ -2438,6 +2966,16 @@ if (btnCalcCustomRoute) {
 }
 
 map.on("click", e => {
+  if (typeof anchorPlacementMode !== "undefined" && anchorPlacementMode) {
+    anchorPlacementMode = false;
+    map.getContainer().style.cursor = "";
+    setAnchorAt(e.latlng.lat, e.latlng.lng);
+    return;
+  }
+  if (typeof hazardReportMode !== "undefined" && hazardReportMode) {
+    openHazardModal(e.latlng);
+    return;
+  }
   if (!routePanel.classList.contains("open")) return;
   
   const clickLat = parseFloat(e.latlng.lat.toFixed(3));
@@ -3365,6 +3903,621 @@ window.addEventListener("load", () => {
   const obisEl = document.getElementById("obisPanel");
   if (obisEl) makeCardDraggable(obisEl, obisEl.querySelector(".obis-header"));
 });
+
+// ============================================================
+// 8. SAGAR MITRA MARITIME SAFETY & SENTINEL SUITE
+// 1. Anchor Drift Sentry (/api/sentry/anchor-drift)
+// 2. Proactive Geofence Monitoring & Siren Alarm (/api/geofence-check)
+// 3. Crowdsourced Hazard Reporting & Mesh Layer (/api/hazard & /api/hazard/mesh)
+// 4. Emergency Mayday / Coast Guard SOS (/api/sos)
+// 5. Morning Dispatch Generator (/api/dispatch/generate)
+// ============================================================
+
+const SENTRY_API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" ? "http://127.0.0.1:8000" : "";
+let sentrySessionId = localStorage.getItem("orca_session_id");
+
+function getSentrySessionId() {
+  if (!sentrySessionId) {
+    try {
+      sentrySessionId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `sess-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      localStorage.setItem("orca_session_id", sentrySessionId);
+    } catch (e) {
+      sentrySessionId = `sess-${Date.now()}`;
+    }
+  }
+  return sentrySessionId;
+}
+
+// Siren Audio Synthesizer (Web Audio API sawtooth 600Hz -> 900Hz -> 600Hz)
+let sirenAudioCtx = null;
+function playSirenTone() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = sirenAudioCtx || new AudioContextClass();
+    sirenAudioCtx = ctx;
+    if (ctx.state === "suspended") ctx.resume().catch(e => console.warn("Siren resume failed:", e));
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(600, now);
+    osc.frequency.linearRampToValueAtTime(900, now + 0.5);
+    osc.frequency.linearRampToValueAtTime(600, now + 1.0);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 1.2);
+  } catch (err) {
+    console.warn("Audio play blocked:", err);
+  }
+}
+
+// Distance Calculation Helper (Haversine formula in KM)
+function calculateHaversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// ------------------------------------------------------------
+// A. SIMULATED VESSEL TELEMETRY MARKER
+// ------------------------------------------------------------
+let currentVesselCoord = [18.95, 72.75]; // Mumbai / Konkan offshore station
+
+const vesselDivIcon = L.divIcon({
+  className: "",
+  html: `<div style="font-size:26px;filter:drop-shadow(0 2px 8px rgba(56,189,248,0.9));cursor:grab;line-height:1;" title="Simulated Vessel (Drag to test Geofence & Anchor Drift)">⛵</div>`,
+  iconSize: [28, 28],
+  iconAnchor: [14, 14]
+});
+
+const vesselMarker = L.marker(currentVesselCoord, {
+  draggable: true,
+  icon: vesselDivIcon,
+  zIndexOffset: 1000
+}).addTo(map);
+
+vesselMarker.bindPopup(`
+  <div style="font-family:'DM Sans',sans-serif;padding:2px;">
+    <span class="popup-badge" style="color:#38bdf8">Vessel Telemetry</span>
+    <div class="popup-title">ORCA-NAV Sentry</div>
+    <div class="popup-metrics">
+      <div>Position: <strong id="vesselPopupPos">${currentVesselCoord[0].toFixed(2)}°N, ${currentVesselCoord[1].toFixed(2)}°E</strong></div>
+      <div>Speed: <strong>11.4 kts</strong></div>
+      <div>Status: <strong>Active Patrol</strong></div>
+      <div>Interactive: <strong>Drag to test</strong></div>
+    </div>
+  </div>
+`);
+
+vesselMarker.on("dragend", (e) => {
+  const pos = e.target.getLatLng();
+  currentVesselCoord = [pos.lat, pos.lng];
+  const posEl = document.getElementById("vesselPopupPos");
+  if (posEl) posEl.textContent = `${pos.lat.toFixed(2)}°N, ${pos.lng.toFixed(2)}°E`;
+  pollGeofence();
+  if (anchorActive) {
+    pollAnchorDrift();
+  }
+});
+
+// ------------------------------------------------------------
+// B. ANCHOR DRIFT SENTRY (/api/sentry/anchor-drift)
+// ------------------------------------------------------------
+const ANCHOR_POLL_MS = 10000;
+const ANCHOR_RADIUS_KM = 0.5;
+let anchorActive = false;
+let anchorPlacementMode = false;
+let anchorCoords = null;
+let anchorMarker = null;
+let anchorCircle = null;
+let anchorPollTimer = null;
+let anchorLastAlert = "SAFE";
+
+const anchorDivIcon = L.divIcon({
+  className: "",
+  html: '<div class="hazard-mesh-marker" style="font-size:24px;filter:drop-shadow(0 0 8px rgba(57,189,242,0.95))">⚓</div>',
+  iconSize: [24, 24],
+  iconAnchor: [12, 12]
+});
+
+function drawAnchor(lat, lon, radiusKm) {
+  clearAnchorLayers();
+  anchorCoords = [lat, lon];
+
+  anchorCircle = L.circle([lat, lon], {
+    radius: radiusKm * 1000,
+    color: "#38bdf8",
+    weight: 2,
+    fillColor: "#38bdf8",
+    fillOpacity: 0.18
+  }).addTo(map).bindPopup(`<b>Anchor Safe Perimeter</b><br>Radius: ${radiusKm} km`);
+
+  anchorMarker = L.marker([lat, lon], { icon: anchorDivIcon, zIndexOffset: 940 })
+    .addTo(map)
+    .bindPopup(`
+      <div style="font-family:'DM Sans',sans-serif;padding:2px;">
+        <span class="popup-badge" style="color:#38bdf8">Anchor Station</span>
+        <div class="popup-title">Anchor Deployed</div>
+        <div style="font:500 11px 'DM Mono',monospace;color:#94a3b8;margin:4px 0 8px;">
+          Coordinates: ${lat.toFixed(3)}°N, ${lon.toFixed(3)}°E<br>
+          Safe Radius: ${radiusKm} km
+        </div>
+        <button type="button" onclick="disengageAnchor(event)" class="hazard-popup-remove-btn">Disengage Anchor</button>
+      </div>
+    `);
+}
+
+function clearAnchorLayers() {
+  if (anchorMarker) { map.removeLayer(anchorMarker); anchorMarker = null; }
+  if (anchorCircle) { map.removeLayer(anchorCircle); anchorCircle = null; }
+  anchorCoords = null;
+}
+
+function startAnchorPolling() {
+  stopAnchorPolling();
+  anchorPollTimer = setInterval(pollAnchorDrift, ANCHOR_POLL_MS);
+  pollAnchorDrift();
+}
+
+function stopAnchorPolling() {
+  if (anchorPollTimer) {
+    clearInterval(anchorPollTimer);
+    anchorPollTimer = null;
+  }
+}
+
+async function pollAnchorDrift() {
+  if (!anchorActive) return;
+  const [lat, lon] = currentVesselCoord;
+  const sess = getSentrySessionId();
+
+  try {
+    const res = await fetch(`${SENTRY_API_BASE}/api/sentry/anchor-drift?session_id=${encodeURIComponent(sess)}&lat=${lat}&lon=${lon}`);
+    if (res.ok) {
+      const data = await res.json();
+      updateAnchorDriftBanner(data);
+      return;
+    }
+  } catch (err) {}
+
+  // Fallback distance calculation
+  if (anchorCoords) {
+    const dist = calculateHaversineKm(lat, lon, anchorCoords[0], anchorCoords[1]);
+    const isDrifted = dist > ANCHOR_RADIUS_KM;
+    const alertLevel = isDrifted ? "HAZARDOUS" : (dist > 0.35 ? "CAUTION" : "SAFE");
+    updateAnchorDriftBanner({
+      anchor_set: true,
+      drift_alert: alertLevel,
+      distance_km: Math.round(dist * 100) / 100,
+      message: isDrifted ? `Vessel drifted ${dist.toFixed(2)} km outside anchor radius!` : "Anchor holding steady within safe perimeter."
+    });
+  }
+}
+
+function updateAnchorDriftBanner(data) {
+  const banner = document.getElementById("anchorDriftBanner");
+  const statusEl = document.getElementById("anchorDriftBannerStatus");
+  if (!banner || !statusEl) return;
+
+  if (!data.anchor_set) {
+    banner.style.display = "none";
+    anchorLastAlert = "SAFE";
+    return;
+  }
+
+  banner.style.display = "flex";
+  const normalized = (data.drift_alert || "SAFE").toUpperCase();
+  banner.classList.remove("hazard-safe", "hazard-caution", "hazard-hazardous");
+  if (normalized === "HAZARDOUS" || normalized === "WARNING") {
+    banner.classList.add("hazard-hazardous");
+  } else if (normalized === "CAUTION") {
+    banner.classList.add("hazard-caution");
+  } else {
+    banner.classList.add("hazard-safe");
+  }
+
+  statusEl.textContent = typeof data.distance_km === "number"
+    ? `${normalized} (${data.distance_km} km drift)`
+    : normalized;
+
+  if (normalized === "HAZARDOUS" && anchorLastAlert !== "HAZARDOUS") {
+    playSirenTone();
+  }
+  anchorLastAlert = normalized;
+}
+
+async function setAnchorAt(lat, lon) {
+  const sess = getSentrySessionId();
+  try {
+    const res = await fetch(`${SENTRY_API_BASE}/api/sentry/anchor-drift`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sess, coordinates: [lat, lon], radius_km: ANCHOR_RADIUS_KM })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      drawAnchor(lat, lon, data.anchor ? data.anchor.radius_km : ANCHOR_RADIUS_KM);
+    } else {
+      drawAnchor(lat, lon, ANCHOR_RADIUS_KM);
+    }
+  } catch (err) {
+    drawAnchor(lat, lon, ANCHOR_RADIUS_KM);
+  }
+
+  anchorActive = true;
+  anchorLastAlert = "SAFE";
+  updateAnchorDriftBanner({
+    anchor_set: true,
+    drift_alert: "SAFE",
+    distance_km: 0,
+    message: `Anchor set within ${ANCHOR_RADIUS_KM} km perimeter.`
+  });
+  startAnchorPolling();
+
+  const btn = document.getElementById("setAnchorBtn");
+  if (btn) btn.classList.add("active-base");
+}
+
+async function disengageAnchor(e) {
+  if (e && typeof e.preventDefault === "function") e.preventDefault();
+  stopAnchorPolling();
+  clearAnchorLayers();
+  anchorActive = false;
+  anchorLastAlert = "SAFE";
+  const banner = document.getElementById("anchorDriftBanner");
+  if (banner) banner.style.display = "none";
+  const btn = document.getElementById("setAnchorBtn");
+  if (btn) btn.classList.remove("active-base");
+
+  const sess = getSentrySessionId();
+  try {
+    await fetch(`${SENTRY_API_BASE}/api/sentry/anchor-drift?session_id=${encodeURIComponent(sess)}`, { method: "DELETE" });
+  } catch (err) {}
+}
+
+function toggleAnchorMode() {
+  const btn = document.getElementById("setAnchorBtn");
+  if (anchorActive) {
+    disengageAnchor();
+    return;
+  }
+  anchorPlacementMode = !anchorPlacementMode;
+  hazardReportMode = false;
+  if (btn) btn.classList.toggle("active-base", anchorPlacementMode);
+  map.getContainer().style.cursor = anchorPlacementMode ? "crosshair" : "";
+}
+
+// ------------------------------------------------------------
+// C. PROACTIVE GEOFENCE MONITORING & SIREN ALARM (/api/geofence-check)
+// ------------------------------------------------------------
+const GEOFENCE_POLL_MS = 10000;
+let geofencePollTimer = null;
+let lastGeofenceAlert = "SAFE";
+
+function isPointInsidePolygon(lat, lon, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    const intersect = ((yi > lon) !== (yj > lon)) &&
+        (lat < (xj - xi) * (lon - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function updateGeofenceTransition(data, nearestKm) {
+  const insideEez = data.inside_eez === true || data.breached === false;
+  const outsideEez = data.inside_eez === false || data.breached === true;
+  let next = "SAFE";
+  if (outsideEez || data.inside_mpa === true || data.geofence_alert === "HAZARDOUS") {
+    next = "CROSSED";
+  } else if (data.geofence_alert === "CAUTION" || (nearestKm !== null && nearestKm <= 5.0)) {
+    next = "APPROACHING";
+  }
+
+  const previous = lastGeofenceAlert;
+  lastGeofenceAlert = next;
+
+  const banner = document.getElementById("hazardBanner");
+  const statusEl = document.getElementById("hazardBannerStatus");
+  const iconEl = document.getElementById("hazardBannerIcon");
+
+  if (banner && statusEl) {
+    banner.classList.remove("hazard-safe", "hazard-caution", "hazard-hazardous");
+    if (next === "CROSSED") {
+      banner.classList.add("hazard-hazardous");
+      statusEl.textContent = data.inside_mpa ? "MPA RESTRICTED ZONE" : "EEZ BORDER ALERT";
+      if (iconEl) iconEl.innerHTML = "🚨";
+    } else if (next === "APPROACHING") {
+      banner.classList.add("hazard-caution");
+      statusEl.textContent = `CAUTION (${nearestKm ? nearestKm.toFixed(1) + " km" : "5 km threshold"})`;
+      if (iconEl) iconEl.innerHTML = "⚠️";
+    } else {
+      banner.classList.add("hazard-safe");
+      statusEl.textContent = "SAFE (INSIDE EEZ)";
+      if (iconEl) iconEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+    }
+  }
+
+  if (previous !== "CROSSED" && next === "CROSSED") {
+    playSirenTone();
+  }
+  return next;
+}
+
+async function pollGeofence() {
+  const [lat, lon] = currentVesselCoord;
+  try {
+    const res = await fetch(`${SENTRY_API_BASE}/api/geofence-check?lat=${lat}&lon=${lon}`);
+    if (res.ok) {
+      const data = await res.json();
+      const distances = [data.eez_distance_km, data.mpa_distance_km].filter(d => typeof d === "number");
+      const nearestKm = distances.length ? Math.min(...distances) : null;
+      updateGeofenceTransition(data, nearestKm);
+      return;
+    }
+  } catch (err) {}
+
+  // Fallback calculation using Indian EEZ coordinates
+  let minDist = 999;
+  for (const pt of indianEEZCoords) {
+    const d = calculateHaversineKm(lat, lon, pt[0], pt[1]);
+    if (d < minDist) minDist = d;
+  }
+  // Rough envelope check: 5°N to 24°N, 65°E to 89°E
+  const isInside = lat >= 5.0 && lat <= 24.0 && lon >= 65.0 && lon <= 89.0;
+  updateGeofenceTransition({
+    inside_eez: isInside,
+    breached: !isInside,
+    eez_distance_km: minDist,
+    geofence_alert: !isInside ? "HAZARDOUS" : (minDist <= 5.0 ? "CAUTION" : "SAFE")
+  }, minDist);
+}
+
+function startGeofencePolling() {
+  if (geofencePollTimer) return;
+  pollGeofence();
+  geofencePollTimer = setInterval(pollGeofence, GEOFENCE_POLL_MS);
+}
+
+// ------------------------------------------------------------
+// D. CROWDSOURCED HAZARD REPORTING & MESH LAYER (/api/hazard)
+// ------------------------------------------------------------
+const hazardMeshLayer = L.layerGroup().addTo(map);
+const HAZARD_TYPE_ICONS = { net: "🕸️", oil_slick: "🛢️", debris: "🪵" };
+let hazardReportMode = false;
+let pendingHazardCoords = null;
+
+function hazardTypeLabel(type) {
+  return (type || "hazard").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function hazardDivIcon(type) {
+  const symbol = HAZARD_TYPE_ICONS[type] || "⚠️";
+  return L.divIcon({ className: "", html: `<div class="hazard-mesh-marker">${symbol}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+}
+
+function addHazardMarker(point) {
+  const marker = L.marker([point.lat, point.lon], { icon: hazardDivIcon(point.type) }).addTo(hazardMeshLayer);
+  marker.bindPopup(`
+    <div style="font-family:'DM Sans',sans-serif;padding:2px;">
+      <span class="popup-badge" style="color:#f59e0b">Crowdsourced Hazard</span>
+      <div class="popup-title">${hazardTypeLabel(point.type)}</div>
+      <div style="font:500 11px 'DM Mono',monospace;color:#94a3b8;margin:4px 0 8px;">
+        Coords: ${point.lat.toFixed(3)}°N, ${point.lon.toFixed(3)}°E<br>
+        Status: <span style="color:#34d399">${point.status || "active"}</span>
+      </div>
+      <button type="button" class="hazard-popup-remove-btn">Clear Marker</button>
+    </div>
+  `);
+  marker.on("popupopen", (e) => {
+    const popupEl = e.popup.getElement();
+    const removeBtn = popupEl && popupEl.querySelector(".hazard-popup-remove-btn");
+    if (removeBtn) {
+      removeBtn.addEventListener("click", () => {
+        hazardMeshLayer.removeLayer(marker);
+        map.closePopup();
+      });
+    }
+  });
+  return marker;
+}
+
+async function loadHazardMesh() {
+  try {
+    const res = await fetch(`${SENTRY_API_BASE}/api/hazard/mesh`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.points) && data.points.length > 0) {
+        data.points.forEach(addHazardMarker);
+        return;
+      }
+    }
+  } catch (err) {}
+
+  // Initial demo hazards in Indian coastal waters
+  const demoMesh = [
+    { lat: 17.20, lon: 72.85, type: "net", status: "active" },
+    { lat: 15.80, lon: 73.10, type: "oil_slick", status: "active" },
+    { lat: 18.40, lon: 72.20, type: "debris", status: "active" },
+    { lat: 11.20, lon: 75.20, type: "net", status: "active" }
+  ];
+  demoMesh.forEach(addHazardMarker);
+}
+
+function openHazardModal(latlng) {
+  pendingHazardCoords = { lat: latlng.lat, lon: latlng.lng };
+  const coordsEl = document.getElementById("hazardModalCoords");
+  if (coordsEl) {
+    coordsEl.textContent = `Coordinates: ${latlng.lat.toFixed(4)}°N, ${latlng.lng.toFixed(4)}°E`;
+  }
+  const modal = document.getElementById("hazardModalOverlay");
+  if (modal) modal.style.display = "flex";
+}
+
+function closeHazardModal() {
+  const modal = document.getElementById("hazardModalOverlay");
+  if (modal) modal.style.display = "none";
+  pendingHazardCoords = null;
+  hazardReportMode = false;
+  map.getContainer().style.cursor = "";
+  const btn = document.getElementById("reportHazardBtn");
+  if (btn) btn.classList.remove("active-base");
+}
+
+async function submitHazardReport(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  if (!pendingHazardCoords) return;
+  const select = document.getElementById("hazardTypeSelect");
+  const type = select ? select.value : "debris";
+  const { lat, lon } = pendingHazardCoords;
+
+  try {
+    await fetch(`${SENTRY_API_BASE}/api/hazard`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat, lon, hazard_type: type, status: "active" })
+    });
+  } catch (err) {}
+
+  addHazardMarker({ lat, lon, type, status: "active" });
+  closeHazardModal();
+}
+
+function toggleHazardReportMode() {
+  const btn = document.getElementById("reportHazardBtn");
+  hazardReportMode = !hazardReportMode;
+  anchorPlacementMode = false;
+  if (btn) btn.classList.toggle("active-base", hazardReportMode);
+  map.getContainer().style.cursor = hazardReportMode ? "crosshair" : "";
+  if (hazardReportMode) {
+    openHazardModal({ lat: currentVesselCoord[0], lng: currentVesselCoord[1] });
+  }
+}
+
+// ------------------------------------------------------------
+// E. EMERGENCY MAYDAY / SOS PROTOCOL (/api/sos)
+// ------------------------------------------------------------
+async function triggerMayday() {
+  if (!confirm("CONFIRM MAYDAY: Broadcast emergency SOS to Indian Coast Guard & INCOIS relay?")) return;
+  const [lat, lon] = currentVesselCoord;
+  const sess = getSentrySessionId();
+
+  playSirenTone();
+  setTimeout(playSirenTone, 1300);
+
+  const banner = document.getElementById("hazardBanner");
+  const statusEl = document.getElementById("hazardBannerStatus");
+  const iconEl = document.getElementById("hazardBannerIcon");
+  if (banner && statusEl) {
+    banner.classList.remove("hazard-safe", "hazard-caution");
+    banner.classList.add("hazard-hazardous");
+    statusEl.textContent = "MAYDAY ACTIVE";
+    if (iconEl) iconEl.innerHTML = "🚨";
+  }
+
+  L.circleMarker([lat, lon], {
+    radius: 20,
+    color: "#ef4444",
+    fillColor: "#ef4444",
+    fillOpacity: 0.65,
+    weight: 3
+  }).addTo(map).bindPopup(`<b>🚨 MAYDAY ACTIVE</b><br>Coords: ${lat.toFixed(3)}°N, ${lon.toFixed(3)}°E<br>Indian Coast Guard alerted.`).openPopup();
+
+  try {
+    const res = await fetch(`${SENTRY_API_BASE}/api/sos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lat,
+        lon,
+        hazard_status: "CRITICAL_EMERGENCY",
+        nearest_port: "45 NM",
+        message: "Manual SOS triggered from Sagar Mitra map dashboard.",
+        session_id: sess
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      alert(`🚨 MAYDAY DISPATCHED 🚨\nEvent ID: ${data.id || "SOS-RELAY-SUCCESS"}\nCoast Guard & Maritime Rescue Coordination Centre (MRCC) alerted.`);
+      return;
+    }
+  } catch (err) {}
+
+  alert("🚨 MAYDAY BEACON ENGAGED 🚨\nVHF emergency frequency broadcast & local distress relay initiated.");
+}
+
+// ------------------------------------------------------------
+// F. MORNING DISPATCH GENERATOR (/api/dispatch/generate)
+// ------------------------------------------------------------
+function triggerMorningDispatch() {
+  if (typeof window.generateAndDisplayMorningDispatch === "function") {
+    window.generateAndDisplayMorningDispatch();
+  } else {
+    const dt = document.getElementById("dispatchTrigger");
+    if (dt) dt.click();
+  }
+}
+
+// ------------------------------------------------------------
+// G. ATTACH SENTRY EVENT LISTENERS & INITIALIZE
+// ------------------------------------------------------------
+function initSafetySuite() {
+  const setAnchorBtn = document.getElementById("setAnchorBtn");
+  if (setAnchorBtn) setAnchorBtn.onclick = toggleAnchorMode;
+
+  const geofenceBtn = document.getElementById("geofenceCheckBtn");
+  if (geofenceBtn) geofenceBtn.onclick = () => {
+    pollGeofence();
+    alert(`Maritime Sentinel: Polling vessel position [${currentVesselCoord[0].toFixed(2)}°N, ${currentVesselCoord[1].toFixed(2)}°E] against Indian EEZ and MPAs.`);
+  };
+
+  const reportHazardBtn = document.getElementById("reportHazardBtn");
+  if (reportHazardBtn) reportHazardBtn.onclick = toggleHazardReportMode;
+
+  const sosBtn = document.getElementById("sosBtn") || document.getElementById("sosButton");
+  if (sosBtn) sosBtn.onclick = triggerMayday;
+
+  const mapDispatchBtn = document.getElementById("mapDispatchBtn");
+  if (mapDispatchBtn) mapDispatchBtn.onclick = triggerMorningDispatch;
+
+  const disengageMini = document.getElementById("disengageAnchorMiniBtn");
+  if (disengageMini) disengageMini.onclick = disengageAnchor;
+
+  // Hazard modal elements
+  const hazardModalClose = document.getElementById("hazardModalClose");
+  if (hazardModalClose) hazardModalClose.onclick = closeHazardModal;
+
+  const hazardModalCancel = document.getElementById("hazardModalCancel");
+  if (hazardModalCancel) hazardModalCancel.onclick = closeHazardModal;
+
+  const hazardModalForm = document.getElementById("hazardModalForm");
+  if (hazardModalForm) hazardModalForm.onsubmit = submitHazardReport;
+
+  const hazardModalOverlay = document.getElementById("hazardModalOverlay");
+  if (hazardModalOverlay) {
+    hazardModalOverlay.onclick = (e) => {
+      if (e.target === hazardModalOverlay) closeHazardModal();
+    };
+  }
+
+  // Load live hazard mesh & start geofence monitoring
+  loadHazardMesh();
+  startGeofencePolling();
+}
+
+initSafetySuite();
+
 </script>
 <script src="ocean-shared.js"></script>
 </body>
