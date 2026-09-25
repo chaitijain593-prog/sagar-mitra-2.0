@@ -1,4 +1,7 @@
+import logging
 import requests
+
+logger = logging.getLogger(__name__)
 
 def get_chlorophyll_data(lat: float, lon: float) -> str:
     """Fetches REAL chlorophyll data by taking an area average to bypass point-cloud gaps."""
@@ -11,7 +14,8 @@ def get_chlorophyll_data(lat: float, lon: float) -> str:
     url = f"https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMH1chlamday.json?chlorophyll[(last)][({lat_min}):({lat_max})][({lon_min}):({lon_max})]"
     
     try:
-        response = requests.get(url, timeout=15)
+        response = requests.get(url, timeout=8)
+        response.raise_for_status()
         data = response.json()
         rows = data.get("table", {}).get("rows", [])
         
@@ -27,7 +31,17 @@ def get_chlorophyll_data(lat: float, lon: float) -> str:
         
         return f"[Live NOAA Spatial Average] Chlorophyll-a: {round(avg_chl, 3)} mg/m³. {status}."
         
+    except requests.exceptions.Timeout as exc:
+        logger.warning("NOAA CoastWatch chlorophyll request timed out")
+        raise RuntimeError("NOAA CoastWatch chlorophyll service timed out") from exc
+    except requests.exceptions.ConnectionError as exc:
+        logger.warning("Could not connect to NOAA CoastWatch chlorophyll service")
+        raise RuntimeError("NOAA CoastWatch chlorophyll service is unreachable") from exc
+    except requests.exceptions.HTTPError as exc:
+        logger.warning("NOAA CoastWatch returned an unsuccessful HTTP response: %s", exc)
+        raise RuntimeError("NOAA CoastWatch chlorophyll service returned an error") from exc
     except Exception as exc:
+        logger.exception("NOAA CoastWatch chlorophyll lookup failed")
         raise RuntimeError(f"NOAA CoastWatch chlorophyll lookup failed: {exc}") from exc
 
 if __name__ == "__main__":

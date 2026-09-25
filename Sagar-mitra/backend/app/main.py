@@ -1,7 +1,6 @@
 import math
 import os
 import re
-import sqlite3
 import traceback
 import uuid
 import json, secrets, hashlib, smtplib, time
@@ -27,9 +26,7 @@ from app.nlp_extract import extract_target_datetime_from_message
 from app.statistical_engine import PFZStatisticalValidator
 from app.pfz_ml import predict_pfz_confidence
 from app.route_planner import plan_safe_route
-from app.session_store import store as session_store
-from app.db_store import insert_hazard_point, get_hazard_mesh
-from app.anchor_store import store as anchor_store
+from app.db_store import store as session_store, insert_hazard_point, get_hazard_mesh, get_anchor as db_get_anchor, set_anchor as db_set_anchor, clear_anchor as db_clear_anchor
 
 from app.data import store
 from app import db
@@ -123,6 +120,17 @@ ONBOARDING_PERSONA_MAP = {
     "aquaculture / coastal worker": "coastal_allied",
 }
 DEFAULT_VESSEL_PERSONA = "artisanal_coastal"
+
+def stakeholder_role_for(raw_persona: str | None) -> str:
+    """Map the selected onboarding persona to its agent-routing permissions."""
+    value = (raw_persona or "").strip().casefold()
+    if "research" in value:
+        return "researcher"
+    if "authority" in value or "coastal community" in value:
+        return "authority"
+    if "student" in value or "public" in value or "other" in value:
+        return "public"
+    return "fisher"
 
 
 def reconcile_persona_key(raw_input: str | None) -> str:
@@ -390,21 +398,15 @@ def geofence_check(lat: float, lon: float):
 ANCHOR_DRIFT_DEFAULT_RADIUS_KM = 0.5
 ANCHOR_DRIFT_CAUTION_MULTIPLIER = 1.5
 ANCHOR_DRIFT_ALERT_M = 50.0
-_ANCHOR_DB, _ANCHOR_DDL = "data/sagar_mitra_store.db", "CREATE TABLE IF NOT EXISTS anchor_state (session_id TEXT PRIMARY KEY, lat REAL, lon REAL, set_at TEXT)"
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
     a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
     return 2 * 6371000.0 * math.asin(math.sqrt(a))
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float: return _haversine_m(lat1, lon1, lat2, lon2) / 1000.0
 def get_anchor(session_id: str):
-    with sqlite3.connect(_ANCHOR_DB) as c:
-        c.execute(_ANCHOR_DDL); r = c.execute("SELECT lat, lon FROM anchor_state WHERE session_id = ?", (session_id,)).fetchone()
-        return {"lat": r[0], "lon": r[1]} if r else None
+    return db_get_anchor(session_id)
 def set_anchor(session_id: str, lat: float, lon: float):
-    now = datetime.now(timezone.utc).isoformat()
-    with sqlite3.connect(_ANCHOR_DB) as c:
-        c.execute(_ANCHOR_DDL); c.execute("INSERT OR REPLACE INTO anchor_state (session_id, lat, lon, set_at) VALUES (?, ?, ?, ?)", (session_id, lat, lon, now))
-    return {"lat": lat, "lon": lon, "set_at": now}
+    return db_set_anchor(session_id, lat, lon)
 @app.get("/api/sentry/anchor-drift/check")
 def anchor_drift_check(session_id: str, lat: float, lon: float):
     a = get_anchor(session_id)
@@ -433,18 +435,18 @@ class SetAnchorRequest(BaseModel):
 @app.post("/api/sentry/anchor-drift")
 def set_anchor_drift(request: SetAnchorRequest):
     lat, lon = request.coordinates[0], request.coordinates[1]
-    anchor_store.set_anchor(request.session_id, lat, lon, request.radius_km)
+    db_set_anchor(request.session_id, lat, lon, request.radius_km)
     return {"status": "success", "session_id": request.session_id, "anchor": {"coordinates": [lat, lon], "radius_km": request.radius_km}}
 @app.get("/api/sentry/anchor-drift")
 def get_anchor_drift(session_id: str, lat: float, lon: float):
-    a = anchor_store.get_anchor(session_id)
+    a = db_get_anchor(session_id)
     if a is None:
         return {"session_id": session_id, "anchor_set": False, "coordinates": [lat, lon], "drift_alert": "SAFE", "message": "No anchor is currently set for this session."}
     dist = round(_haversine_km(lat, lon, a["lat"], a["lon"]), 3); level, msg = _derive_drift_alert(dist, a["radius_km"])
     return {"session_id": session_id, "anchor_set": True, "anchor": {"coordinates": [a["lat"], a["lon"]], "radius_km": a["radius_km"]}, "coordinates": [lat, lon], "distance_km": dist, "drift_alert": level, "message": msg}
 @app.delete("/api/sentry/anchor-drift")
 def clear_anchor_drift(session_id: str):
-    anchor_store.clear_anchor(session_id)
+    db_clear_anchor(session_id)
     return {"status": "success", "session_id": session_id, "anchor_set": False}
 
 class SOSRequest(BaseModel):
@@ -587,6 +589,7 @@ def run_orchestration(request: OrchestrateRequest):
 
     day_offset, target_hour = extract_target_datetime_from_message(request.user_message)
     vessel_persona = reconcile_persona_key(request.onboarding_persona)
+    stakeholder_role = stakeholder_role_for(request.onboarding_persona)
 
     initial_state: AgentState = {
         "user_message": request.user_message,
@@ -608,6 +611,8 @@ def run_orchestration(request: OrchestrateRequest):
         "language": "English",
         "persona": "Fisherman",
         "vessel_persona": vessel_persona,
+        "stakeholder_role": stakeholder_role,
+        "role_permissions": [],
         "query_intent": "",
         "final_output": "",
         "final_advisory": "",
@@ -686,6 +691,8 @@ def run_orchestration(request: OrchestrateRequest):
         "language": result.get("language", "English"),
         "persona": result.get("persona", "Fisherman"),
         "vessel_persona": vessel_persona,
+        "stakeholder_role": stakeholder_role,
+        "role_permissions": result.get("role_permissions", []),
         "hazard_status": derive_hazard_status(boundary_report, ocean_report, hazard_report),
         "marine_status": marine_status,
         "boundary_alert": boundary_alert,
@@ -749,6 +756,7 @@ async def run_voice_orchestration(
         ) from e
 
     vessel_persona = reconcile_persona_key(onboarding_persona)
+    stakeholder_role = stakeholder_role_for(onboarding_persona)
 
     initial_state: AgentState = {
         "user_message": transcription["transcript"],
@@ -770,6 +778,8 @@ async def run_voice_orchestration(
         "language": transcription["language"],
         "persona": "Fisherman",
         "vessel_persona": vessel_persona,
+        "stakeholder_role": stakeholder_role,
+        "role_permissions": [],
         "query_intent": "",
         "final_output": "",
         "final_advisory": "",

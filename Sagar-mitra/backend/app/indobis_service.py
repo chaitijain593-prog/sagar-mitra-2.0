@@ -21,10 +21,16 @@ GLOBAL_TRACK_DEFAULT_YEARS = 10
 DEFAULT_MIGRATORY_TAXA = ("Thunnus", "Chelonioidea", "Cetacea", "Selachimorpha")
 SEASON_MONTHS = {
     "winter": {12, 1, 2},
-    "pre_monsoon": {3, 4, 5},
+    "summer": {3, 4, 5},
     "monsoon": {6, 7, 8, 9},
     "post_monsoon": {10, 11},
 }
+DEPTH_CLASSES = (
+    ("surface", 0.0, 50.0, "#87CEFA"),
+    ("mid_water", 50.0, 1000.0, "#1E88E5"),
+    ("deep_sea", 1000.0, math.inf, "#001B44"),
+)
+UNKNOWN_DEPTH = {"category": "unknown", "color": "#94A3B8"}
 
 # Map common user terms to accepted OBIS taxonomic names. Keys are normalized
 # with casefold(), so user capitalization does not affect lookup.
@@ -45,7 +51,16 @@ COMMON_NAME_TAXA = {
     "whales": "Cetacea",
     "ray": "Batoidea",
     "rays": "Batoidea",
+    "swordfish": "Xiphias gladius",
+    "manta ray": "Mobula",
+    "manta rays": "Mobula",
 }
+MIGRATORY_TAXON_HINTS = (
+    "thunnus", "scombridae", "xiphias", "istiophoridae", "chelonioidea",
+    "cheloniidae", "caretta", "eretmochelys", "lepidochelys", "dermochelys",
+    "cetacea", "delphinidae", "balaenoptera", "megaptera", "physeter",
+    "rhincodon", "selachimorpha", "mobula", "manta",
+)
 
 
 def _parse_date(value: date | str | None, field_name: str) -> date | None:
@@ -86,7 +101,11 @@ def _parse_season(value: str | None) -> str | None:
     if not value or not value.strip():
         return None
     normalized = value.strip().casefold().replace("-", "_").replace(" ", "_")
-    aliases = {"premonsoon": "pre_monsoon", "postmonsoon": "post_monsoon"}
+    aliases = {
+        "premonsoon": "summer",
+        "pre_monsoon": "summer",
+        "postmonsoon": "post_monsoon",
+    }
     normalized = aliases.get(normalized, normalized)
     if normalized not in SEASON_MONTHS:
         logger.warning("Ignoring unknown marine season filter: %r", value)
@@ -94,8 +113,42 @@ def _parse_season(value: str | None) -> str | None:
     return normalized
 
 
-async def _fetch_records(client: httpx.AsyncClient, params: dict[str, Any]) -> list[dict[str, Any]] | None:
-    """Return records, [] for a successful empty response, or None on API failure."""
+def get_indian_season(timestamp: date | datetime | str | None) -> str | None:
+    """Map an observation date to India's broad seasonal grouping."""
+    if isinstance(timestamp, datetime):
+        month = timestamp.month
+    elif isinstance(timestamp, date):
+        month = timestamp.month
+    elif isinstance(timestamp, str) and timestamp.strip():
+        value = timestamp.strip()
+        try:
+            month = datetime.fromisoformat(value.replace("Z", "+00:00")).month
+        except ValueError:
+            try:
+                month = date.fromisoformat(value[:10]).month
+            except ValueError:
+                return None
+    else:
+        return None
+    return next((season for season, months in SEASON_MONTHS.items() if month in months), None)
+
+
+def classify_depth(depth_m: Any) -> dict[str, str]:
+    """Classify depth into a stable category and explicit Leaflet hex color."""
+    try:
+        depth = abs(float(depth_m))
+    except (TypeError, ValueError, OverflowError):
+        return dict(UNKNOWN_DEPTH)
+    if not math.isfinite(depth):
+        return dict(UNKNOWN_DEPTH)
+    for category, minimum, maximum, color in DEPTH_CLASSES:
+        if minimum <= depth <= maximum:
+            return {"category": category, "color": color}
+    return dict(UNKNOWN_DEPTH)
+
+
+async def _fetch_records(client: httpx.AsyncClient, params: dict[str, Any]) -> tuple[list[dict[str, Any]] | None, str | None]:
+    """Return records and an upstream error code (if the query failed)."""
     try:
         response = await client.get(OBIS_OCCURRENCES_URL, params=params)
         response.raise_for_status()
@@ -103,17 +156,20 @@ async def _fetch_records(client: httpx.AsyncClient, params: dict[str, Any]) -> l
         records = payload.get("results") if isinstance(payload, dict) else None
         if not isinstance(records, list):
             logger.error("OBIS returned an unexpected occurrence payload")
-            return None
-        return [record for record in records if isinstance(record, dict)]
+            return None, "unexpected_payload"
+        return [record for record in records if isinstance(record, dict)], None
     except httpx.TimeoutException:
         logger.exception("Timed out retrieving marine occurrences from OBIS")
+        return None, "upstream_timeout"
     except httpx.ConnectError:
         logger.exception("Could not connect to OBIS")
+        return None, "upstream_connection_error"
     except httpx.HTTPStatusError:
         logger.exception("OBIS returned an unsuccessful HTTP status")
+        return None, "upstream_http_error"
     except (httpx.RequestError, ValueError, TypeError):
         logger.exception("Unable to retrieve marine occurrences from OBIS")
-    return None
+        return None, "upstream_error"
 
 
 def _normalize_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -150,10 +206,7 @@ def _normalize(record: dict[str, Any]) -> dict[str, Any] | None:
         observation_month = date.fromisoformat(observation_date[:10]).month
     except (TypeError, ValueError):
         pass
-    observation_season = next(
-        (season for season, months in SEASON_MONTHS.items() if observation_month in months),
-        None,
-    )
+    observation_season = get_indian_season(observation_date)
 
     raw_depth = _first(
         record,
@@ -170,6 +223,7 @@ def _normalize(record: dict[str, Any]) -> dict[str, Any] | None:
             depth_m = None
     except (TypeError, ValueError, OverflowError):
         depth_m = None
+    depth_classification = classify_depth(depth_m)
 
     species_name = _first(record, "scientificName", "vernacularName", "species") or "Unknown species"
     dataset_name = _first(record, "datasetName", "datasetTitle", "dataset_name", "institutionCode") or "OBIS"
@@ -186,10 +240,30 @@ def _normalize(record: dict[str, Any]) -> dict[str, Any] | None:
         "month": observation_month,
         "season": observation_season,
         "depth_m": depth_m,
+        "depth_category": depth_classification["category"],
+        "depth_color": depth_classification["color"],
         "species_name": str(species_name),
         "dataset_name": str(dataset_name),
         "source_link": source_link,
     }
+
+
+def _observation_sort_key(observation: dict[str, Any]) -> tuple[int, str]:
+    """Sort valid observation dates chronologically, placing unknown dates last."""
+    value = str(observation.get("observation_date") or "").strip()
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return (0, parsed.isoformat())
+    except ValueError:
+        try:
+            return (0, date.fromisoformat(value[:10]).isoformat())
+        except ValueError:
+            return (1, value)
+
+
+def _is_migratory_taxon(taxon_name: str) -> bool:
+    normalized = taxon_name.casefold()
+    return any(hint in normalized for hint in MIGRATORY_TAXON_HINTS)
 
 
 async def get_marine_observations(
@@ -201,11 +275,11 @@ async def get_marine_observations(
     region: str = "indian_ocean",
     include_global_tracks: bool = False,
     limit: int = DEFAULT_LIMIT,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """Fetch normalized records within a selectable extent and normalize them.
 
-    Filters are applied to the requested region without substituting unrelated
-    records when a species search has no matches. API errors return [] gracefully.
+    Filters are applied without substituting unrelated records. The envelope
+    distinguishes a successful empty result from an upstream failure.
     """
     species_input = (species or "").strip()
     taxon_name = COMMON_NAME_TAXA.get(species_input.casefold(), species_input)
@@ -226,6 +300,11 @@ async def get_marine_observations(
         logger.warning("Ignoring inverted marine observation date range")
         parsed_start = parsed_end = None
 
+    today = datetime.now(timezone.utc).date()
+    track_start = parsed_start or (parsed_end - timedelta(days=GLOBAL_TRACK_DEFAULT_YEARS * 365) if parsed_end else today - timedelta(days=GLOBAL_TRACK_DEFAULT_YEARS * 365))
+    track_end = parsed_end or today
+    migratory_track_supported = bool(taxon_name and _is_migratory_taxon(taxon_name))
+
     requested_limit = max(int(limit), MAX_LIMIT) if parsed_month or parsed_season else int(limit)
     safe_limit = min(max(requested_limit, 1), MAX_LIMIT)
     params: dict[str, Any] = {"size": safe_limit}
@@ -239,6 +318,9 @@ async def get_marine_observations(
         params["startdate"] = parsed_start.isoformat()
     if parsed_end:
         params["enddate"] = parsed_end.isoformat()
+    if include_global_tracks and normalized_region == "global" and migratory_track_supported:
+        params.setdefault("startdate", track_start.isoformat())
+        params.setdefault("enddate", track_end.isoformat())
 
     def apply_temporal_filters(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [
@@ -247,18 +329,23 @@ async def get_marine_observations(
             and (parsed_season is None or observation["season"] == parsed_season)
         ]
 
+    tracks_available = False
+    track_message = None
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
-            records = await _fetch_records(client, params)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
+            records, error_code = await _fetch_records(client, params)
             if records is None:
-                return []
+                return {"data": [], "status": "error", "message": "Marine observations are temporarily unavailable from OBIS.", "error_code": error_code, "source": "OBIS", "tracks": {"requested": include_global_tracks, "available": False, "message": "Track data is unavailable because the OBIS query failed."}}
             observations = apply_temporal_filters(_normalize_records(records))
-            if include_global_tracks and normalized_region != "global":
-                today = datetime.now(timezone.utc).date()
-                track_start = parsed_start or (parsed_end - timedelta(days=GLOBAL_TRACK_DEFAULT_YEARS * 365) if parsed_end else today - timedelta(days=GLOBAL_TRACK_DEFAULT_YEARS * 365))
-                track_end = parsed_end or today
-                track_taxa = (taxon_name,) if taxon_name else DEFAULT_MIGRATORY_TAXA
-                per_taxon_limit = min(MAX_LIMIT, max(DEFAULT_LIMIT, MAX_LIMIT // len(track_taxa)))
+            if include_global_tracks and not migratory_track_supported:
+                track_message = "Migratory paths are available for supported migratory taxa such as tuna, swordfish, sea turtles, whales, and manta rays."
+            elif include_global_tracks and normalized_region == "global":
+                tracks_available = True
+                for observation in observations:
+                    observation["track_scope"] = "global"
+            elif include_global_tracks:
+                track_taxa = (taxon_name,)
+                per_taxon_limit = MAX_LIMIT
                 def observation_key(item: dict[str, Any]) -> str:
                     if item["source_link"] != "https://obis.org":
                         return item["source_link"]
@@ -269,17 +356,25 @@ async def get_marine_observations(
 
                 known_records = {observation_key(item) for item in observations}
 
-                for track_taxon in track_taxa:
-                    track_params: dict[str, Any] = {
-                        "scientificname": track_taxon,
-                        "size": per_taxon_limit,
-                        "startdate": track_start.isoformat(),
-                        "enddate": track_end.isoformat(),
-                    }
-                    track_records = await _fetch_records(client, track_params)
-                    if track_records is None:
-                        continue
+                track_params: dict[str, Any] = {
+                    "scientificname": taxon_name,
+                    "size": per_taxon_limit,
+                    "startdate": track_start.isoformat(),
+                    "enddate": track_end.isoformat(),
+                }
+                track_records, track_error = await _fetch_records(client, track_params)
+                if track_records is None:
+                    track_message = "Regional observations loaded, but global migratory-path data could not be retrieved."
+                    logger.warning("OBIS global track lookup failed: %s", track_error)
+                else:
+                    tracks_available = True
                     track_observations = apply_temporal_filters(_normalize_records(track_records))
+                    # The regional results are also part of the same chronological
+                    # population sequence. Mark all records in the path dataset so
+                    # the metadata count matches what the frontend can draw.
+                    for observation in observations:
+                        observation["track_scope"] = "global"
+                    known_records = {observation_key(item) for item in observations}
                     for observation in track_observations:
                         key = observation_key(observation)
                         if key in known_records:
@@ -287,7 +382,18 @@ async def get_marine_observations(
                         observation["track_scope"] = "global"
                         known_records.add(key)
                         observations.append(observation)
-            return observations
+            observations.sort(key=_observation_sort_key)
+            return {
+                "data": observations, "status": "success", "message": None,
+                "error_code": None, "source": "OBIS",
+                "tracks": {"requested": include_global_tracks, "available": tracks_available,
+                           "message": track_message,
+                           "point_count": sum(
+                               item.get("track_scope") == "global"
+                               and _observation_sort_key(item)[0] == 0
+                               for item in observations
+                           )},
+            }
     except (httpx.RequestError, ValueError, TypeError, OverflowError):
         logger.exception("Marine occurrence processing failed")
-        return []
+        return {"data": [], "status": "error", "message": "Marine observations could not be processed.", "error_code": "processing_error", "source": "OBIS", "tracks": {"requested": include_global_tracks, "available": False, "message": "Track data could not be processed."}}

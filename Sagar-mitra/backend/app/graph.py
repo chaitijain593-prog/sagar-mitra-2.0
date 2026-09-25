@@ -51,6 +51,13 @@ AGENT_FUNCS = {
     "dispatch": morning_dispatch_node,
 }
 
+ROLE_AGENT_ACCESS = {
+    "fisher": {"navigation", "fishing", "compliance", "hazard", "regional", "dispatch"},
+    "researcher": set(AGENT_FUNCS),
+    "authority": {"navigation", "compliance", "hazard", "analytics", "historical", "regional", "dispatch"},
+    "public": {"navigation", "fishing", "hazard", "regional"},
+}
+
 # Agents whose report is built from the common signal set wait until live
 # telemetry has been fetched and validated.
 _COMMON_SIGNAL_AGENTS = {"navigation", "fishing", "compliance", "hazard", "dispatch"}
@@ -189,11 +196,15 @@ def create_orca_graph():
             history=state.get("history", []),
             last_agents=state.get("last_agents", []),
         )
-        state["next_steps"] = plan["agents"]
+        role = state.get("stakeholder_role", "fisher")
+        allowed = ROLE_AGENT_ACCESS.get(role, ROLE_AGENT_ACCESS["fisher"])
+        selected = [agent for agent in plan["agents"] if agent in allowed]
+        state["next_steps"] = selected or ["navigation"]
+        state["role_permissions"] = sorted(allowed)
         state["language"] = plan["language"]
         state["persona"] = plan["persona"]
         state["query_intent"] = plan["query_intent"]
-        print(f"--- PLANNER: agents={plan['agents']} language={plan['language']} persona={plan['persona']} ---")
+        print(f"--- PLANNER: role={role} agents={state['next_steps']} language={plan['language']} persona={plan['persona']} ---")
         return state
 
     # 2. Dispatch Node -- runs every agent the planner selected CONCURRENTLY

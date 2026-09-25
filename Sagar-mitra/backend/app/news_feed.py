@@ -6,9 +6,11 @@ Fetches and parses ScienceDaily's Oceanography RSS feed for GET /api/news
 feed on every request.
 """
 import time
+import logging
 from typing import List, Optional
 
 import feedparser
+import requests
 
 FEED_URL = "https://www.sciencedaily.com/rss/earth_climate/oceanography.xml"
 TTL_SECONDS = 60 * 60  # 1 hour
@@ -27,6 +29,7 @@ DOMAIN_TAXONOMY: dict[str, List[str]] = {
 
 _cache_entries: List[dict] = []
 _cache_fetched_at: float = 0.0
+logger = logging.getLogger(__name__)
 
 
 def _tag_domains(title: str, summary: str) -> List[str]:
@@ -35,7 +38,11 @@ def _tag_domains(title: str, summary: str) -> List[str]:
 
 
 def _fetch_top_entries(limit: int = 5) -> List[dict]:
-    parsed = feedparser.parse(FEED_URL)
+    response = requests.get(FEED_URL, timeout=8)
+    response.raise_for_status()
+    parsed = feedparser.parse(response.content)
+    if getattr(parsed, "bozo", False) and not parsed.entries:
+        raise ValueError("RSS feed could not be parsed")
     entries = []
     for entry in parsed.entries[:limit]:
         title = entry.get("title", "")
@@ -70,8 +77,14 @@ def get_oceanography_news(limit: int = 5, domain: Optional[str] = None) -> List[
             if fetched:
                 _cache_entries = fetched
                 _cache_fetched_at = now
-        except Exception as e:
-            print(f"[news_feed] Failed to fetch {FEED_URL}: {e}")
+        except requests.exceptions.Timeout:
+            logger.warning("ScienceDaily oceanography RSS request timed out")
+        except requests.exceptions.ConnectionError:
+            logger.warning("ScienceDaily oceanography RSS service is unreachable")
+        except requests.exceptions.HTTPError:
+            logger.exception("ScienceDaily oceanography RSS returned an HTTP error")
+        except Exception:
+            logger.exception("ScienceDaily oceanography RSS fetch failed")
         entries = _cache_entries
 
     if domain:

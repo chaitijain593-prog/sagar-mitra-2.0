@@ -16,12 +16,23 @@ covers sessions and the hazard mesh.
 import json
 import os
 import sqlite3
+import threading
+from functools import wraps
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 DB_PATH = os.environ.get("SAGAR_MITRA_STORE_DB_PATH", "./data/sagar_mitra_store.db")
 MAX_TURNS_KEPT = 8  # last 8 (user+assistant) messages is plenty of context
 HAZARD_MESH_TTL_HOURS = 24.0  # Feature 7: crowdsourced hazard reports expire after this many hours
+
+
+def _serialized(method):
+    """Serialize access to this worker's shared SQLite connection."""
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapped
 
 
 def _get_connection() -> sqlite3.Connection:
@@ -63,9 +74,13 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             session_id TEXT PRIMARY KEY,
             lat REAL NOT NULL,
             lon REAL NOT NULL,
-            set_at TEXT NOT NULL
+            set_at TEXT NOT NULL,
+            radius_km REAL NOT NULL DEFAULT 0.5
         )
     """)
+    anchor_cols = {row[1] for row in conn.execute("PRAGMA table_info(anchor_state)")}
+    if "radius_km" not in anchor_cols:
+        conn.execute("ALTER TABLE anchor_state ADD COLUMN radius_km REAL NOT NULL DEFAULT 0.5")
     conn.commit()
 
 
@@ -73,6 +88,7 @@ class SessionStore:
     """SQLite-backed drop-in replacement for session_store.SessionStore."""
 
     def __init__(self):
+        self._lock = threading.RLock()
         self._conn = _get_connection()
         _init_schema(self._conn)
 
@@ -83,12 +99,14 @@ class SessionStore:
         )
         return cur.fetchone()
 
+    @_serialized
     def get_history(self, session_id: str) -> List[dict]:
         row = self._load_row(session_id)
         if row is None:
             return []
         return json.loads(row["history"])
 
+    @_serialized
     def append_turn(self, session_id: str, role: str, text: str) -> None:
         if not text:
             return
@@ -107,6 +125,7 @@ class SessionStore:
         )
         self._conn.commit()
 
+    @_serialized
     def replace_history(self, session_id: str, history: List[dict], clear_context: bool = False) -> None:
         """Resync one conversation from its client transcript (edit/reload)."""
         row = self._load_row(session_id)
@@ -128,10 +147,12 @@ class SessionStore:
         )
         self._conn.commit()
 
+    @_serialized
     def delete_session(self, session_id: str) -> None:
         self._conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
         self._conn.commit()
 
+    @_serialized
     def get_last_context(self, session_id: str) -> Optional[dict]:
         """Returns {"coordinates": [lat, lon], "agents": [...]} from the
         previous turn on this session, or None for a brand-new session."""
@@ -140,6 +161,7 @@ class SessionStore:
             return None
         return json.loads(row["last_context"])
 
+    @_serialized
     def set_last_context(self, session_id: str, coordinates: List[float], agents: List[str]) -> None:
         row = self._load_row(session_id)
         history = row["history"] if row else json.dumps([])
@@ -206,7 +228,7 @@ def get_anchor(session_id: str) -> Optional[dict]:
     try:
         _init_schema(conn)
         row = conn.execute(
-            "SELECT lat, lon, set_at FROM anchor_state WHERE session_id = ?",
+            "SELECT lat, lon, set_at, radius_km FROM anchor_state WHERE session_id = ?",
             (session_id,),
         ).fetchone()
         return dict(row) if row else None
@@ -214,7 +236,7 @@ def get_anchor(session_id: str) -> Optional[dict]:
         conn.close()
 
 
-def set_anchor(session_id: str, lat: float, lon: float) -> dict:
+def set_anchor(session_id: str, lat: float, lon: float, radius_km: float = 0.5) -> dict:
     """Drops (or re-drops) the anchor reference point for this session at
     the given position, replacing any previous one."""
     conn = _get_connection()
@@ -223,15 +245,26 @@ def set_anchor(session_id: str, lat: float, lon: float) -> dict:
         set_at = datetime.now(timezone.utc).isoformat()
         conn.execute(
             """
-            INSERT INTO anchor_state (session_id, lat, lon, set_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO anchor_state (session_id, lat, lon, set_at, radius_km)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(session_id) DO UPDATE SET
-                lat = excluded.lat, lon = excluded.lon, set_at = excluded.set_at
+                lat = excluded.lat, lon = excluded.lon, set_at = excluded.set_at,
+                radius_km = excluded.radius_km
             """,
-            (session_id, lat, lon, set_at),
+            (session_id, lat, lon, set_at, radius_km),
         )
         conn.commit()
-        return {"lat": lat, "lon": lon, "set_at": set_at}
+        return {"lat": lat, "lon": lon, "set_at": set_at, "radius_km": radius_km}
+    finally:
+        conn.close()
+
+
+def clear_anchor(session_id: str) -> None:
+    conn = _get_connection()
+    try:
+        _init_schema(conn)
+        conn.execute("DELETE FROM anchor_state WHERE session_id = ?", (session_id,))
+        conn.commit()
     finally:
         conn.close()
 
