@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ocean-shared.css">
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -708,7 +709,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   <img src="assets/logo.svg" onerror="this.onerror=null;this.src='assets/logo.png';" class="logo" alt="Sagar Mitra">
 </a>
 
-<!-- Top-right Action Buttons: Navigation, Theme Toggle, Logout -->
+<!-- Top-right Action Buttons: Navigation, News Feed, Switch Role, Theme Toggle, Logout -->
 <div class="actions">
   <button class="ctrl-btn nav-trigger" id="trigger" aria-label="Open navigation menu">
     <span class="ctrl-icon">
@@ -719,6 +720,73 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     </span>
     <span class="ctrl-label">Navigation</span>
   </button>
+
+  <button class="ctrl-btn news-trigger" id="newsTrigger" aria-label="Open Ocean News Feed">
+    <span class="ctrl-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>
+        <path d="M18 14h-8"/>
+        <path d="M15 18h-5"/>
+        <path d="M10 6h8v4h-8z"/>
+      </svg>
+    </span>
+    <span class="ctrl-label">News Feed</span>
+  </button>
+
+  <div class="role-dropdown-wrapper">
+    <button class="ctrl-btn role-trigger" id="roleTrigger" aria-label="Switch User Persona Role">
+      <span class="ctrl-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+      </span>
+      <span class="ctrl-label">Switch Role</span>
+    </button>
+    <div class="role-dropdown-menu" id="roleDropdown">
+      <div class="role-dropdown-header">SELECT USER PERSONA</div>
+      <div class="role-dropdown-item" data-role="primary_student">
+        <span class="role-item-emoji">🐬</span>
+        <div class="role-item-details">
+          <div class="role-item-title">Primary Grade Student</div>
+          <div class="role-item-caption">Creative, child-like & curious ocean buddy</div>
+        </div>
+        <span class="role-item-check">✓</span>
+      </div>
+      <div class="role-dropdown-item" data-role="high_school">
+        <span class="role-item-emoji">🔬</span>
+        <div class="role-item-details">
+          <div class="role-item-title">High School Student</div>
+          <div class="role-item-caption">Coursework, STEM projects & lab formulas</div>
+        </div>
+        <span class="role-item-check">✓</span>
+      </div>
+      <div class="role-dropdown-item" data-role="researcher">
+        <span class="role-item-emoji">🏛️</span>
+        <div class="role-item-details">
+          <div class="role-item-title">Researcher</div>
+          <div class="role-item-caption">Multiple notebooks, external web sources</div>
+        </div>
+        <span class="role-item-check">✓</span>
+      </div>
+      <div class="role-dropdown-item" data-role="coastal_community">
+        <span class="role-item-emoji">⚓</span>
+        <div class="role-item-details">
+          <div class="role-item-title">Coastal Community Resident</div>
+          <div class="role-item-caption">Local swell, PFZ fishing zones & safety</div>
+        </div>
+        <span class="role-item-check">✓</span>
+      </div>
+      <div class="role-dropdown-item" data-role="others">
+        <span class="role-item-emoji">🌐</span>
+        <div class="role-item-details">
+          <div class="role-item-title">Others / General Explorer</div>
+          <div class="role-item-caption">Versatile Claude-inspired ocean assistant</div>
+        </div>
+        <span class="role-item-check">✓</span>
+      </div>
+    </div>
+  </div>
 
   <button class="ctrl-btn theme-toggle" id="themeToggle" aria-label="Toggle theme">
     <span class="ctrl-icon" id="themeIconSlot"></span>
@@ -891,11 +959,10 @@ if(themeBtn){
 initTheme();
 
 // ============================================================
-// 2. SUBTLE AMBIENT LIGHT-BLUE CURSOR GLOW
-// Soft, diffuse, low opacity, no visible particles or sharp edges.
-// Smoothly follows cursor and fades out immediately when stopped.
+// 2. RADIANT LIGHT-BLUE CURSOR GLOW
+// Follows behind cursor with smooth delay, soft opacity & faded edges.
 // ============================================================
-(function initSubtleCursorGlow(){
+(function initLightBlueGlowCursor(){
   const canvas = document.getElementById("cursorTrailCanvas");
   if(!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -908,67 +975,89 @@ initTheme();
   });
 
   const trail = [];
-  let mouseX = -1000, mouseY = -1000;
-  let prevX = -1000, prevY = -1000;
+  let targetX = -1000, targetY = -1000;
+  let glowX = -1000, glowY = -1000;
+  let lastTrailX = -1000, lastTrailY = -1000;
+  let hasPointer = false;
   let isMoving = false;
   let stopTimer = null;
   let leadGlowAlpha = 0;
 
   window.addEventListener("pointermove", e => {
-    mouseX = e.clientX;
-    mouseY = e.clientY;
+    targetX = e.clientX;
+    targetY = e.clientY;
+    if(!hasPointer){
+      glowX = targetX;
+      glowY = targetY;
+      lastTrailX = targetX;
+      lastTrailY = targetY;
+      hasPointer = true;
+    }
     isMoving = true;
 
     clearTimeout(stopTimer);
     stopTimer = setTimeout(() => {
       isMoving = false;
-    }, 45);
-
-    const dist = Math.hypot(mouseX - prevX, mouseY - prevY);
-    if(dist > 6){
-      trail.push({
-        x: mouseX,
-        y: mouseY,
-        alpha: 0.22,
-        radius: 42
-      });
-      prevX = mouseX;
-      prevY = mouseY;
-    }
-
-    if(trail.length > 12){
-      trail.shift();
-    }
+    }, 60);
   });
 
   window.addEventListener("pointerleave", () => {
     isMoving = false;
+    hasPointer = false;
     leadGlowAlpha = 0;
   });
 
   function render(){
     ctx.clearRect(0, 0, width, height);
 
+    if(hasPointer){
+      // Smooth delayed follow behind the cursor
+      const ease = 0.15;
+      glowX += (targetX - glowX) * ease;
+      glowY += (targetY - glowY) * ease;
+
+      const dist = Math.hypot(glowX - lastTrailX, glowY - lastTrailY);
+      if(dist > 3 && isMoving){
+        trail.push({
+          x: glowX,
+          y: glowY,
+          alpha: 0.52, // Soft, less opaque
+          radius: 38
+        });
+        lastTrailX = glowX;
+        lastTrailY = glowY;
+      }
+    }
+
+    if(trail.length > 26){
+      trail.shift();
+    }
+
     if(isMoving){
-      leadGlowAlpha += (0.18 - leadGlowAlpha) * 0.2;
+      leadGlowAlpha += (0.55 - leadGlowAlpha) * 0.2;
     } else {
       leadGlowAlpha *= 0.72;
     }
 
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+
     for(let i = trail.length - 1; i >= 0; i--){
       const p = trail[i];
-      p.alpha *= isMoving ? 0.86 : 0.68;
-      p.radius += 0.8;
+      p.alpha *= isMoving ? 0.90 : 0.70;
+      p.radius += 0.85;
 
-      if(p.alpha < 0.005){
+      if(p.alpha < 0.008){
         trail.splice(i, 1);
         continue;
       }
 
+      // Soft light-blue bloom with seamlessly faded edges
       const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
-      grad.addColorStop(0, `rgba(56, 189, 248, ${p.alpha * 0.75})`);
-      grad.addColorStop(0.35, `rgba(56, 189, 248, ${p.alpha * 0.35})`);
-      grad.addColorStop(0.7, `rgba(56, 189, 248, ${p.alpha * 0.08})`);
+      grad.addColorStop(0, `rgba(224, 242, 254, ${p.alpha * 0.55})`);
+      grad.addColorStop(0.25, `rgba(56, 189, 248, ${p.alpha * 0.42})`);
+      grad.addColorStop(0.55, `rgba(14, 165, 233, ${p.alpha * 0.18})`);
+      grad.addColorStop(0.82, `rgba(2, 132, 199, ${p.alpha * 0.05})`);
       grad.addColorStop(1, "rgba(56, 189, 248, 0)");
 
       ctx.fillStyle = grad;
@@ -977,20 +1066,23 @@ initTheme();
       ctx.fill();
     }
 
-    if(leadGlowAlpha > 0.005 && mouseX > 0 && mouseY > 0){
-      const leadRadius = 48;
-      const leadGrad = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, leadRadius);
-      leadGrad.addColorStop(0, `rgba(56, 189, 248, ${leadGlowAlpha * 0.85})`);
-      leadGrad.addColorStop(0.4, `rgba(56, 189, 248, ${leadGlowAlpha * 0.4})`);
-      leadGrad.addColorStop(0.75, `rgba(56, 189, 248, ${leadGlowAlpha * 0.1})`);
+    // Radiant light-blue lead glow following behind cursor position
+    if(leadGlowAlpha > 0.008 && hasPointer){
+      const leadRadius = 50;
+      const leadGrad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, leadRadius);
+      leadGrad.addColorStop(0, `rgba(224, 242, 254, ${leadGlowAlpha * 0.60})`);
+      leadGrad.addColorStop(0.25, `rgba(56, 189, 248, ${leadGlowAlpha * 0.45})`);
+      leadGrad.addColorStop(0.55, `rgba(14, 165, 233, ${leadGlowAlpha * 0.20})`);
+      leadGrad.addColorStop(0.85, `rgba(2, 132, 199, ${leadGlowAlpha * 0.05})`);
       leadGrad.addColorStop(1, "rgba(56, 189, 248, 0)");
 
       ctx.fillStyle = leadGrad;
       ctx.beginPath();
-      ctx.arc(mouseX, mouseY, leadRadius, 0, Math.PI * 2);
+      ctx.arc(glowX, glowY, leadRadius, 0, Math.PI * 2);
       ctx.fill();
     }
 
+    ctx.restore();
     requestAnimationFrame(render);
   }
   requestAnimationFrame(render);
@@ -1113,5 +1205,6 @@ if(localStorage.navX){
   nav.style.right="auto";
 }
 </script>
+<script src="ocean-shared.js"></script>
 </body>
 </html>
