@@ -14,11 +14,44 @@
   --blue:#39bdf2;
   --blue-hover:#0da9df;
   --blue-dark:#0284c7;
+  --blue-glow:rgba(57,189,242,0.45);
   --ink:#101820;
   --muted:#576b78;
   --line:#ccecf7;
   --card-bg:rgba(255,255,255,0.85);
   --card-border:rgba(57,189,242,0.32);
+  --bg-gradient:radial-gradient(circle at 10% 15%, rgba(57,189,242,0.08) 0%, transparent 40%),
+                radial-gradient(circle at 90% 85%, rgba(13,169,223,0.07) 0%, transparent 45%),
+                #f9fcfe;
+  --ctrl-bg:rgba(255,255,255,.88);
+  --ctrl-border:rgba(57,189,242,.4);
+  --ctrl-text:#101820;
+  --nav-bg:rgba(255,255,255,.85);
+  --nav-border:rgba(57,189,242,.65);
+  --nav-link:#263943;
+  --brand-text:#101820;
+}
+
+[data-theme="dark"]{
+  --blue:#38bdf8;
+  --blue-hover:#0ea5e9;
+  --blue-dark:#38bdf8;
+  --blue-glow:rgba(56,189,248,0.5);
+  --ink:#f4f4f5;
+  --muted:#9ca3af;
+  --line:rgba(56,189,248,0.3);
+  --card-bg:rgba(26,26,24,0.85);
+  --card-border:rgba(56,189,248,0.25);
+  --bg-gradient:radial-gradient(circle at 10% 15%, rgba(56,189,248,0.06) 0%, transparent 40%),
+                radial-gradient(circle at 90% 85%, rgba(14,165,233,0.05) 0%, transparent 45%),
+                #141413;
+  --ctrl-bg:rgba(26,26,24,0.88);
+  --ctrl-border:rgba(56,189,248,0.35);
+  --ctrl-text:#f4f4f5;
+  --nav-bg:rgba(24,24,22,0.92);
+  --nav-border:rgba(56,189,248,0.45);
+  --nav-link:#d4d4d8;
+  --brand-text:#f4f4f5;
 }
 
 html{
@@ -31,12 +64,20 @@ body{
   width:100%;
   overflow-x:hidden;
   overflow-y:auto;
-  background:radial-gradient(circle at 10% 15%, rgba(57,189,242,0.08) 0%, transparent 40%),
-             radial-gradient(circle at 90% 85%, rgba(13,169,223,0.07) 0%, transparent 45%),
-             #f9fcfe;
+  background:var(--bg-gradient);
   color:var(--ink);
   font-family:"DM Sans",sans-serif;
-  transition:opacity .45s ease,transform .45s ease;
+  transition:background .3s ease,color .3s ease,opacity .45s ease,transform .45s ease;
+}
+
+#cursorTrailCanvas{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100vw;
+  height:100vh;
+  pointer-events:none;
+  z-index:99998;
 }
 
 body.page-enter{animation:enterSlide .65s ease forwards}
@@ -55,79 +96,111 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   text-decoration:none;
 }
 .logo{
-  width:56px;
-  height:56px;
+  width:48px;
+  height:48px;
   object-fit:contain;
   filter:drop-shadow(0 2px 8px rgba(57,189,242,.25));
   transition:transform .2s ease;
 }
 .logo-container:hover .logo{transform:scale(1.05)}
+.logo-text{
+  font:600 15px/1 "DM Mono", monospace;
+  letter-spacing:2px;
+  color:var(--brand-text);
+  white-space:nowrap;
+  user-select:none;
+}
 
+/* Expanding Top-Right Controls */
 .actions{
   position:fixed;
   top:27px;
   right:28px;
   display:flex;
-  gap:16px;
+  align-items:center;
+  gap:12px;
   z-index:40;
 }
-button{border:0;cursor:pointer}
-.logout,.nav-trigger{
-  position:relative;
-  width:48px;
+.ctrl-btn{
   height:48px;
-  border-radius:12px;
-  background:rgba(255,255,255,.9);
-  backdrop-filter:blur(8px);
-  border:1px solid rgba(204,236,247,.8);
+  border-radius:24px;
+  padding:0 12px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:flex-start;
+  cursor:pointer;
+  background:var(--ctrl-bg);
+  border:1px solid var(--ctrl-border);
+  backdrop-filter:blur(14px);
+  box-shadow:0 3px 12px rgba(0,0,0,.08);
+  color:var(--ctrl-text);
+  overflow:hidden;
+  transition:padding .3s cubic-bezier(0.2, 0.8, 0.2, 1),
+              background .25s ease,
+              border-color .25s ease,
+              box-shadow .25s ease,
+              transform .2s ease;
+  white-space:nowrap;
+  user-select:none;
+}
+.ctrl-icon{
+  width:24px;
+  height:24px;
   display:grid;
   place-items:center;
-  transition:all .2s ease;
-  box-shadow:0 3px 12px rgba(0,0,0,.04);
+  flex-shrink:0;
+  transition:transform .2s ease;
 }
-.logout:hover,.nav-trigger:hover{
-  background:#fff;
-  transform:translateY(-2px);
-  box-shadow:0 6px 18px rgba(57,189,242,.25);
-}
-.logout svg{width:26px;stroke:#ff4050;fill:none;stroke-width:2}
-.nav-trigger{background:var(--blue)}
-.nav-trigger svg{width:29px;stroke:#fff;fill:none;stroke-width:2.5}
-.nav-trigger:hover{background:var(--blue-hover)}
+.ctrl-icon svg{width:22px;height:22px}
+.nav-trigger .ctrl-icon svg{stroke:var(--blue)}
+.theme-toggle .ctrl-icon svg{stroke:var(--blue)}
+[data-theme="dark"] .theme-toggle .ctrl-icon svg{stroke:#facc15}
+.logout .ctrl-icon svg{stroke:#ff4050;fill:none}
 
-.tooltip{
-  position:absolute;
-  top:56px;
-  right:0;
-  background:#fff;
-  color:var(--ink);
-  padding:7px 11px;
-  border-radius:7px;
-  font:500 11px/1 "DM Mono",monospace;
+.ctrl-label{
+  max-width:0;
   opacity:0;
-  pointer-events:none;
   white-space:nowrap;
-  box-shadow:0 4px 15px rgba(0,0,0,.08);
-  border:1px solid #d9f0f9;
-  transform:translateY(-4px);
-  transition:.2s;
+  overflow:hidden;
+  font:600 12px "DM Mono",monospace;
+  letter-spacing:.8px;
+  margin-left:0;
+  color:var(--ctrl-text);
+  transition:max-width .3s cubic-bezier(0.2, 0.8, 0.2, 1),
+              opacity .22s ease,
+              margin-left .3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-button:hover .tooltip{opacity:1;transform:none}
+.ctrl-btn:hover{
+  padding:0 16px 0 13px;
+  transform:translateY(-2px);
+  border-color:var(--blue);
+  box-shadow:0 6px 20px var(--blue-glow);
+}
+.ctrl-btn:hover .ctrl-label{
+  max-width:95px;
+  opacity:1;
+  margin-left:8px;
+}
+.logout:hover{
+  border-color:rgba(255,64,80,.5);
+  box-shadow:0 6px 20px rgba(255,64,80,.25);
+}
 
-/* Draggable Navigation Bar */
+/* Thinner Draggable Navigation Bar */
 .nav{
   position:fixed;
   right:88px;
   top:88px;
   width:max-content;
-  min-width:410px;
-  padding:15px 18px;
+  min-width:380px;
+  padding:7px 12px;
   display:flex;
-  gap:7px;
-  background:rgba(255,255,255,.85);
+  gap:4px;
+  align-items:center;
+  background:var(--nav-bg);
   backdrop-filter:blur(18px);
-  border:1px solid rgba(57,189,242,.65);
-  border-radius:14px;
+  border:1px solid var(--nav-border);
+  border-radius:12px;
   box-shadow:0 8px 32px rgba(57,189,242,.2);
   z-index:50;
   cursor:grab;
@@ -138,19 +211,80 @@ button:hover .tooltip{opacity:1;transform:none}
 }
 .nav.open{opacity:1;visibility:visible;transform:none}
 .nav.dragging{cursor:grabbing}
+.nav:hover{z-index:100}
+
+/* Navbar buttons: subtle light-blue glow on hover */
 .nav a{
   flex:1;
   text-align:center;
   text-decoration:none;
   white-space:nowrap;
-  color:#263943;
-  font:600 13px "DM Mono",monospace;
-  letter-spacing:1.2px;
-  padding:11px 10px;
+  color:var(--nav-link);
+  font:600 12px "DM Mono",monospace;
+  letter-spacing:1.4px;
+  padding:8px 14px;
   border-radius:8px;
-  transition:.2s;
+  border:1px solid transparent;
+  transition:all .2s ease;
 }
-.nav a:hover,.nav a.active{background:#e8f8fd;color:#079ed5}
+.nav a:hover{
+  background:rgba(57,189,242,.15);
+  color:var(--blue-hover);
+  border-color:rgba(57,189,242,.55);
+  box-shadow:0 0 16px rgba(57,189,242,.45), inset 0 0 8px rgba(57,189,242,.15);
+  transform:translateY(-1px);
+}
+.nav a.active{
+  background:#e8f8fd;
+  color:#079ed5;
+  border-color:rgba(57,189,242,.4);
+}
+[data-theme="dark"] .nav a.active{
+  background:rgba(56,189,248,.18);
+  color:#38bdf8;
+  border-color:rgba(56,189,248,.45);
+}
+
+/* Claude-like Dark Theme overrides for content cards */
+[data-theme="dark"] .media-frame,
+[data-theme="dark"] .stat-card,
+[data-theme="dark"] .profile-card,
+[data-theme="dark"] .quote-banner,
+[data-theme="dark"] .tech-pill,
+[data-theme="dark"] .frame-tag{
+  background:rgba(26,26,24,0.85);
+  border-color:rgba(56,189,248,0.25);
+  color:var(--ink);
+}
+[data-theme="dark"] .headline,
+[data-theme="dark"] .section-title,
+[data-theme="dark"] .argo-title,
+[data-theme="dark"] .quote-text,
+[data-theme="dark"] .stat-num,
+[data-theme="dark"] .profile-name{
+  color:#f4f4f5;
+}
+[data-theme="dark"] .lead-para,
+[data-theme="dark"] .body-para,
+[data-theme="dark"] .argo-desc,
+[data-theme="dark"] .quote-author,
+[data-theme="dark"] .profile-role{
+  color:#a1a1aa;
+}
+[data-theme="dark"] .arrow{
+  background:rgba(26,26,24,.85);
+  border-color:rgba(56,189,248,.35);
+  color:#38bdf8;
+}
+[data-theme="dark"] .arrow:hover{
+  background:#1f1f1d;
+  color:#7dd3fc;
+}
+[data-theme="dark"] .btn-top{
+  background:rgba(26,26,24,.8);
+  border-color:rgba(56,189,248,.3);
+  color:#f4f4f5;
+}
 
 /* Sections & Slide Layouts */
 .slides-wrapper{
@@ -567,29 +701,39 @@ button:hover .tooltip{opacity:1;transform:none}
 </head>
 
 <body class="page-enter">
+<canvas id="cursorTrailCanvas"></canvas>
 
 <!-- Logo Branding -->
 <a href="main.html" class="logo-container" title="Back to Homepage">
   <img src="assets/logo.svg" onerror="this.onerror=null;this.src='assets/logo.png';" class="logo" alt="Sagar Mitra">
 </a>
 
-<!-- Top-right Action Buttons -->
+<!-- Top-right Action Buttons: Navigation, Theme Toggle, Logout -->
 <div class="actions">
-  <button class="nav-trigger" id="trigger" aria-label="Open navigation menu">
-    <svg viewBox="0 0 40 40">
-      <path d="M4 25c5-11 12-15 18-10 4 3 6 8 14 3"/>
-      <path d="M4 30c7-7 12-8 18-4 5 3 9 3 14-2"/>
-    </svg>
-    <span class="tooltip">Navigation</span>
+  <button class="ctrl-btn nav-trigger" id="trigger" aria-label="Open navigation menu">
+    <span class="ctrl-icon">
+      <svg viewBox="0 0 40 40" fill="none" stroke-width="2.5">
+        <path d="M4 25c5-11 12-15 18-10 4 3 6 8 14 3"/>
+        <path d="M4 30c7-7 12-8 18-4 5 3 9 3 14-2"/>
+      </svg>
+    </span>
+    <span class="ctrl-label">Navigation</span>
   </button>
-  
-  <button class="logout" id="logout" aria-label="Log out">
-    <svg viewBox="0 0 32 32">
-      <path d="M13 5H7a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h6"/>
-      <path d="M18 10l7 6-7 6"/>
-      <path d="M25 16H11"/>
-    </svg>
-    <span class="tooltip">Log out</span>
+
+  <button class="ctrl-btn theme-toggle" id="themeToggle" aria-label="Toggle theme">
+    <span class="ctrl-icon" id="themeIconSlot"></span>
+    <span class="ctrl-label" id="themeLabel">Theme</span>
+  </button>
+
+  <button class="ctrl-btn logout" id="logout" aria-label="Log out">
+    <span class="ctrl-icon">
+      <svg viewBox="0 0 32 32" stroke-width="2">
+        <path d="M13 5H7a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h6"/>
+        <path d="M18 10l7 6-7 6"/>
+        <path d="M25 16H11"/>
+      </svg>
+    </span>
+    <span class="ctrl-label">Log Out</span>
   </button>
 </div>
 
@@ -714,6 +858,144 @@ button:hover .tooltip{opacity:1;transform:none}
 </div>
 
 <script>
+// ============================================================
+// 1. THEME MANAGEMENT (Light / Dark - Claude charcoal)
+// ============================================================
+function initTheme(){
+  const saved = localStorage.getItem("sagarMitraTheme") || "light";
+  applyTheme(saved);
+}
+
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("sagarMitraTheme", theme);
+
+  const iconSlot = document.getElementById("themeIconSlot");
+  const label = document.getElementById("themeLabel");
+  if(theme === "dark"){
+    if(iconSlot) iconSlot.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`;
+    if(label) label.textContent = "Light Mode";
+  } else {
+    if(iconSlot) iconSlot.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+    if(label) label.textContent = "Dark Mode";
+  }
+}
+
+const themeBtn = document.getElementById("themeToggle");
+if(themeBtn){
+  themeBtn.onclick = () => {
+    const cur = document.documentElement.getAttribute("data-theme") || "light";
+    applyTheme(cur === "dark" ? "light" : "dark");
+  };
+}
+initTheme();
+
+// ============================================================
+// 2. SUBTLE AMBIENT LIGHT-BLUE CURSOR GLOW
+// Soft, diffuse, low opacity, no visible particles or sharp edges.
+// Smoothly follows cursor and fades out immediately when stopped.
+// ============================================================
+(function initSubtleCursorGlow(){
+  const canvas = document.getElementById("cursorTrailCanvas");
+  if(!canvas) return;
+  const ctx = canvas.getContext("2d");
+  let width = canvas.width = window.innerWidth;
+  let height = canvas.height = window.innerHeight;
+
+  window.addEventListener("resize", () => {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+  });
+
+  const trail = [];
+  let mouseX = -1000, mouseY = -1000;
+  let prevX = -1000, prevY = -1000;
+  let isMoving = false;
+  let stopTimer = null;
+  let leadGlowAlpha = 0;
+
+  window.addEventListener("pointermove", e => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    isMoving = true;
+
+    clearTimeout(stopTimer);
+    stopTimer = setTimeout(() => {
+      isMoving = false;
+    }, 45);
+
+    const dist = Math.hypot(mouseX - prevX, mouseY - prevY);
+    if(dist > 6){
+      trail.push({
+        x: mouseX,
+        y: mouseY,
+        alpha: 0.22,
+        radius: 42
+      });
+      prevX = mouseX;
+      prevY = mouseY;
+    }
+
+    if(trail.length > 12){
+      trail.shift();
+    }
+  });
+
+  window.addEventListener("pointerleave", () => {
+    isMoving = false;
+    leadGlowAlpha = 0;
+  });
+
+  function render(){
+    ctx.clearRect(0, 0, width, height);
+
+    if(isMoving){
+      leadGlowAlpha += (0.18 - leadGlowAlpha) * 0.2;
+    } else {
+      leadGlowAlpha *= 0.72;
+    }
+
+    for(let i = trail.length - 1; i >= 0; i--){
+      const p = trail[i];
+      p.alpha *= isMoving ? 0.86 : 0.68;
+      p.radius += 0.8;
+
+      if(p.alpha < 0.005){
+        trail.splice(i, 1);
+        continue;
+      }
+
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
+      grad.addColorStop(0, `rgba(56, 189, 248, ${p.alpha * 0.75})`);
+      grad.addColorStop(0.35, `rgba(56, 189, 248, ${p.alpha * 0.35})`);
+      grad.addColorStop(0.7, `rgba(56, 189, 248, ${p.alpha * 0.08})`);
+      grad.addColorStop(1, "rgba(56, 189, 248, 0)");
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if(leadGlowAlpha > 0.005 && mouseX > 0 && mouseY > 0){
+      const leadRadius = 48;
+      const leadGrad = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, leadRadius);
+      leadGrad.addColorStop(0, `rgba(56, 189, 248, ${leadGlowAlpha * 0.85})`);
+      leadGrad.addColorStop(0.4, `rgba(56, 189, 248, ${leadGlowAlpha * 0.4})`);
+      leadGrad.addColorStop(0.75, `rgba(56, 189, 248, ${leadGlowAlpha * 0.1})`);
+      leadGrad.addColorStop(1, "rgba(56, 189, 248, 0)");
+
+      ctx.fillStyle = leadGrad;
+      ctx.beginPath();
+      ctx.arc(mouseX, mouseY, leadRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+})();
+
 const pages=["main.html","about.html","map.html","chatbot.html"];
 const current=1;
 const nav=document.getElementById("nav");
