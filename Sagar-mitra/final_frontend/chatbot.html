@@ -1291,11 +1291,10 @@ function applyOceanGreeting(){
 applyOceanGreeting();
 
 // ============================================================
-// 3. ENHANCED SUBTLE AMBIENT LIGHT-BLUE CURSOR GLOW
-// Very soft, diffuse light-blue glow, low opacity, blurred edges.
-// Smoothly follows cursor and fades out almost instantly when stopped.
+// 3. RADIANT LIGHT-BLUE CURSOR GLOW
+// Follows behind cursor with smooth delay, soft opacity & faded edges.
 // ============================================================
-(function initSubtleCursorGlow(){
+(function initLightBlueGlowCursor(){
   const canvas = document.getElementById("cursorTrailCanvas");
   if(!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -1308,67 +1307,89 @@ applyOceanGreeting();
   });
 
   const trail = [];
-  let mouseX = -1000, mouseY = -1000;
-  let prevX = -1000, prevY = -1000;
+  let targetX = -1000, targetY = -1000;
+  let glowX = -1000, glowY = -1000;
+  let lastTrailX = -1000, lastTrailY = -1000;
+  let hasPointer = false;
   let isMoving = false;
   let stopTimer = null;
   let leadGlowAlpha = 0;
 
   window.addEventListener("pointermove", e => {
-    mouseX = e.clientX;
-    mouseY = e.clientY;
+    targetX = e.clientX;
+    targetY = e.clientY;
+    if(!hasPointer){
+      glowX = targetX;
+      glowY = targetY;
+      lastTrailX = targetX;
+      lastTrailY = targetY;
+      hasPointer = true;
+    }
     isMoving = true;
 
     clearTimeout(stopTimer);
     stopTimer = setTimeout(() => {
       isMoving = false;
-    }, 40);
-
-    const dist = Math.hypot(mouseX - prevX, mouseY - prevY);
-    if(dist > 5){
-      trail.push({
-        x: mouseX,
-        y: mouseY,
-        alpha: 0.30, // Strengthened soft glow
-        radius: 46
-      });
-      prevX = mouseX;
-      prevY = mouseY;
-    }
-
-    if(trail.length > 14){
-      trail.shift();
-    }
+    }, 60);
   });
 
   window.addEventListener("pointerleave", () => {
     isMoving = false;
+    hasPointer = false;
     leadGlowAlpha = 0;
   });
 
   function render(){
     ctx.clearRect(0, 0, width, height);
 
-    if(isMoving){
-      leadGlowAlpha += (0.28 - leadGlowAlpha) * 0.22;
-    } else {
-      leadGlowAlpha *= 0.65; // Fades almost instantly when cursor stops
+    if(hasPointer){
+      // Smooth delayed follow behind the cursor
+      const ease = 0.15;
+      glowX += (targetX - glowX) * ease;
+      glowY += (targetY - glowY) * ease;
+
+      const dist = Math.hypot(glowX - lastTrailX, glowY - lastTrailY);
+      if(dist > 3 && isMoving){
+        trail.push({
+          x: glowX,
+          y: glowY,
+          alpha: 0.52, // Soft, less opaque
+          radius: 38
+        });
+        lastTrailX = glowX;
+        lastTrailY = glowY;
+      }
     }
+
+    if(trail.length > 26){
+      trail.shift();
+    }
+
+    if(isMoving){
+      leadGlowAlpha += (0.55 - leadGlowAlpha) * 0.2;
+    } else {
+      leadGlowAlpha *= 0.72;
+    }
+
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
 
     for(let i = trail.length - 1; i >= 0; i--){
       const p = trail[i];
-      p.alpha *= isMoving ? 0.85 : 0.64;
-      p.radius += 0.9;
+      p.alpha *= isMoving ? 0.90 : 0.70;
+      p.radius += 0.85;
 
-      if(p.alpha < 0.005){
+      if(p.alpha < 0.008){
         trail.splice(i, 1);
         continue;
       }
 
+      // Soft light-blue bloom with seamlessly faded edges
       const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
-      grad.addColorStop(0, `rgba(56, 189, 248, ${p.alpha * 0.85})`);
-      grad.addColorStop(0.35, `rgba(56, 189, 248, ${p.alpha * 0.45})`);
-      grad.addColorStop(0.7, `rgba(56, 189, 248, ${p.alpha * 0.12})`);
+      grad.addColorStop(0, `rgba(224, 242, 254, ${p.alpha * 0.55})`);
+      grad.addColorStop(0.25, `rgba(56, 189, 248, ${p.alpha * 0.42})`);
+      grad.addColorStop(0.55, `rgba(14, 165, 233, ${p.alpha * 0.18})`);
+      grad.addColorStop(0.82, `rgba(2, 132, 199, ${p.alpha * 0.05})`);
       grad.addColorStop(1, "rgba(56, 189, 248, 0)");
 
       ctx.fillStyle = grad;
@@ -1377,20 +1398,23 @@ applyOceanGreeting();
       ctx.fill();
     }
 
-    if(leadGlowAlpha > 0.005 && mouseX > 0 && mouseY > 0){
-      const leadRadius = 52;
-      const leadGrad = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, leadRadius);
-      leadGrad.addColorStop(0, `rgba(56, 189, 248, ${leadGlowAlpha * 0.95})`);
-      leadGrad.addColorStop(0.4, `rgba(56, 189, 248, ${leadGlowAlpha * 0.5})`);
-      leadGrad.addColorStop(0.75, `rgba(56, 189, 248, ${leadGlowAlpha * 0.15})`);
+    // Radiant light-blue lead glow following behind cursor position
+    if(leadGlowAlpha > 0.008 && hasPointer){
+      const leadRadius = 50;
+      const leadGrad = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, leadRadius);
+      leadGrad.addColorStop(0, `rgba(224, 242, 254, ${leadGlowAlpha * 0.60})`);
+      leadGrad.addColorStop(0.25, `rgba(56, 189, 248, ${leadGlowAlpha * 0.45})`);
+      leadGrad.addColorStop(0.55, `rgba(14, 165, 233, ${leadGlowAlpha * 0.20})`);
+      leadGrad.addColorStop(0.85, `rgba(2, 132, 199, ${leadGlowAlpha * 0.05})`);
       leadGrad.addColorStop(1, "rgba(56, 189, 248, 0)");
 
       ctx.fillStyle = leadGrad;
       ctx.beginPath();
-      ctx.arc(mouseX, mouseY, leadRadius, 0, Math.PI * 2);
+      ctx.arc(glowX, glowY, leadRadius, 0, Math.PI * 2);
       ctx.fill();
     }
 
+    ctx.restore();
     requestAnimationFrame(render);
   }
   requestAnimationFrame(render);
