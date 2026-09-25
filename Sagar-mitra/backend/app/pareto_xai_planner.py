@@ -185,12 +185,12 @@ def plan_pareto_route(start_pos, target_pos, mode="BALANCED_PARETO", custom_weig
                 # 3. Environmental & Multi-Objective Rewards
                 sst, sal, chlor, pfz = env._get_environmental_data(next_pos[0], next_pos[1])
                 
-                # Fish harvest reward component
-                fish_reward = (pfz * 3.0 + min(chlor, 3.0) * 0.5) * w_fish
+                # Fish harvest reward component (scaled for distinct PFZ detours)
+                fish_reward = (pfz * 18.0 + min(chlor, 3.0) * 4.0) * w_fish
                 
-                # Fuel efficiency reward component (smooth headings & thermal efficiency)
-                thermal_comfort = 0.5 if (26.5 <= sst <= 29.5) else -0.5
-                fuel_reward = (thermal_comfort - (abs(ang) * 0.4)) * w_fuel
+                # Fuel efficiency reward component (scaled for smooth thermal drift)
+                thermal_comfort = 1.0 if (26.5 <= sst <= 29.5) else -0.5
+                fuel_reward = (thermal_comfort * 8.0 - (abs(ang) * 6.0)) * w_fuel
                 
                 total_candidate_cost = time_cost + safety_cost - (fish_reward + fuel_reward)
                 
