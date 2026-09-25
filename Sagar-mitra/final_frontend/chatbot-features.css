@@ -73,7 +73,8 @@
 
 /* Split Map Header */
 .split-map-header {
-  padding: 14px 16px;
+  height: 48px;
+  padding: 0 16px;
   background: rgba(10, 22, 32, 0.94);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -115,8 +116,19 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
+.split-map-title svg {
+  width: 16px !important;
+  height: 16px !important;
+  flex-shrink: 0 !important;
+  stroke: var(--blue, #38bdf8);
+}
+
+.split-map-controls,
 .split-map-actions {
   display: flex;
   align-items: center;
@@ -124,13 +136,15 @@
   flex-shrink: 0;
 }
 
+.split-map-badge,
 .split-coords-badge {
-  font: 500 11px "DM Mono", monospace;
+  font: 600 10px "DM Mono", monospace;
   color: var(--blue, #38bdf8);
-  background: rgba(56, 189, 248, 0.12);
+  background: rgba(56, 189, 248, 0.14);
   border: 1px solid rgba(56, 189, 248, 0.3);
   padding: 3px 8px;
   border-radius: 12px;
+  text-transform: uppercase;
 }
 
 .split-expand-btn,
@@ -165,7 +179,7 @@
 .split-map-viewport {
   flex: 1;
   width: 100%;
-  height: 100%;
+  height: calc(100% - 48px);
   background: #040d14;
   position: relative;
   z-index: 1;
@@ -198,9 +212,21 @@
   color: #f8fafc;
   display: grid;
   place-items: center;
-  font-size: 15px;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.split-mode-btn span {
+  display: none !important;
+}
+
+.split-mode-btn svg {
+  width: 16px !important;
+  height: 16px !important;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  flex-shrink: 0;
 }
 
 .split-mode-btn:hover {
@@ -219,39 +245,47 @@
 /* Scaled-down Dynamic Legend Bar */
 .split-legend-bar {
   position: absolute;
-  bottom: 12px;
-  left: 12px;
-  right: 12px;
-  background: rgba(8, 20, 30, 0.88);
+  bottom: 14px;
+  left: 14px;
+  right: 14px;
+  background: rgba(6, 16, 26, 0.88);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  border: 1px solid rgba(56, 189, 248, 0.35);
   border-radius: 10px;
   padding: 8px 12px;
   z-index: 1000;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 5px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
-.split-legend-label {
+.split-legend-title {
   font: 700 9px "DM Mono", monospace;
-  color: #e2e8f0;
+  color: #38bdf8;
   letter-spacing: 0.8px;
-  white-space: nowrap;
+  text-transform: uppercase;
 }
 
-.split-legend-gradient {
-  flex: 1;
+.split-legend-ramp {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.split-ramp-gradient {
+  width: 100%;
   height: 6px;
   border-radius: 3px;
-  background: linear-gradient(to right, #001020, #004080, #0080c0, #20c0f0, #e0f8ff);
+  background: linear-gradient(to right, #0284c7, #0369a1, #075985, #082f49);
 }
 
-.split-legend-val {
-  font: 500 9px "DM Mono", monospace;
-  color: var(--blue, #38bdf8);
-  white-space: nowrap;
+.split-ramp-labels {
+  display: flex;
+  justify-content: space-between;
+  font: 500 8.5px "DM Mono", monospace;
+  color: #94a3b8;
 }
 
 /* Map Preview Card in Chat Message */
