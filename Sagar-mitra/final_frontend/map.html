@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sagar Mitra — Oceanographic Intelligence Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#39bdf2;
+  --blue2:#0da9df;
+  --blue-dark:#0284c7;
+  --ink:#101820;
+  --panel-bg:rgba(12,24,34,0.85);
+  --panel-border:rgba(57,189,242,0.35);
+  --panel-glow:0 8px 32px rgba(0,0,0,0.45);
+  --line:#ccecf7;
+  --active-glow:0 0 20px rgba(57,189,242,0.65), inset 0 0 10px rgba(57,189,242,0.25);
+}
+
+html,body{
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  background:#07111a;
+  color:#fff;
+  font-family:"DM Sans",sans-serif;
+}
+
+body{
+  transition:opacity .45s ease,transform .45s ease;
+}
+body.page-enter{animation:enterSlide .65s ease both}
+body.page-exit{opacity:0;transform:translateX(-8vw)}
+@keyframes enterSlide{from{opacity:0;transform:translateX(8vw)}to{opacity:1;transform:none}}
+
+/* Full-Viewport Map Container */
+#map-viewport{
+  position:absolute;
+  inset:0;
+  width:100vw;
+  height:100vh;
+  z-index:1;
+  background:#07111a;
+}
+.leaflet-container{
+  width:100%;
+  height:100%;
+  background:#060e15 !important;
+}
+
+/* Custom dark/ocean tile styling filters */
+.dark-ocean-tiles{
+  filter:brightness(0.92) contrast(1.1) saturate(1.15);
+}
+.bathymetry-tiles{
+  filter:contrast(1.2) saturate(1.25);
+}
+
+/* Branding Header */
+.logo-container{
+  position:fixed;
+  top:24px;
+  left:28px;
+  z-index:40;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  text-decoration:none;
+}
+.logo{
+  width:56px;
+  height:56px;
+  object-fit:contain;
+  filter:drop-shadow(0 2px 10px rgba(0,0,0,.5));
+  transition:transform .2s ease;
+}
+.logo-container:hover .logo{transform:scale(1.05)}
+
+/* Top Right Actions */
+.actions{
+  position:fixed;
+  top:27px;
+  right:28px;
+  display:flex;
+  gap:16px;
+  z-index:40;
+}
+button{border:0;cursor:pointer}
+.logout,.nav-trigger{
+  position:relative;
+  width:48px;
+  height:48px;
+  border-radius:12px;
+  background:rgba(12,24,34,.84);
+  backdrop-filter:blur(14px);
+  border:1px solid var(--panel-border);
+  display:grid;
+  place-items:center;
+  transition:all .2s ease;
+  box-shadow:0 4px 15px rgba(0,0,0,.3);
+}
+.logout:hover,.nav-trigger:hover{
+  background:#142b3d;
+  transform:translateY(-2px);
+  border-color:var(--blue);
+  box-shadow:0 6px 20px rgba(57,189,242,.35);
+}
+.logout svg{width:26px;stroke:#ff4050;fill:none;stroke-width:2}
+.nav-trigger{background:var(--blue);border-color:transparent}
+.nav-trigger svg{width:29px;stroke:#fff;fill:none;stroke-width:2.5}
+.nav-trigger:hover{background:var(--blue2)}
+
+.tooltip{
+  position:absolute;
+  top:56px;
+  right:0;
+  background:rgba(12,24,34,.95);
+  color:#fff;
+  padding:7px 11px;
+  border-radius:7px;
+  font:500 11px/1 "DM Mono",monospace;
+  opacity:0;
+  pointer-events:none;
+  white-space:nowrap;
+  box-shadow:0 4px 15px rgba(0,0,0,.4);
+  border:1px solid var(--panel-border);
+  transform:translateY(-4px);
+  transition:.2s;
+  z-index:60;
+}
+button:hover .tooltip{opacity:1;transform:none}
+
+/* Draggable Navigation Bar */
+.nav{
+  position:fixed;
+  right:88px;
+  top:88px;
+  width:max-content;
+  min-width:410px;
+  padding:15px 18px;
+  display:flex;
+  gap:7px;
+  background:rgba(12,24,34,.88);
+  backdrop-filter:blur(20px);
+  border:1px solid var(--panel-border);
+  border-radius:14px;
+  box-shadow:0 8px 35px rgba(0,0,0,.5);
+  z-index:50;
+  cursor:grab;
+  opacity:0;
+  visibility:hidden;
+  transform:translateY(-8px) scale(.97);
+  transition:all .22s ease;
+}
+.nav.open{opacity:1;visibility:visible;transform:none}
+.nav.dragging{cursor:grabbing}
+.nav a{
+  flex:1;
+  text-align:center;
+  text-decoration:none;
+  white-space:nowrap;
+  color:#d4e7f2;
+  font:600 13px "DM Mono",monospace;
+  letter-spacing:1.2px;
+  padding:11px 10px;
+  border-radius:8px;
+  transition:.2s;
+}
+.nav a:hover,.nav a.active{
+  background:rgba(57,189,242,.18);
+  color:var(--blue);
+  border:1px solid rgba(57,189,242,.4);
+}
+
+/* ============================================================
+   RIGHT VERTICAL MODES SELECTOR BAR
+   ============================================================ */
+.modes-bar-wrapper{
+  position:fixed;
+  top:96px;
+  right:28px;
+  z-index:35;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:12px;
+}
+
+.modes-bar-header{
+  font:600 9px "DM Mono",monospace;
+  letter-spacing:2px;
+  color:var(--blue);
+  text-transform:uppercase;
+  background:rgba(12,24,34,.75);
+  padding:4px 8px;
+  border-radius:6px;
+  border:1px solid rgba(57,189,242,.25);
+  pointer-events:none;
+  margin-bottom:2px;
+}
+
+.mode-btn{
+  position:relative;
+  width:50px;
+  height:50px;
+  border-radius:50%;
+  background:var(--panel-bg);
+  backdrop-filter:blur(16px);
+  border:1.5px solid var(--panel-border);
+  color:#b8dbeb;
+  display:grid;
+  place-items:center;
+  box-shadow:0 4px 16px rgba(0,0,0,.35);
+  transition:all .22s cubic-bezier(0.2, 0.9, 0.4, 1);
+}
+
+.mode-btn svg{
+  width:24px;
+  height:24px;
+  stroke:currentColor;
+  transition:transform .2s ease, stroke .2s ease;
+}
+
+.mode-btn:hover{
+  background:#142939;
+  color:#fff;
+  border-color:var(--blue);
+  transform:scale(1.08);
+  box-shadow:0 6px 22px rgba(57,189,242,.3);
+}
+
+.mode-btn:hover svg{
+  transform:scale(1.1);
+  stroke:var(--blue);
+}
+
+/* Active Highlight */
+.mode-btn.active{
+  background:linear-gradient(135deg, rgba(57,189,242,0.35) 0%, rgba(13,169,223,0.18) 100%), #0d2232;
+  border-color:#39bdf2;
+  color:#39bdf2;
+  box-shadow:var(--active-glow), 0 4px 18px rgba(0,0,0,.4);
+  transform:scale(1.05);
+}
+
+.mode-btn.active::before{
+  content:"";
+  position:absolute;
+  left:-7px;
+  width:4px;
+  height:18px;
+  border-radius:2px;
+  background:var(--blue);
+  box-shadow:0 0 10px var(--blue);
+}
+
+/* Divider between Basemaps & Thematic Overlays */
+.modes-divider{
+  width:28px;
+  height:1px;
+  background:rgba(57,189,242,.25);
+  margin:2px 0;
+}
+
+/* Mode Tooltips on Left */
+.mode-tooltip{
+  position:absolute;
+  right:62px;
+  top:50%;
+  transform:translateY(-50%) translateX(6px);
+  background:rgba(10,22,32,0.96);
+  backdrop-filter:blur(16px);
+  border:1px solid var(--panel-border);
+  padding:7px 12px;
+  border-radius:8px;
+  font:500 11px/1.3 "DM Mono",monospace;
+  letter-spacing:1px;
+  white-space:nowrap;
+  color:#fff;
+  box-shadow:0 6px 20px rgba(0,0,0,.45);
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transition:all .18s ease;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.mode-btn:hover .mode-tooltip{
+  opacity:1;
+  visibility:visible;
+  transform:translateY(-50%) translateX(0);
+}
+
+.badge-tag{
+  font-size:9px;
+  font-weight:700;
+  padding:2px 6px;
+  border-radius:4px;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+}
+.badge-base{background:rgba(57,189,242,.2);color:var(--blue)}
+.badge-overlay{background:rgba(234,179,8,.2);color:#facc15}
+
+/* ============================================================
+   BOTTOM HORIZONTALLY SCROLLABLE DYNAMIC LEGEND
+   ============================================================ */
+.legend-wrapper{
+  position:fixed;
+  bottom:24px;
+  left:28px;
+  max-width:calc(100vw - 360px);
+  z-index:35;
+  background:var(--panel-bg);
+  backdrop-filter:blur(18px);
+  border:1px solid var(--panel-border);
+  border-radius:14px;
+  padding:12px 18px;
+  box-shadow:var(--panel-glow);
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  transition:all .25s ease;
+}
+
+.legend-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+}
+
+.legend-title-group{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.legend-indicator-dot{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--blue);
+  box-shadow:0 0 10px var(--blue);
+  animation:pulseDot 2s infinite ease-in-out;
+}
+@keyframes pulseDot{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:.4;transform:scale(1.3)}
+}
+
+.legend-title{
+  font:600 12px "DM Mono",monospace;
+  letter-spacing:1.5px;
+  color:#fff;
+  text-transform:uppercase;
+}
+
+.legend-subtitle{
+  font:400 11px "DM Sans",sans-serif;
+  color:#8ba5b5;
+}
+
+/* Horizontally Scrollable Legend Body */
+.legend-scroll-container{
+  display:flex;
+  align-items:center;
+  gap:24px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  padding-bottom:4px;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(57,189,242,.4) transparent;
+}
+.legend-scroll-container::-webkit-scrollbar{height:4px}
+.legend-scroll-container::-webkit-scrollbar-thumb{
+  background:rgba(57,189,242,.4);
+  border-radius:2px;
+}
+
+/* Continuous Gradient Scale Bar Component */
+.legend-scale-block{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  min-width:320px;
+}
+.legend-scale-bar{
+  width:100%;
+  height:12px;
+  border-radius:6px;
+  border:1px solid rgba(255,255,255,0.25);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,0.5);
+  position:relative;
+}
+.legend-scale-ticks{
+  display:flex;
+  justify-content:space-between;
+  font:500 10px "DM Mono",monospace;
+  color:#9ab5c5;
+}
+
+/* Discrete Key Items Component */
+.legend-keys-row{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  white-space:nowrap;
+}
+.legend-key-item{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  font:500 11px "DM Mono",monospace;
+  color:#d0e5f2;
+}
+.key-symbol{
+  display:inline-block;
+  border-radius:3px;
+}
+.key-dot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+}
+.key-line{
+  width:18px;
+  height:3px;
+}
+
+/* ============================================================
+   TELEMETRY HUD / CONTROLS
+   ============================================================ */
+.hud-coordinates{
+  position:fixed;
+  top:28px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:35;
+  background:rgba(12,24,34,0.78);
+  backdrop-filter:blur(14px);
+  border:1px solid rgba(57,189,242,0.3);
+  padding:7px 18px;
+  border-radius:30px;
+  font:500 11px "DM Mono",monospace;
+  letter-spacing:1px;
+  color:#82cff0;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  box-shadow:0 4px 20px rgba(0,0,0,0.3);
+  pointer-events:none;
+}
+.hud-item{display:flex;gap:5px;align-items:center}
+.hud-sep{color:rgba(57,189,242,0.35)}
+
+/* Map Zoom Controls on Left */
+.map-nav-controls{
+  position:fixed;
+  left:28px;
+  top:100px;
+  z-index:35;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.map-ctrl-btn{
+  width:42px;
+  height:42px;
+  border-radius:10px;
+  background:var(--panel-bg);
+  backdrop-filter:blur(14px);
+  border:1px solid var(--panel-border);
+  color:#fff;
+  font:600 18px "DM Mono",monospace;
+  display:grid;
+  place-items:center;
+  box-shadow:0 4px 15px rgba(0,0,0,.3);
+  transition:all .2s ease;
+}
+.map-ctrl-btn:hover{
+  background:#142939;
+  border-color:var(--blue);
+  color:var(--blue);
+  transform:translateY(-1px);
+}
+
+/* Fixed Bottom-Right Arrow Navigators (Always fixed to viewport) */
+.arrows{
+  position:fixed !important;
+  bottom:24px !important;
+  right:28px !important;
+  display:flex;
+  gap:8px;
+  z-index:9999 !important;
+}
+.arrow{
+  width:44px;
+  height:44px;
+  border:1px solid var(--panel-border);
+  background:var(--panel-bg);
+  backdrop-filter:blur(14px);
+  color:var(--blue);
+  border-radius:50% !important; /* Circular buttons */
+  cursor:pointer;
+  font-size:20px;
+  display:grid;
+  place-items:center;
+  transition:all .2s ease;
+  box-shadow:0 4px 15px rgba(0,0,0,.3);
+}
+.arrow:hover{
+  background:#142939;
+  color:#fff;
+  border-color:var(--blue);
+  transform:translateY(-2px);
+  box-shadow:0 6px 20px rgba(57,189,242,.35);
+}
+
+/* Wave/Ripple Swipe Transition Overlay */
+.ocean-swipe-wave{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100vw;
+  height:100vh;
+  pointer-events:none;
+  z-index:10001;
+  overflow:hidden;
+}
+.ocean-swipe-wave::before{
+  content:"";
+  position:absolute;
+  top:-20%;
+  width:140vw;
+  height:140vh;
+  background:radial-gradient(ellipse at center, rgba(57,189,242,0.85) 0%, rgba(13,169,223,0.6) 40%, rgba(3,105,161,0.2) 70%, transparent 100%);
+  box-shadow:0 0 80px rgba(57,189,242,0.7);
+  filter:blur(6px);
+}
+.ocean-swipe-wave.swipe-left::before{
+  left:100vw;
+  animation:waveWashLeft 0.48s cubic-bezier(0.25, 1, 0.3, 1) forwards;
+}
+.ocean-swipe-wave.swipe-right::before{
+  right:100vw;
+  animation:waveWashRight 0.48s cubic-bezier(0.25, 1, 0.3, 1) forwards;
+}
+@keyframes waveWashLeft{
+  0%{transform:translateX(0) scaleX(0.4);opacity:0}
+  30%{opacity:0.95}
+  100%{transform:translateX(-220vw) scaleX(1.2);opacity:0}
+}
+@keyframes waveWashRight{
+  0%{transform:translateX(0) scaleX(0.4);opacity:0}
+  30%{opacity:0.95}
+  100%{transform:translateX(220vw) scaleX(1.2);opacity:0}
+}
+
+/* ARGO & PFZ Leaflet Custom Marker Styles */
+.argo-ping-marker{
+  position:relative;
+  width:14px;
+  height:14px;
+}
+.argo-ping-dot{
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  background:#39bdf2;
+  border:2px solid #fff;
+  box-shadow:0 0 12px #39bdf2;
+}
+.argo-ping-wave{
+  position:absolute;
+  inset:-6px;
+  border-radius:50%;
+  border:1.5px solid #39bdf2;
+  opacity:0;
+  animation:argoPulse 2.4s infinite ease-out;
+}
+@keyframes argoPulse{
+  0%{transform:scale(.5);opacity:1}
+  100%{transform:scale(2.2);opacity:0}
+}
+
+.nautical-port-marker{
+  width:12px;
+  height:12px;
+  background:#facc15;
+  border:2px solid #000;
+  border-radius:2px;
+  box-shadow:0 0 8px #facc15;
+}
+
+/* Leaflet Popup Styling */
+.leaflet-popup-content-wrapper{
+  background:rgba(10,22,32,0.95) !important;
+  backdrop-filter:blur(16px) !important;
+  border:1px solid var(--panel-border) !important;
+  border-radius:12px !important;
+  color:#fff !important;
+  box-shadow:0 10px 30px rgba(0,0,0,0.6) !important;
+}
+.leaflet-popup-tip{
+  background:rgba(10,22,32,0.95) !important;
+  border:1px solid var(--panel-border) !important;
+}
+.leaflet-popup-content{
+  margin:14px 16px !important;
+  font-family:"DM Sans",sans-serif !important;
+  font-size:13px !important;
+  line-height:1.5 !important;
+}
+.popup-badge{
+  font:600 10px "DM Mono",monospace;
+  color:var(--blue);
+  letter-spacing:1px;
+  text-transform:uppercase;
+  margin-bottom:4px;
+  display:block;
+}
+.popup-title{
+  font:600 15px "Playfair Display",serif;
+  color:#fff;
+  margin-bottom:6px;
+}
+.popup-metrics{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px 12px;
+  margin-top:8px;
+  font:500 11px "DM Mono",monospace;
+  color:#a5c7da;
+}
+.popup-metrics strong{color:#fff}
+
+@media(max-width:850px){
+  .legend-wrapper{
+    max-width:calc(100vw - 120px);
+    bottom:76px;
+    left:16px;
+  }
+  .hud-coordinates{display:none}
+  .modes-bar-wrapper{right:16px;top:80px}
+  .arrows{right:16px;bottom:16px}
+}
+</style>
+</head>
+
+<body class="page-enter">
+
+<!-- Full-Viewport Interactive Map Container -->
+<div id="map-viewport"></div>
+
+<!-- Top Branding -->
+<a href="main.html" class="logo-container" title="Back to Homepage">
+  <img src="assets/logo.svg" onerror="this.onerror=null;this.src='assets/logo.png';" class="logo" alt="Sagar Mitra">
+</a>
+
+<!-- Live Coordinates & Telemetry HUD -->
+<div class="hud-coordinates">
+  <div class="hud-item"><span style="color:var(--blue)">CURSOR:</span> <span id="hudCoords">14.50°N, 76.50°E</span></div>
+  <span class="hud-sep">|</span>
+  <div class="hud-item"><span style="color:var(--blue)">ZOOM:</span> <span id="hudZoom">5</span></div>
+  <span class="hud-sep">|</span>
+  <div class="hud-item"><span style="color:var(--blue)">STATUS:</span> <span>ORCA SATELLITE TELEMETRY ONLINE</span></div>
+</div>
+
+<!-- Map Nav Controls (Zoom + / - / Reset) -->
+<div class="map-nav-controls">
+  <button class="map-ctrl-btn" id="zoomInBtn" title="Zoom In">+</button>
+  <button class="map-ctrl-btn" id="zoomOutBtn" title="Zoom Out">−</button>
+  <button class="map-ctrl-btn" id="resetViewBtn" title="Reset Indian Ocean Basin View">⟲</button>
+</div>
+
+<!-- Top-right Action Buttons -->
+<div class="actions">
+  <button class="nav-trigger" id="trigger" aria-label="Open navigation menu">
+    <svg viewBox="0 0 40 40">
+      <path d="M4 25c5-11 12-15 18-10 4 3 6 8 14 3"/>
+      <path d="M4 30c7-7 12-8 18-4 5 3 9 3 14-2"/>
+    </svg>
+    <span class="tooltip">Navigation</span>
+  </button>
+  
+  <button class="logout" id="logout" aria-label="Log out">
+    <svg viewBox="0 0 32 32">
+      <path d="M13 5H7a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h6"/>
+      <path d="M18 10l7 6-7 6"/>
+      <path d="M25 16H11"/>
+    </svg>
+    <span class="tooltip">Log out</span>
+  </button>
+</div>
+
+<!-- Draggable Glassmorphic Floating Navigation -->
+<nav class="nav" id="nav">
+  <a href="main.html">HOME</a>
+  <a href="about.html">ABOUT US</a>
+  <a href="map.html" class="active">MAP</a>
+  <a href="chatbot.html">CHATBOT</a>
+</nav>
+
+<!-- ============================================================
+     RIGHT VERTICAL MODES SELECTOR BAR
+     All custom inline SVGs; No emojis / icon fonts / text icons
+     ============================================================ -->
+<div class="modes-bar-wrapper">
+  <div class="modes-bar-header">MODES</div>
+
+  <!-- 1. OCEAN (Basemap) -->
+  <button class="mode-btn active" id="btnModeOcean" data-mode="ocean" aria-label="Ocean Mode">
+    <!-- Custom SVG: Undulating ocean wave crests & horizon -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 6c3.2-2 6.8-2 10 0s6.8 2 10 0"/>
+      <path d="M2 12c3.2-2.5 6.8-2.5 10 0s6.8 2.5 10 0"/>
+      <path d="M2 18c3.2-2.5 6.8-2.5 10 0s6.8 2.5 10 0"/>
+    </svg>
+    <div class="mode-tooltip">
+      <span class="badge-tag badge-base">BASEMAP</span>
+      <span>Ocean Bathymetry</span>
+    </div>
+  </button>
+
+  <!-- 2. SATELLITE (Basemap) -->
+  <button class="mode-btn" id="btnModeSatellite" data-mode="satellite" aria-label="Satellite Mode">
+    <!-- Custom SVG: Orbital satellite with solar panels and sensor dish -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9.5" y="9.5" width="5" height="5" rx="1" transform="rotate(45 12 12)"/>
+      <path d="M4 8l3-3 3 3-3 3z"/>
+      <path d="M14 18l3-3 3 3-3 3z"/>
+      <path d="M12.5 7.5L14 6"/>
+      <path d="M11.5 16.5L10 18"/>
+      <path d="M4 20a10 10 0 0 0 16-16"/>
+      <circle cx="4" cy="20" r="1.2" fill="currentColor"/>
+    </svg>
+    <div class="mode-tooltip">
+      <span class="badge-tag badge-base">BASEMAP</span>
+      <span>True-Color Satellite</span>
+    </div>
+  </button>
+
+  <!-- 3. NAUTICAL (Basemap) -->
+  <button class="mode-btn" id="btnModeNautical" data-mode="nautical" aria-label="Nautical Mode">
+    <!-- Custom SVG: Maritime anchor with stock, shank, flukes, and compass ring -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="5" r="2.2"/>
+      <line x1="12" y1="7.2" x2="12" y2="21"/>
+      <line x1="7" y1="10" x2="17" y2="10"/>
+      <path d="M5 14c0 4.5 3.5 7 7 7s7-2.5 7-7"/>
+      <path d="M4 13l2 2"/>
+      <path d="M20 13l-2 2"/>
+    </svg>
+    <div class="mode-tooltip">
+      <span class="badge-tag badge-base">BASEMAP</span>
+      <span>Nautical Charts & Ports</span>
+    </div>
+  </button>
+
+  <!-- 4. BATHYMETRY (Basemap) -->
+  <button class="mode-btn" id="btnModeBathymetry" data-mode="bathymetry" aria-label="Bathymetry Mode">
+    <!-- Custom SVG: Concentric isobath depth contour rings descending into abyssal trench -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <ellipse cx="12" cy="12" rx="9.5" ry="8"/>
+      <ellipse cx="12" cy="12" rx="6.5" ry="5"/>
+      <ellipse cx="12" cy="12" rx="3.2" ry="2.2"/>
+      <line x1="12" y1="2" x2="12" y2="4"/>
+      <line x1="12" y1="20" x2="12" y2="22"/>
+    </svg>
+    <div class="mode-tooltip">
+      <span class="badge-tag badge-base">BASEMAP</span>
+      <span>Seafloor Relief & Trenches</span>
+    </div>
+  </button>
+
+  <div class="modes-divider"></div>
+
+  <!-- 5. WEATHER (Thematic Overlay) -->
+  <button class="mode-btn" id="btnModeWeather" data-mode="weather" aria-label="Weather Overlay">
+    <!-- Custom SVG: Aerodynamic atmospheric wind vortex with isobar curves -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 8h12a3 3 0 1 0-3-3"/>
+      <path d="M2 13h16a3 3 0 1 0-3-3"/>
+      <path d="M4 18h9a2.5 2.5 0 1 0-2.5-2.5"/>
+    </svg>
+    <div class="mode-tooltip">
+      <span class="badge-tag badge-overlay">OVERLAY</span>
+      <span>Wind, Waves & Pressure</span>
+    </div>
+  </button>
+
+  <!-- 6. CURRENTS (Thematic Overlay) -->
+  <button class="mode-btn" id="btnModeCurrents" data-mode="currents" aria-label="Currents Overlay">
+    <!-- Custom SVG: Hydrodynamic flow streamlines with velocity chevron vectors -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 7h13M13 4l4 3-4 3"/>
+      <path d="M5 12h14M16 9l4 3-4 3"/>
+      <path d="M2 17h12M11 14l4 3-4 3"/>
+    </svg>
+    <div class="mode-tooltip">
+      <span class="badge-tag badge-overlay">OVERLAY</span>
+      <span>Surface Ocean Circulation</span>
+    </div>
+  </button>
+
+  <!-- 7. MARINE (Thematic Overlay) -->
+  <button class="mode-btn" id="btnModeMarine" data-mode="marine" aria-label="Marine Overlay">
+    <!-- Custom SVG: Stylized pelagic fish with acoustic telemetry buoy transmission arcs -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 12c3.8-5 10.5-6 15.5-2 1.5 1.2 3 2 4.5 2-1.5 0-3 .8-4.5 2-5 4-11.7 3-15.5-2z"/>
+      <path d="M19 12l3-3v6l-3-3z"/>
+      <circle cx="8" cy="11" r="1" fill="currentColor"/>
+      <path d="M12 9c.5 1 1 2 2 3"/>
+      <path d="M11 4a8 8 0 0 1 5 3"/>
+    </svg>
+    <div class="mode-tooltip">
+      <span class="badge-tag badge-overlay">OVERLAY</span>
+      <span>SST, Chlorophyll & ARGO Floats</span>
+    </div>
+  </button>
+</div>
+
+<!-- ============================================================
+     BOTTOM DYNAMIC & HORIZONTALLY SCROLLABLE LEGEND
+     ============================================================ -->
+<div class="legend-wrapper" id="legendContainer">
+  <div class="legend-header">
+    <div class="legend-title-group">
+      <span class="legend-indicator-dot" id="legendDot"></span>
+      <span class="legend-title" id="legendTitle">OCEAN BATHYMETRY</span>
+    </div>
+    <span class="legend-subtitle" id="legendSubtitle">Depth sounding gradient & coastline telemetry</span>
+  </div>
+
+  <div class="legend-scroll-container" id="legendScrollBody">
+    <!-- Injected dynamically via JS based on active mode -->
+  </div>
+</div>
+
+<!-- Fixed Navigation Arrows (About Us <-> Chatbot) -->
+<div class="arrows">
+  <button class="arrow" id="prev" aria-label="Previous page (About Us)">←</button>
+  <button class="arrow" id="next" aria-label="Next page (Chatbot)">→</button>
+</div>
+
+<script>
+// ============================================================
+// PAGE TRANSITIONS & NAVIGATION
+// ============================================================
+const pages=["main.html","about.html","map.html","chatbot.html"];
+const current=2;
+const nav=document.getElementById("nav");
+const trigger=document.getElementById("trigger");
+
+trigger.onclick=()=>nav.classList.toggle("open");
+
+document.getElementById("logout").onclick=()=>{
+  localStorage.removeItem("sagarMitraLoggedIn");
+  document.body.classList.add("page-exit");
+  setTimeout(()=>location.href="login.html",430);
+};
+
+let transitioning=false;
+function triggerWaveTransition(dir, targetUrl){
+  let wave = document.getElementById("oceanWaveOverlay");
+  if(!wave){
+    wave = document.createElement("div");
+    wave.id = "oceanWaveOverlay";
+    document.body.appendChild(wave);
+  }
+  wave.className = "ocean-swipe-wave " + (dir > 0 ? "swipe-left" : "swipe-right");
+
+  document.body.style.transition = "transform 0.45s cubic-bezier(0.25, 1, 0.3, 1), opacity 0.45s ease";
+  document.body.style.transform = `translateX(${dir > 0 ? "-10vw" : "10vw"})`;
+  document.body.style.opacity = "0";
+
+  setTimeout(() => { location.href = targetUrl; }, 420);
+}
+
+function go(d){
+  let n=current+d;
+  if(n<0||n>=pages.length||transitioning)return;
+  transitioning=true;
+  triggerWaveTransition(d, pages[n]);
+}
+
+document.getElementById("prev").onclick=()=>go(-1);
+document.getElementById("next").onclick=()=>go(1);
+
+document.addEventListener("keydown",e=>{
+  if(e.ctrlKey&&(e.key==="ArrowRight"||e.key==="ArrowLeft")){
+    e.preventDefault();
+    go(e.key==="ArrowRight"?1:-1);
+  }
+});
+
+// CTRL + 2-FINGER SWIPE: Horizontal page navigation
+// Prevents normal vertical navigation from being affected
+let swipeLock = false;
+window.addEventListener("wheel", e => {
+  // Only trigger when Ctrl is held AND gesture is predominantly horizontal
+  if (!e.ctrlKey) return; // Normal vertical navigation unaffected!
+  if (Math.abs(e.deltaX) < 16 || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // Normal vertical navigation unaffected!
+
+  e.preventDefault();
+  if (swipeLock || transitioning) return;
+
+  const dir = e.deltaX > 0 ? 1 : -1; // deltaX > 0: swipe left (next page); deltaX < 0: swipe right (prev page)
+  const n = current + dir;
+  if (n < 0 || n >= pages.length) return;
+
+  swipeLock = true;
+  transitioning = true;
+  triggerWaveTransition(dir, pages[n]);
+}, { passive: false });
+
+// Floating nav drag persistence
+let drag=false,sx,sy,ox,oy;
+nav.onpointerdown=e=>{
+  if(e.target.closest("a"))return;
+  drag=true;sx=e.clientX;sy=e.clientY;
+  let r=nav.getBoundingClientRect();ox=r.left;oy=r.top;
+  nav.setPointerCapture(e.pointerId);
+};
+nav.onpointermove=e=>{
+  if(!drag)return;
+  nav.style.left=ox+e.clientX-sx+"px";
+  nav.style.top=oy+e.clientY-sy+"px";
+  nav.style.right="auto";
+};
+nav.onpointerup=()=>{
+  drag=false;
+  localStorage.setItem("navX",nav.offsetLeft);
+  localStorage.setItem("navY",nav.offsetTop);
+};
+if(localStorage.navX){
+  nav.style.left=localStorage.navX+"px";
+  nav.style.top=localStorage.navY+"px";
+  nav.style.right="auto";
+}
+
+// ============================================================
+// MAP ENGINE ARCHITECTURE
+// Modular basemaps, thematic overlays, vector layers
+// ============================================================
+const INITIAL_CENTER = [14.5, 76.5]; // Central Indian Ocean / Subcontinent
+const INITIAL_ZOOM = 5;
+
+const map = L.map("map-viewport", {
+  center: INITIAL_CENTER,
+  zoom: INITIAL_ZOOM,
+  zoomControl: false,
+  minZoom: 3,
+  maxZoom: 18,
+  attributionControl: false
+});
+
+// HUD cursor coordinates tracker
+map.on("mousemove", e => {
+  const lat = e.latlng.lat.toFixed(2);
+  const lng = e.latlng.lng.toFixed(2);
+  const latStr = lat >= 0 ? `${lat}°N` : `${Math.abs(lat)}°S`;
+  const lngStr = lng >= 0 ? `${lng}°E` : `${Math.abs(lng)}°W`;
+  document.getElementById("hudCoords").textContent = `${latStr}, ${lngStr}`;
+});
+map.on("zoomend", () => {
+  document.getElementById("hudZoom").textContent = map.getZoom();
+});
+
+// Map controls
+document.getElementById("zoomInBtn").onclick = () => map.zoomIn();
+document.getElementById("zoomOutBtn").onclick = () => map.zoomOut();
+document.getElementById("resetViewBtn").onclick = () => map.setView(INITIAL_CENTER, INITIAL_ZOOM, { animate: true });
+
+// ------------------------------------------------------------
+// 1. BASEMAP LAYERS
+// ------------------------------------------------------------
+const basemaps = {
+  ocean: L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}", {
+    className: "dark-ocean-tiles",
+    maxZoom: 13
+  }),
+  satellite: L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 18
+  }),
+  nautical: L.layerGroup([
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+      maxZoom: 18,
+      subdomains: "abcd"
+    }),
+    L.tileLayer("https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      opacity: 0.95
+    })
+  ]),
+  bathymetry: L.layerGroup([
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}", {
+      className: "bathymetry-tiles",
+      maxZoom: 13
+    }),
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 13,
+      opacity: 0.85
+    })
+  ])
+};
+
+let currentBasemapKey = "ocean";
+basemaps.ocean.addTo(map);
+
+// ------------------------------------------------------------
+// 2. SHARED OCEANOGRAPHIC DATASETS (Sitting above basemap)
+// ------------------------------------------------------------
+
+// A. Indian Ocean EEZ (200 NM Exclusive Economic Zone)
+const indianEEZCoords = [
+  [23.5, 68.1], [20.5, 66.5], [15.5, 68.0], [10.5, 71.0], [7.0, 74.5],
+  [5.5, 78.0], [7.5, 81.5], [11.0, 83.5], [16.0, 84.5], [20.5, 87.5]
+];
+const eezPolyline = L.polyline(indianEEZCoords, {
+  color: "#39bdf2",
+  weight: 2,
+  dashArray: "6, 8",
+  opacity: 0.8
+}).addTo(map).bindPopup(`
+  <span class="popup-badge">Sovereign Maritime Domain</span>
+  <div class="popup-title">Indian Exclusive Economic Zone (EEZ)</div>
+  <p>200 Nautical Mile perimeter monitored for vessel clearance and unauthorized entry.</p>
+`);
+
+// B. Bathymetric Depth Contours (for Bathymetry & Nautical modes)
+const bathymetricContours = L.layerGroup();
+const contourData = [
+  { coords: [[21.5, 68.0], [19.0, 70.0], [15.0, 72.0], [10.0, 74.5], [7.0, 76.5]], depth: 200, name: "Continental Shelf Break (200m)" },
+  { coords: [[20.5, 65.5], [16.5, 68.0], [12.0, 70.5], [6.5, 73.0]], depth: 2000, name: "Bathyal Slope Isocline (-2000m)" },
+  { coords: [[18.0, 62.0], [14.0, 64.0], [8.0, 66.0], [2.0, 70.0]], depth: 4000, name: "Carlsberg Ridge / Abyssal Plain (-4000m)" },
+  { coords: [[2.0, 92.0], [-2.0, 95.0], [-7.0, 102.0], [-10.0, 110.0]], depth: 6500, name: "Java / Sunda Trench System (-6500m)" }
+];
+contourData.forEach(c => {
+  L.polyline(c.coords, {
+    color: c.depth >= 4000 ? "#818cf8" : (c.depth >= 2000 ? "#38bdf8" : "#2dd4bf"),
+    weight: 1.6,
+    dashArray: "4, 6",
+    opacity: 0.8
+  }).bindPopup(`
+    <span class="popup-badge">Submarine Topography</span>
+    <div class="popup-title">${c.name}</div>
+    <div class="popup-metrics">
+      <div>Depth: <strong>${c.depth} m</strong></div>
+      <div>Profile: <strong>Isobath Isoline</strong></div>
+    </div>
+  `).addTo(bathymetricContours);
+});
+
+// C. Major Nautical Ports & Shipping Corridors (for Nautical mode)
+const nauticalFeatures = L.layerGroup();
+const majorPorts = [
+  { name: "Jawaharlal Nehru Port (JNPT)", lat: 18.95, lon: 72.95, type: "Major Container Hub", depth: "15.0m" },
+  { name: "Cochin Port (Kochi)", lat: 9.96, lon: 76.26, type: "Deepwater Transshipment", depth: "14.5m" },
+  { name: "Chennai Port", lat: 13.08, lon: 80.29, type: "Eastern Hub & Cargo", depth: "16.5m" },
+  { name: "Visakhapatnam Port", lat: 17.68, lon: 83.29, type: "Naval & Natural Harbor", depth: "18.1m" },
+  { name: "Port of Colombo", lat: 6.94, lon: 79.84, type: "International Deepsea Gate", depth: "18.0m" },
+  { name: "Port Blair Harbor", lat: 11.66, lon: 92.74, type: "Strategic Island Port", depth: "12.0m" }
+];
+const shippingCorridor = [
+  [12.5, 44.5], [12.0, 52.0], [10.5, 60.0], [6.5, 75.0], [5.8, 80.5], [5.5, 95.0], [5.0, 98.0]
+];
+L.polyline(shippingCorridor, {
+  color: "#f59e0b",
+  weight: 3,
+  opacity: 0.85,
+  dashArray: "8, 6"
+}).bindPopup(`
+  <span class="popup-badge">International Shipping Corridor</span>
+  <div class="popup-title">Indian Ocean Mega-Fairway</div>
+  <p>Primary maritime trade route connecting the Suez / Red Sea with Malacca Strait.</p>
+`).addTo(nauticalFeatures);
+
+majorPorts.forEach(p => {
+  const icon = L.divIcon({
+    className: "",
+    html: '<div class="nautical-port-marker" title="'+p.name+'"></div>',
+    iconSize: [12, 12],
+    iconAnchor: [6, 6]
+  });
+  L.marker([p.lat, p.lon], { icon }).bindPopup(`
+    <span class="popup-badge">Maritime Infrastructure</span>
+    <div class="popup-title">${p.name}</div>
+    <div class="popup-metrics">
+      <div>Classification: <strong>${p.type}</strong></div>
+      <div>Draft Depth: <strong>${p.depth}</strong></div>
+    </div>
+  `).addTo(nauticalFeatures);
+});
+
+// ------------------------------------------------------------
+// 3. THEMATIC OVERLAYS
+// ------------------------------------------------------------
+
+// A. WEATHER OVERLAY (Wind streamlines, isobar pressure, storm tracker)
+const weatherOverlay = L.layerGroup();
+
+// Severe Low Pressure Storm System in Arabian Sea
+const stormCenter = [16.8, 67.4];
+const stormRadiusKm = 240;
+L.circle(stormCenter, {
+  radius: stormRadiusKm * 1000,
+  color: "#ef4444",
+  fillColor: "#ef4444",
+  fillOpacity: 0.16,
+  weight: 2,
+  dashArray: "6, 6"
+}).addTo(weatherOverlay);
+L.circleMarker(stormCenter, {
+  radius: 8,
+  color: "#f87171",
+  fillColor: "#dc2626",
+  fillOpacity: 0.9,
+  weight: 2
+}).bindPopup(`
+  <span class="popup-badge">Meteorological Alert</span>
+  <div class="popup-title">Deep Depression "ORCA-03"</div>
+  <div class="popup-metrics">
+    <div>Central Pressure: <strong>996 hPa</strong></div>
+    <div>Max Gusts: <strong>55 Knots</strong></div>
+    <div>Wave Height: <strong>4.8 Metres</strong></div>
+    <div>Heading: <strong>NNW @ 12 km/h</strong></div>
+  </div>
+`).addTo(weatherOverlay);
+
+// Isobars
+const isobars = [
+  { coords: [[22, 62], [18, 65], [14, 66], [10, 68], [6, 72]], hpa: 1004 },
+  { coords: [[24, 65], [20, 69], [15, 71], [9, 74], [4, 78]], hpa: 1008 },
+  { coords: [[25, 75], [20, 80], [15, 83], [10, 85], [5, 87]], hpa: 1012 },
+  { coords: [[24, 85], [19, 88], [14, 91], [8, 93]], hpa: 1016 }
+];
+isobars.forEach(iso => {
+  L.polyline(iso.coords, {
+    color: "#38bdf8",
+    weight: 1.8,
+    opacity: 0.75
+  }).bindPopup(`<b>Isobar: ${iso.hpa} hPa</b><br>Surface atmospheric pressure`).addTo(weatherOverlay);
+});
+
+// Surface Wind Direction Vectors (sample grid across the basin)
+const windVectors = [
+  { lat: 19.5, lon: 64.0, deg: 235, speed: 28 },
+  { lat: 17.0, lon: 62.5, deg: 240, speed: 34 },
+  { lat: 14.5, lon: 66.0, deg: 220, speed: 38 },
+  { lat: 12.0, lon: 70.0, deg: 210, speed: 22 },
+  { lat: 9.5,  lon: 74.0, deg: 200, speed: 18 },
+  { lat: 17.5, lon: 86.0, deg: 160, speed: 19 },
+  { lat: 13.0, lon: 84.5, deg: 175, speed: 24 },
+  { lat: 8.0,  lon: 82.0, deg: 190, speed: 21 },
+  { lat: 5.5,  lon: 88.0, deg: 210, speed: 15 }
+];
+windVectors.forEach(w => {
+  const html = `<div style="transform:rotate(${w.deg}deg);color:#38bdf8;font-size:16px;font-weight:bold;line-height:1;filter:drop-shadow(0 0 4px #0284c7)">➤</div>`;
+  const icon = L.divIcon({ className: "", html, iconSize: [16, 16], iconAnchor: [8, 8] });
+  L.marker([w.lat, w.lon], { icon }).bindPopup(`
+    <span class="popup-badge">Surface Wind Observation</span>
+    <div class="popup-title">Velocity: ${w.speed} kts (${(w.speed * 0.514).toFixed(1)} m/s)</div>
+    <div class="popup-metrics">
+      <div>Bearing: <strong>${w.deg}°</strong></div>
+      <div>Sea State: <strong>Moderate/Rough</strong></div>
+    </div>
+  `).addTo(weatherOverlay);
+});
+
+// B. CURRENTS OVERLAY (Surface current circulation field & velocity vectors)
+const currentsOverlay = L.layerGroup();
+const oceanCurrentVectors = [
+  // Somali Current & Arabian Sea Circulation
+  { lat: 6.0, lon: 51.5, deg: 40, vel: 2.1, name: "Somali Jet Current" },
+  { lat: 9.0, lon: 54.0, deg: 45, vel: 1.9, name: "Somali Boundary Current" },
+  { lat: 12.5, lon: 58.0, deg: 60, vel: 1.4, name: "Arabian Sea Gyre" },
+  { lat: 15.0, lon: 63.5, deg: 75, vel: 1.1, name: "Monsoon Drift Current" },
+  { lat: 16.5, lon: 70.0, deg: 100, vel: 0.8, name: "West Coast of India Current" },
+  { lat: 12.0, lon: 73.0, deg: 160, vel: 0.9, name: "Lakshadweep Boundary Drift" },
+  // Equatorial Counter Current
+  { lat: 2.0, lon: 65.0, deg: 85, vel: 1.6, name: "Equatorial Jet Current" },
+  { lat: 1.5, lon: 75.0, deg: 90, vel: 1.5, name: "South Equatorial Current" },
+  { lat: 2.5, lon: 85.0, deg: 95, vel: 1.3, name: "Equatorial Undercurrent" },
+  // Bay of Bengal Circulation
+  { lat: 7.5, lon: 85.5, deg: 30, vel: 1.2, name: "East India Coastal Current" },
+  { lat: 13.0, lon: 83.0, deg: 15, vel: 1.4, name: "Bay of Bengal Cyclonic Gyre" },
+  { lat: 17.5, lon: 88.0, deg: 340, vel: 0.7, name: "Northern Bay Drift" }
+];
+
+oceanCurrentVectors.forEach(c => {
+  const color = c.vel >= 1.8 ? "#f43f5e" : (c.vel >= 1.2 ? "#fbbf24" : "#38bdf8");
+  const html = `<div style="transform:rotate(${c.deg}deg);color:${color};font-size:18px;font-weight:bold;line-height:1;filter:drop-shadow(0 0 6px ${color})">➔</div>`;
+  const icon = L.divIcon({ className: "", html, iconSize: [18, 18], iconAnchor: [9, 9] });
+  L.marker([c.lat, c.lon], { icon }).bindPopup(`
+    <span class="popup-badge">Ocean Surface Circulation</span>
+    <div class="popup-title">${c.name}</div>
+    <div class="popup-metrics">
+      <div>Velocity: <strong>${c.vel} m/s</strong></div>
+      <div>Direction: <strong>${c.deg}°</strong></div>
+      <div>Dynamics: <strong>Baroclinic Flow</strong></div>
+    </div>
+  `).addTo(currentsOverlay);
+});
+
+// C. MARINE OVERLAY (SST thermal gradients, PFZ polygons, ARGO float buoys)
+const marineOverlay = L.layerGroup();
+
+// Potential Fishing Zones (PFZ)
+const pfzPolygonsData = [
+  {
+    name: "Ratnagiri Pelagic Aggregation Zone",
+    coords: [[17.8, 70.4], [18.5, 71.0], [18.2, 72.2], [17.4, 71.5]],
+    confidence: "91%",
+    sst: "28.1°C",
+    chl: "1.45 mg/m³"
+  },
+  {
+    name: "Kochi Frontal Shoal",
+    coords: [[9.8, 74.8], [10.6, 75.3], [10.2, 76.1], [9.4, 75.6]],
+    confidence: "88%",
+    sst: "27.6°C",
+    chl: "2.10 mg/m³"
+  },
+  {
+    name: "Saurashtra Thermal Gradient Front",
+    coords: [[20.5, 68.5], [21.4, 69.1], [21.0, 70.3], [20.0, 69.5]],
+    confidence: "94%",
+    sst: "26.4°C",
+    chl: "2.85 mg/m³"
+  }
+];
+pfzPolygonsData.forEach(p => {
+  L.polygon(p.coords, {
+    color: "#10b981",
+    fillColor: "#10b981",
+    fillOpacity: 0.28,
+    weight: 2
+  }).bindPopup(`
+    <span class="popup-badge">Potential Fishing Zone</span>
+    <div class="popup-title">${p.name}</div>
+    <div class="popup-metrics">
+      <div>ML Confidence: <strong>${p.confidence}</strong></div>
+      <div>Sea Temp: <strong>${p.sst}</strong></div>
+      <div>Chlorophyll: <strong>${p.chl}</strong></div>
+      <div>Status: <strong>High Biomass</strong></div>
+    </div>
+  `).addTo(marineOverlay);
+});
+
+// Active ARGO Autonomous Profiling Floats
+const argoFloats = [
+  { id: "ARGO-290241", lat: 14.2, lon: 68.9, temp: "27.4°C", sal: "35.8 PSU", depth: "2,000m", cycle: "Day 6 / 10" },
+  { id: "ARGO-290242", lat: 17.6, lon: 66.1, temp: "26.8°C", sal: "36.2 PSU", depth: "1,850m", cycle: "Day 8 / 10" },
+  { id: "ARGO-290243", lat: 9.4,  lon: 76.8, temp: "28.1°C", sal: "34.9 PSU", depth: "2,000m", cycle: "Day 2 / 10" },
+  { id: "ARGO-290244", lat: 11.8, lon: 72.4, temp: "28.4°C", sal: "35.1 PSU", depth: "1,920m", cycle: "Day 5 / 10" },
+  { id: "ARGO-290245", lat: 16.9, lon: 84.2, temp: "28.9°C", sal: "33.6 PSU", depth: "2,000m", cycle: "Day 9 / 10" },
+  { id: "ARGO-290246", lat: 6.2,  lon: 86.4, temp: "29.2°C", sal: "34.2 PSU", depth: "2,000m", cycle: "Day 1 / 10" }
+];
+argoFloats.forEach(f => {
+  const icon = L.divIcon({
+    className: "",
+    html: `
+      <div class="argo-ping-marker">
+        <div class="argo-ping-dot"></div>
+        <div class="argo-ping-wave"></div>
+      </div>
+    `,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7]
+  });
+  L.marker([f.lat, f.lon], { icon }).bindPopup(`
+    <span class="popup-badge">Autonomous Argo Float</span>
+    <div class="popup-title">${f.id}</div>
+    <div class="popup-metrics">
+      <div>SST: <strong>${f.temp}</strong></div>
+      <div>Salinity: <strong>${f.sal}</strong></div>
+      <div>Max Depth: <strong>${f.depth}</strong></div>
+      <div>Mission: <strong>${f.cycle}</strong></div>
+    </div>
+  `).addTo(marineOverlay);
+});
+
+// Active overlays set
+const activeOverlays = new Set();
+
+// ============================================================
+// 4. DYNAMIC LEGEND CONFIGURATION
+// ============================================================
+const legendConfigs = {
+  ocean: {
+    title: "OCEAN BATHYMETRY",
+    subtitle: "Seafloor depth sounding gradient & continental margins",
+    scaleGradient: "linear-gradient(90deg, #022338 0%, #03466d 35%, #0ea5e9 70%, #7dd3fc 100%)",
+    ticks: ["-6,000m", "-4,000m", "-2,000m", "-200m", "0m (Coast)"],
+    keys: [
+      { type: "line", color: "#39bdf2", dash: true, label: "Indian EEZ Perimeter (200 NM)" },
+      { type: "dot", color: "#39bdf2", label: "Autonomous Profiling Floats" }
+    ]
+  },
+  satellite: {
+    title: "SATELLITE ORBITAL IMAGERY",
+    subtitle: "High-resolution true-color multispectral earth observation",
+    scaleGradient: "linear-gradient(90deg, #09131c 0%, #17384a 30%, #205c6d 60%, #4a8274 85%, #8ba379 100%)",
+    ticks: ["Deep Pelagic", "Shallow Reefs", "Coastal Shoals", "Landcover"],
+    keys: [
+      { type: "line", color: "#39bdf2", dash: true, label: "EEZ Boundary" },
+      { type: "dot", color: "#facc15", label: "Deepwater Sea Harbors" }
+    ]
+  },
+  nautical: {
+    title: "NAUTICAL MARITIME CHART",
+    subtitle: "Navigation fairways, coastal soundings, harbor depths & hazards",
+    scaleGradient: "linear-gradient(90deg, #93c5fd 0%, #bfdbfe 35%, #dbeafe 70%, #ffffff 100%)",
+    ticks: ["< 5m Danger", "5-20m Coastal", "20-100m Shelf", "> 200m Deep"],
+    keys: [
+      { type: "line", color: "#f59e0b", dash: true, label: "International Shipping Fairway" },
+      { type: "dot", color: "#facc15", label: "Major Commercial Port" },
+      { type: "line", color: "#2dd4bf", dash: true, label: "200m Continental Shelf" }
+    ]
+  },
+  bathymetry: {
+    title: "BATHYMETRY & TRENCH RELIEF",
+    subtitle: "GEBCO seafloor elevation, submarine ridges & abyssal canyons",
+    scaleGradient: "linear-gradient(90deg, #020617 0%, #1e1b4b 25%, #1d4ed8 50%, #06b6d4 75%, #a7f3d0 100%)",
+    ticks: ["-7,000m (Java Trench)", "-5,000m", "-3,000m", "-1,000m", "-50m"],
+    keys: [
+      { type: "line", color: "#818cf8", dash: true, label: "-4,000m Carlsberg Ridge" },
+      { type: "line", color: "#38bdf8", dash: true, label: "-2,000m Bathyal Slope" },
+      { type: "line", color: "#2dd4bf", dash: true, label: "-200m Shelf Break" }
+    ]
+  },
+  weather: {
+    title: "WEATHER & MARINE HAZARDS",
+    subtitle: "Atmospheric surface wind velocity, significant wave height & storm tracking",
+    scaleGradient: "linear-gradient(90deg, #38bdf8 0%, #2dd4bf 25%, #facc15 50%, #fb923c 75%, #ef4444 100%)",
+    ticks: ["0 kts (Calm)", "15 kts", "30 kts (Gale)", "45 kts (Storm)", "60+ kts (Cyclone)"],
+    keys: [
+      { type: "dot", color: "#ef4444", label: "Low Pressure / Storm Center" },
+      { type: "line", color: "#38bdf8", label: "Isobaric Pressure Contours (hPa)" },
+      { type: "dot", color: "#38bdf8", label: "Surface Wind Direction Vectors" }
+    ]
+  },
+  currents: {
+    title: "OCEAN SURFACE CURRENTS",
+    subtitle: "Hydrodynamic circulation velocity (m/s) & direction vector streamlines",
+    scaleGradient: "linear-gradient(90deg, #0284c7 0%, #38bdf8 30%, #34d399 60%, #fbbf24 85%, #f43f5e 100%)",
+    ticks: ["0.1 m/s (Sluggish)", "0.5 m/s", "1.0 m/s (Drift)", "1.5 m/s", "2.2+ m/s (Somali Jet)"],
+    keys: [
+      { type: "dot", color: "#f43f5e", label: "High-Velocity Current (>1.8 m/s)" },
+      { type: "dot", color: "#fbbf24", label: "Moderate Boundary Drift (1.2-1.5 m/s)" },
+      { type: "dot", color: "#38bdf8", label: "Gyre Circulation (0.5-1.0 m/s)" }
+    ]
+  },
+  marine: {
+    title: "MARINE BIOPHYSICS & ARGO FLOATS",
+    subtitle: "Sea surface temperature (°C), chlorophyll density & potential fishing zones",
+    scaleGradient: "linear-gradient(90deg, #3b82f6 0%, #06b6d4 30%, #10b981 60%, #f59e0b 85%, #ef4444 100%)",
+    ticks: ["22°C (Upwelling)", "25°C", "28°C", "30°C", "32°C (Warm Pool)"],
+    keys: [
+      { type: "dot", color: "#39bdf2", label: "Active ARGO Subsurface Float" },
+      { type: "line", color: "#10b981", label: "Potential Fishing Zone (PFZ) Polygon" },
+      { type: "line", color: "#39bdf2", dash: true, label: "EEZ Boundary" }
+    ]
+  }
+};
+
+function updateLegend(modeKey) {
+  const cfg = legendConfigs[modeKey] || legendConfigs.ocean;
+  document.getElementById("legendTitle").textContent = cfg.title;
+  document.getElementById("legendSubtitle").textContent = cfg.subtitle;
+
+  const container = document.getElementById("legendScrollBody");
+  container.innerHTML = "";
+
+  // Continuous Gradient Scale Bar
+  const scaleBlock = document.createElement("div");
+  scaleBlock.className = "legend-scale-block";
+  scaleBlock.innerHTML = `
+    <div class="legend-scale-bar" style="background:${cfg.scaleGradient}"></div>
+    <div class="legend-scale-ticks">
+      ${cfg.ticks.map(t => `<span>${t}</span>`).join("")}
+    </div>
+  `;
+  container.appendChild(scaleBlock);
+
+  // Discrete Symbol Keys
+  if (cfg.keys && cfg.keys.length > 0) {
+    const keysRow = document.createElement("div");
+    keysRow.className = "legend-keys-row";
+    cfg.keys.forEach(k => {
+      const item = document.createElement("span");
+      item.className = "legend-key-item";
+      let symHtml = "";
+      if (k.type === "dot") {
+        symHtml = `<span class="key-symbol key-dot" style="background:${k.color};box-shadow:0 0 6px ${k.color}"></span>`;
+      } else {
+        symHtml = `<span class="key-symbol key-line" style="background:${k.color};${k.dash?'border-top:2px dashed '+k.color+';background:none;':''}"></span>`;
+      }
+      item.innerHTML = `${symHtml} <span>${k.label}</span>`;
+      keysRow.appendChild(item);
+    });
+    container.appendChild(keysRow);
+  }
+}
+
+// Initial legend render
+updateLegend("ocean");
+
+// ============================================================
+// 5. MODE SWITCHER LOGIC
+// Basemaps: Ocean, Satellite, Nautical, Bathymetry
+// Overlays: Weather, Currents, Marine
+// ============================================================
+
+function switchBasemap(newBaseKey) {
+  if (currentBasemapKey === newBaseKey) return;
+
+  // Remove existing basemap
+  const prevBase = basemaps[currentBasemapKey];
+  if (map.hasLayer(prevBase)) map.removeLayer(prevBase);
+
+  // Clean specific basemap accessories
+  if (map.hasLayer(bathymetricContours)) map.removeLayer(bathymetricContours);
+  if (map.hasLayer(nauticalFeatures)) map.removeLayer(nauticalFeatures);
+
+  // Add new basemap
+  currentBasemapKey = newBaseKey;
+  basemaps[newBaseKey].addTo(map);
+
+  // Specific basemap enhancements
+  if (newBaseKey === "bathymetry") {
+    bathymetricContours.addTo(map);
+  } else if (newBaseKey === "nautical") {
+    nauticalFeatures.addTo(map);
+    bathymetricContours.addTo(map);
+  }
+
+  // Update button active state
+  ["ocean", "satellite", "nautical", "bathymetry"].forEach(k => {
+    const btn = document.querySelector(`.mode-btn[data-mode="${k}"]`);
+    if (btn) btn.classList.toggle("active", k === newBaseKey);
+  });
+
+  // If no overlays are focused, update legend to basemap
+  if (activeOverlays.size === 0) {
+    updateLegend(newBaseKey);
+  }
+}
+
+function toggleOverlay(overlayKey) {
+  const btn = document.querySelector(`.mode-btn[data-mode="${overlayKey}"]`);
+  let overlayLayer = null;
+  if (overlayKey === "weather") overlayLayer = weatherOverlay;
+  else if (overlayKey === "currents") overlayLayer = currentsOverlay;
+  else if (overlayKey === "marine") overlayLayer = marineOverlay;
+
+  if (!overlayLayer) return;
+
+  if (activeOverlays.has(overlayKey)) {
+    // Turn off
+    activeOverlays.delete(overlayKey);
+    map.removeLayer(overlayLayer);
+    if (btn) btn.classList.remove("active");
+
+    // Revert legend to another active overlay or basemap
+    if (activeOverlays.size > 0) {
+      const remaining = Array.from(activeOverlays).pop();
+      updateLegend(remaining);
+    } else {
+      updateLegend(currentBasemapKey);
+    }
+  } else {
+    // Turn on
+    activeOverlays.add(overlayKey);
+    overlayLayer.addTo(map);
+    if (btn) btn.classList.add("active");
+    updateLegend(overlayKey);
+  }
+}
+
+// Bind clicks to mode buttons
+document.querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const mode = btn.getAttribute("data-mode");
+    if (["ocean", "satellite", "nautical", "bathymetry"].includes(mode)) {
+      switchBasemap(mode);
+    } else if (["weather", "currents", "marine"].includes(mode)) {
+      toggleOverlay(mode);
+    }
+  });
+});
+
+</script>
+</body>
+</html>

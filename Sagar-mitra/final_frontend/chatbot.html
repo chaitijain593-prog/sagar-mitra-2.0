@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sagar Mitra — Chatbot</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&family=Playfair+Display:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--b:#39bdf2;--ink:#101820}
+html,body{width:100%;height:100%;overflow:hidden;background:#fff;color:var(--ink);font-family:"DM Sans"}
+body{animation:i .65s ease both}@keyframes i{from{opacity:0;transform:translateX(8vw)}to{opacity:1;transform:none}}
+.page{width:100vw;height:100vh;position:relative}
+.logo{position:fixed;top:24px;left:28px;width:88px;height:88px;z-index:20}
+.actions{position:fixed;top:27px;right:28px;display:flex;gap:22px;z-index:30}
+button{border:0;cursor:pointer}
+.logout,.nav-trigger{width:48px;height:48px;border-radius:12px;background:#fff;display:grid;place-items:center}
+.logout svg{width:27px;stroke:#ff4050;fill:none;stroke-width:2}
+.nav-trigger{background:var(--b)}.nav-trigger svg{width:29px;stroke:#fff;fill:none;stroke-width:2.5}
+.tooltip{position:absolute;top:55px;right:0;background:#fff;padding:7px 10px;border-radius:7px;font:11px "DM Mono";opacity:0;white-space:nowrap}
+button:hover .tooltip{opacity:1}
+.nav{position:fixed;right:88px;top:88px;width:max-content;min-width:410px;padding:17px 20px;display:flex;gap:7px;background:rgba(255,255,255,.82);backdrop-filter:blur(18px);border:1px solid #9cddf4;border-radius:12px;box-shadow:0 8px 30px rgba(57,189,242,.2);z-index:10;cursor:grab;opacity:0;visibility:hidden;transition:.2s}
+.nav.open{opacity:1;visibility:visible}
+.nav:hover{z-index:100}
+.nav a{flex:1;text-align:center;text-decoration:none;white-space:nowrap;color:#263943;font:600 13px "DM Mono";padding:12px 10px;border-radius:7px}
+.nav a:hover,.nav a.active{background:#e8f8fd;color:#079ed5}
+.content{height:100%;display:grid;place-items:center;text-align:center}
+.kicker{font:500 12px "DM Mono";letter-spacing:4px;color:var(--b);margin-bottom:22px}
+h1{font:400 clamp(70px,11vw,150px)/.85 "Playfair Display";letter-spacing:-6px}
+p{font:20px "Playfair Display";color:#657783;margin-top:28px}
+.arrows{position:fixed !important;bottom:24px !important;right:28px !important;display:flex;gap:8px;z-index:9999 !important}
+.arrow{width:44px;height:44px;border:1px solid #ccecf7;background:#fff;color:#168fb9;border-radius:50% !important;font-size:20px;display:grid;place-items:center;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.08);transition:.2s}
+.arrow:hover{background:#f0fbff;transform:translateY(-2px)}
+.explore{position:fixed;bottom:29px;left:50%;transform:translateX(-50%);font:11px "DM Mono";letter-spacing:2px;color:#80919a}
+
+/* Wave/Ripple Swipe Transition Overlay */
+.ocean-swipe-wave{position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:10001;overflow:hidden}
+.ocean-swipe-wave::before{content:"";position:absolute;top:-20%;width:140vw;height:140vh;background:radial-gradient(ellipse at center, rgba(57,189,242,0.85) 0%, rgba(13,169,223,0.6) 40%, rgba(3,105,161,0.2) 70%, transparent 100%);box-shadow:0 0 80px rgba(57,189,242,0.7);filter:blur(6px)}
+.ocean-swipe-wave.swipe-left::before{left:100vw;animation:waveWashLeft 0.48s cubic-bezier(0.25, 1, 0.3, 1) forwards}
+.ocean-swipe-wave.swipe-right::before{right:100vw;animation:waveWashRight 0.48s cubic-bezier(0.25, 1, 0.3, 1) forwards}
+@keyframes waveWashLeft{0%{transform:translateX(0) scaleX(0.4);opacity:0}30%{opacity:0.95}100%{transform:translateX(-220vw) scaleX(1.2);opacity:0}}
+@keyframes waveWashRight{0%{transform:translateX(0) scaleX(0.4);opacity:0}30%{opacity:0.95}100%{transform:translateX(220vw) scaleX(1.2);opacity:0}}
+</style>
+</head>
+<body>
+<div class="page">
+<img src="assets/logo.svg" onerror="this.onerror=null;this.src='assets/logo.png';" class="logo">
+<div class="actions">
+<button class="nav-trigger" id="trigger"><svg viewBox="0 0 40 40"><path d="M4 25c5-11 12-15 18-10 4 3 6 8 14 3"/><path d="M4 30c7-7 12-8 18-4 5 3 9 3 14-2"/></svg><span class="tooltip">Navigation</span></button>
+<button class="logout" id="logout"><svg viewBox="0 0 32 32"><path d="M13 5H7a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h6"/><path d="M18 10l7 6-7 6"/><path d="M25 16H11"/></svg><span class="tooltip">Log out</span></button>
+</div>
+<nav class="nav" id="nav"><a href="main.html">HOME</a><a href="about.html">ABOUT US</a><a href="map.html">MAP</a><a href="chatbot.html" class="active">CHATBOT</a></nav>
+<section class="content"><div><div class="kicker">SAGAR MITRA</div><h1>Chatbot</h1><p>Your ocean assistant will live here.</p></div></section>
+<div class="explore">SLIDE TO EXPLORE →</div>
+<div class="arrows"><button class="arrow" id="prev">←</button><button class="arrow" id="next">→</button></div>
+</div>
+<script>
+const pages=["main.html","about.html","map.html","chatbot.html"],current=3,nav=document.getElementById("nav");
+trigger.onclick=()=>nav.classList.toggle("open");
+logout.onclick=()=>{localStorage.removeItem("sagarMitraLoggedIn");location.href="login.html"};
+let transitioning=false;
+function triggerWaveTransition(dir, targetUrl){
+  let wave = document.getElementById("oceanWaveOverlay");
+  if(!wave){
+    wave = document.createElement("div");
+    wave.id = "oceanWaveOverlay";
+    document.body.appendChild(wave);
+  }
+  wave.className = "ocean-swipe-wave " + (dir > 0 ? "swipe-left" : "swipe-right");
+
+  document.body.style.transition = "transform 0.45s cubic-bezier(0.25, 1, 0.3, 1), opacity 0.45s ease";
+  document.body.style.transform = `translateX(${dir > 0 ? "-10vw" : "10vw"})`;
+  document.body.style.opacity = "0";
+
+  setTimeout(() => { location.href = targetUrl; }, 420);
+}
+
+function go(d){
+  let n=current+d;
+  if(n<0||n>=pages.length||transitioning)return;
+  transitioning=true;
+  triggerWaveTransition(d, pages[n]);
+}
+prev.onclick=()=>go(-1);next.onclick=()=>go(1);
+document.addEventListener("keydown",e=>{if(e.ctrlKey&&(e.key==="ArrowRight"||e.key==="ArrowLeft")){e.preventDefault();go(e.key==="ArrowRight"?1:-1)}});
+
+// CTRL + 2-FINGER SWIPE: Horizontal page navigation
+// Prevents normal vertical navigation from being affected
+let swipeLock = false;
+window.addEventListener("wheel", e => {
+  // Only trigger when Ctrl is held AND gesture is predominantly horizontal
+  if (!e.ctrlKey) return; // Normal vertical navigation unaffected!
+  if (Math.abs(e.deltaX) < 16 || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // Normal vertical navigation unaffected!
+
+  e.preventDefault();
+  if (swipeLock || transitioning) return;
+
+  const dir = e.deltaX > 0 ? 1 : -1; // deltaX > 0: swipe left (next page); deltaX < 0: swipe right (prev page)
+  const n = current + dir;
+  if (n < 0 || n >= pages.length) return;
+
+  swipeLock = true;
+  transitioning = true;
+  triggerWaveTransition(dir, pages[n]);
+}, { passive: false });
+let drag=false,sx,sy,ox,oy;
+nav.onpointerdown=e=>{if(e.target.closest("a"))return;drag=true;sx=e.clientX;sy=e.clientY;let r=nav.getBoundingClientRect();ox=r.left;oy=r.top;nav.setPointerCapture(e.pointerId)};
+nav.onpointermove=e=>{if(drag){nav.style.left=ox+e.clientX-sx+"px";nav.style.top=oy+e.clientY-sy+"px";nav.style.right="auto"}};
+nav.onpointerup=()=>{drag=false;localStorage.setItem("navX",nav.offsetLeft);localStorage.setItem("navY",nav.offsetTop)};
+if(localStorage.navX){nav.style.left=localStorage.navX+"px";nav.style.top=localStorage.navY+"px";nav.style.right="auto"}
+</script>
+</body>
+</html>

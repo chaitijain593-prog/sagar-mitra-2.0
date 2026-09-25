@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="oceanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#39bdf2" />
+      <stop offset="50%" stop-color="#0da9df" />
+      <stop offset="100%" stop-color="#075985" />
+    </linearGradient>
+    <linearGradient id="waveLight" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#0284c7" stop-opacity="0.9" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  
+  <!-- Ocean Disc Background -->
+  <circle cx="50" cy="50" r="46" fill="url(#oceanGrad)" />
+  <circle cx="50" cy="50" r="45" stroke="#ffffff" stroke-width="1.5" stroke-opacity="0.3" />
+
+  <!-- Stylized Whale Jumping Out of Water -->
+  <path d="M 24 54 C 28 42, 38 33, 52 30 C 62 28, 73 31, 80 37 C 82 39, 79 43, 73 42 C 67 41, 60 41, 53 43 C 44 46, 36 51, 31 57 C 28 60, 24 60, 24 54 Z" fill="#ffffff" filter="url(#glow)"/>
+  
+  <!-- Whale Fin & Tail -->
+  <path d="M 64 36 C 70 33, 76 27, 82 24 C 80 28, 79 33, 81 38 C 76 37, 70 37, 64 36 Z" fill="#ffffff" opacity="0.95"/>
+  <path d="M 44 45 C 41 51, 38 56, 34 58 C 36 52, 39 47, 44 45 Z" fill="#e0f2fe"/>
+  
+  <!-- Ocean Waves below -->
+  <path d="M 12 62 C 22 55, 32 68, 44 60 C 56 52, 68 64, 88 56 C 89 65, 84 75, 76 82 C 66 90, 36 91, 23 83 C 16 77, 12 70, 12 62 Z" fill="url(#waveLight)" opacity="0.85"/>
+  <path d="M 8 68 C 20 60, 32 72, 46 64 C 60 56, 72 68, 92 60 C 90 73, 82 83, 70 89 C 58 95, 40 95, 26 89 C 17 83, 10 76, 8 68 Z" fill="#0369a1" opacity="0.95"/>
+  <path d="M 6 75 C 22 69, 36 78, 52 72 C 68 66, 80 74, 94 70 C 90 82, 80 91, 67 95 C 50 100, 34 98, 20 92 C 12 87, 8 81, 6 75 Z" fill="#0c4a6e"/>
+
+  <!-- Sparkles / Ocean Spray -->
+  <circle cx="28" cy="40" r="1.5" fill="#ffffff" opacity="0.8"/>
+  <circle cx="33" cy="35" r="1" fill="#ffffff" opacity="0.6"/>
+  <circle cx="23" cy="46" r="1.2" fill="#ffffff" opacity="0.7"/>
+  <circle cx="77" cy="22" r="1.2" fill="#ffffff" opacity="0.9"/>
+  <circle cx="85" cy="28" r="1" fill="#ffffff" opacity="0.8"/>
+</svg>

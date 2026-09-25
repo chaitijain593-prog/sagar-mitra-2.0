@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Sagar Mitra — Question the Unexplored</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--blue:#38bdf8;--dark:#111;--muted:#687783;--input:#f7fbfd;--line:#c9edf9}
+html,body{min-height:100%;background:#fff;color:var(--dark);font-family:"DM Sans",sans-serif}
+body{overflow-x:hidden}
+.page{min-height:100svh;padding:18px 34px 22px}
+header{height:38px;display:flex;align-items:center}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{width:34px;height:34px;object-fit:contain}
+.brand-name{font:500 27px "Playfair Display",serif;letter-spacing:-.7px;min-width:150px}
+.hero{width:100%;max-width:1500px;margin:25px auto 0;display:grid;grid-template-columns:1fr .88fr;gap:55px;align-items:center;min-height:calc(100svh - 83px)}
+.left{display:flex;flex-direction:column;align-items:center;min-width:0}
+.intro{width:100%;max-width:720px;text-align:center;margin-bottom:22px}
+.intro h1{font:400 clamp(46px,4.1vw,68px)/.94 "Playfair Display",serif;letter-spacing:-2.8px}
+.intro p{margin-top:17px;font:19px/1.3 "Playfair Display",serif;color:#273640}
+.auth{width:min(100%,560px)}
+.form{display:none;width:100%;padding:23px 28px 24px;border:1px solid var(--line);border-radius:24px}
+.form.active{display:block}
+.label{font:500 12px "DM Mono",monospace;letter-spacing:3px;color:var(--blue);margin-bottom:8px}
+.form h2{font-size:31px;line-height:1.05;letter-spacing:-1px;margin-bottom:7px}
+.desc{color:var(--muted);font-size:14px;line-height:1.4;margin-bottom:17px}
+.input{width:100%;height:48px;border:1px solid #e4f1f5;border-radius:11px;outline:0;background:var(--input);color:var(--dark);padding:0 15px;font:14px "DM Mono",monospace;margin-bottom:10px}
+.input::placeholder{color:#8798a5}
+.input:focus{background:#fff;border-color:#b8e6f7}
+.otp{display:none}
+.otp.visible{display:block}
+.bottom{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-top:18px}
+.switch{border:0;background:none;color:#526573;font:600 14px "DM Sans",sans-serif;cursor:pointer;padding:5px 0}
+.switch:hover{color:#159bd4}
+.primary{border:0;background:var(--blue);color:#07151c;min-width:110px;height:46px;padding:0 21px;border-radius:25px;font:600 15px "DM Sans",sans-serif;cursor:pointer;transition:.2s}
+.primary:hover{background:#24aee7;transform:translateY(-1px)}
+.video{width:100%;height:min(78svh,760px);overflow:hidden;border-radius:24px;background:#fff;position:relative}
+.video iframe{position:absolute;width:177.78%;height:100%;left:-38.89%;top:0;border:0;pointer-events:none}
+@media(max-width:1050px){
+.page{padding:18px 25px 25px}
+.hero{grid-template-columns:1fr;gap:35px;margin-top:30px;min-height:auto}
+.video{height:min(70svh,650px);max-width:720px;margin:auto}
+.intro h1{font-size:clamp(46px,8vw,65px)}
+.auth{max-width:600px}
+}
+@media(max-width:600px){
+.page{padding:15px 18px 25px}
+.brand-name{font-size:24px}
+.logo{width:31px;height:31px}
+.hero{margin-top:25px;gap:25px}
+.intro{margin-bottom:12px}
+.intro h1{font-size:44px;letter-spacing:-2px}
+.intro p{font-size:17px;margin-top:13px}
+.form{padding:20px 18px;border-radius:20px}
+.form h2{font-size:28px}
+.bottom{flex-direction:column-reverse;align-items:stretch;gap:10px}
+.primary,.switch{width:100%;text-align:center}
+.video{height:65svh;border-radius:18px}
+}
+body{transition:opacity .45s ease,transform .45s ease}
+body.page-exit{opacity:0;transform:translateX(-8vw)}
+</style>
+</head>
+
+<body>
+<main class="page">
+
+<header>
+<div class="brand">
+<img src="assets/logo.svg" alt="Sagar Mitra" class="logo">
+<span class="brand-name" id="brandName">सागर मित्र</span>
+</div>
+</header>
+
+<section class="hero">
+
+<div class="left">
+
+<div class="intro">
+<h1>Question the Unexplored</h1>
+<p>Your curiosity partner for everything ocean related</p>
+</div>
+
+<div class="auth">
+
+<form id="loginForm" class="form active" autocomplete="off">
+<div class="label">LOG IN</div>
+<h2>Welcome back</h2>
+<p class="desc">Log in with your credentials. We'll verify your account.</p>
+
+<input id="loginUsername" class="input" type="text" placeholder="Username" required>
+<input id="loginPassword" class="input" type="password" placeholder="Password" required>
+
+<div class="bottom">
+<button type="button" class="switch" id="showSignup">New here? Create account</button>
+<button type="submit" class="primary">Log in</button>
+</div>
+</form>
+
+<form id="signupForm" class="form" autocomplete="off">
+<div class="label">SIGN UP</div>
+<h2>Create your account</h2>
+<p class="desc">Register with your email. We'll send a verification code.</p>
+
+<input id="fullName" class="input" type="text" placeholder="Full name" required>
+<input id="signupUsername" class="input" type="text" placeholder="Username" required>
+<input id="signupEmail" class="input" type="email" placeholder="Email" required>
+<input id="signupPassword" class="input" type="password" placeholder="Password" required>
+<input id="confirmPassword" class="input" type="password" placeholder="Confirm password" required>
+<input id="otp" class="input otp" type="text" placeholder="Enter OTP" maxlength="4" inputmode="numeric">
+
+<div class="bottom">
+<button type="button" class="switch" id="showLogin">Have an account? Log in</button>
+<button type="submit" class="primary">Send OTP</button>
+</div>
+</form>
+
+</div>
+</div>
+
+<div class="video">
+<iframe src="https://www.youtube.com/embed/ALbM9_cF7YQ?autoplay=1&mute=1&controls=0&loop=1&playlist=ALbM9_cF7YQ&start=10&end=40&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0" title="Ocean video" allow="autoplay" tabindex="-1"></iframe>
+</div>
+
+</section>
+</main>
+
+<script>
+const languages=["सागर मित्र","Sagar Mitra","সাগর মিত্র","સાગર મિત્ર","சாகர் மித்ரா","సాగర్ మిత్ర","ಸಾಗರ ಮಿತ್ರ","സാഗർ മിത്ര","ਸਾਗਰ ਮਿੱਤਰ","ସାଗର ମିତ୍ର"];
+const brand=document.getElementById("brandName");
+let i=0;
+setInterval(()=>{i=(i+1)%languages.length;brand.textContent=languages[i]},2000);
+
+const login=document.getElementById("loginForm"),signup=document.getElementById("signupForm");
+
+document.getElementById("showSignup").onclick=()=>{
+ login.classList.remove("active");
+ signup.classList.add("active");
+};
+
+document.getElementById("showLogin").onclick=()=>{
+ signup.classList.remove("active");
+ login.classList.add("active");
+};
+
+login.onsubmit=e=>{
+ e.preventDefault();
+ const username=document.getElementById("loginUsername").value.trim();
+ const password=document.getElementById("loginPassword").value;
+ if(!username||!password)return alert("Please enter your username and password.");
+
+ localStorage.setItem("sagarMitraLoggedIn","true");
+ document.body.classList.add("page-exit");
+ setTimeout(()=>location.href="main.html",450);
+};
+
+signup.onsubmit=e=>{
+ e.preventDefault();
+
+ const name=document.getElementById("fullName").value.trim();
+ const username=document.getElementById("signupUsername").value.trim();
+ const email=document.getElementById("signupEmail").value.trim();
+ const password=document.getElementById("signupPassword").value;
+ const confirm=document.getElementById("confirmPassword").value;
+ const otp=document.getElementById("otp");
+
+ if(!name||!username||!email||!password||!confirm)
+  return alert("Please fill in all required fields.");
+
+ if(password!==confirm)
+  return alert("Passwords do not match.");
+
+ if(!otp.classList.contains("visible")){
+  otp.classList.add("visible");
+  return alert("OTP generation will be connected later.");
+ }
+
+ if(!otp.value.trim())
+  return alert("Please enter the OTP.");
+
+ localStorage.setItem("sagarMitraLoggedIn","true");
+ document.body.classList.add("page-exit");
+ setTimeout(()=>location.href="main.html",450);
+};
+</script>
+
+</body>
+</html>
