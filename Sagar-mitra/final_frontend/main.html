@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sagar Mitra — Home</title>
+<title>Sagar Mitra — Question the Unexplored</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600&display=swap" rel="stylesheet">
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -26,7 +26,6 @@
   --nav-bg: rgba(255, 255, 255, 0.82);
   --nav-border: rgba(57, 189, 242, 0.65);
   --nav-link: #263943;
-  --brand-text: #ffffff;
 }
 
 [data-theme="dark"] {
@@ -44,7 +43,6 @@
   --nav-bg: rgba(24, 24, 22, 0.90);
   --nav-border: rgba(56, 189, 248, 0.45);
   --nav-link: #d4d4d8;
-  --brand-text: #f4f4f5;
 }
 
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font-family:"DM Sans",sans-serif;transition:background .3s ease,color .3s ease}
@@ -53,7 +51,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 body.page-enter{animation:enter .65s ease both}
 @keyframes enter{from{opacity:0;transform:translateX(8vw)}to{opacity:1;transform:none}}
 
-/* Subtle cursor glow trail canvas */
+/* Thick glowing blue wave cursor canvas */
 #cursorTrailCanvas{
   position:fixed;
   top:0;
@@ -70,37 +68,25 @@ body.page-enter{animation:enter .65s ease both}
 
 .overlay{position:absolute;inset:0;background:var(--overlay-bg);pointer-events:none;transition:background .3s ease}
 
-/* Logo & Rotating Brand Title aligned to navbar button height */
-.brand-bar{
+/* Clean Top-Left Logo without text */
+.logo-link{
   position:fixed;
-  top:27px;
+  top:24px;
   left:28px;
-  height:48px;
-  display:inline-flex;
-  align-items:center;
-  gap:12px;
   z-index:30;
+  display:inline-block;
   text-decoration:none;
 }
-.brand-bar .logo{
-  width:48px;
-  height:48px;
+.logo-link .logo{
+  width:52px;
+  height:52px;
   object-fit:contain;
-  filter:drop-shadow(0 2px 8px rgba(57,189,242,.35));
-  transition:transform .2s ease;
+  filter:drop-shadow(0 2px 10px rgba(57,189,242,.4));
+  transition:transform .22s ease, filter .22s ease;
 }
-.brand-bar:hover .logo{transform:scale(1.05)}
-.brand-title{
-  height:48px;
-  display:inline-flex;
-  align-items:center;
-  font:600 15px "DM Mono", "Nirmala UI", sans-serif;
-  letter-spacing:2px;
-  color:var(--brand-text);
-  text-shadow:0 1px 6px rgba(0,0,0,.5);
-  transition:opacity .3s ease,transform .3s ease;
-  white-space:nowrap;
-  user-select:none;
+.logo-link:hover .logo{
+  transform:scale(1.06);
+  filter:drop-shadow(0 4px 18px rgba(57,189,242,.65));
 }
 
 /* Expanding Top-Right Controls */
@@ -143,23 +129,11 @@ body.page-enter{animation:enter .65s ease both}
   flex-shrink:0;
   transition:transform .2s ease;
 }
-.ctrl-icon svg{
-  width:22px;
-  height:22px;
-}
-.nav-trigger .ctrl-icon svg{
-  stroke:var(--blue);
-}
-.theme-toggle .ctrl-icon svg{
-  stroke:var(--blue);
-}
-[data-theme="dark"] .theme-toggle .ctrl-icon svg{
-  stroke:#facc15;
-}
-.logout .ctrl-icon svg{
-  stroke:#ff4050;
-  fill:none;
-}
+.ctrl-icon svg{width:22px;height:22px}
+.nav-trigger .ctrl-icon svg{stroke:var(--blue)}
+.theme-toggle .ctrl-icon svg{stroke:var(--blue)}
+[data-theme="dark"] .theme-toggle .ctrl-icon svg{stroke:#facc15}
+.logout .ctrl-icon svg{stroke:#ff4050;fill:none}
 
 .ctrl-label{
   max-width:0;
@@ -330,7 +304,7 @@ body.page-enter{animation:enter .65s ease both}
 @keyframes waveWashLeft{0%{transform:translateX(0) scaleX(0.4);opacity:0}30%{opacity:0.95}100%{transform:translateX(-220vw) scaleX(1.2);opacity:0}}
 @keyframes waveWashRight{0%{transform:translateX(0) scaleX(0.4);opacity:0}30%{opacity:0.95}100%{transform:translateX(220vw) scaleX(1.2);opacity:0}}
 
-/* Center the Hero Composition; keep proportions */
+/* Centered Hero: Rotating Sagar Mitra in Main Heading */
 .content{
   position:absolute;
   left:50%;
@@ -339,35 +313,44 @@ body.page-enter{animation:enter .65s ease both}
   z-index:5;
   color:#fff;
   text-align:center;
-  width:90%;
-  max-width:850px;
+  width:92%;
+  max-width:920px;
   display:flex;
   flex-direction:column;
   align-items:center;
   justify-content:center;
-  text-shadow:0 2px 10px rgba(0,0,0,.45);
   pointer-events:none;
 }
-.kicker{
-  font:500 13px "DM Mono", "Nirmala UI", sans-serif;
-  letter-spacing:4px;
-  margin-bottom:20px;
-  min-height:24px;
-  display:inline-flex;
+.hero-title{
+  font:500 clamp(52px,7.5vw,110px)/1.08 "Playfair Display", "Nirmala UI", sans-serif;
+  letter-spacing:-2px;
+  min-height:1.25em;
+  display:flex;
   align-items:center;
   justify-content:center;
-  transition:opacity .3s ease,transform .3s ease;
+  text-align:center;
+  color:#fff;
+  text-shadow:0 4px 24px rgba(0,0,0,.5);
+  transition:opacity .32s ease,transform .32s cubic-bezier(0.2, 0.8, 0.2, 1);
+  white-space:nowrap;
+  user-select:none;
 }
-h1{font:400 clamp(55px,7vw,110px)/.87 "Playfair Display",serif;letter-spacing:-5px}
-.sub{font:18px "Playfair Display",serif;margin-top:22px}
+.sub{
+  font:400 20px "Playfair Display", serif;
+  letter-spacing:0.5px;
+  margin-top:16px;
+  color:rgba(255,255,255,0.92);
+  text-shadow:0 2px 10px rgba(0,0,0,.5);
+}
+[data-theme="dark"] .sub{color:rgba(244,244,245,0.92)}
 
 @media(max-width:700px){
-  .brand-bar{top:16px;left:16px}
-  .brand-bar .logo{width:42px;height:42px}
-  .brand-title{font-size:13px}
+  .logo-link{top:16px;left:16px}
+  .logo-link .logo{width:42px;height:42px}
   .actions{right:16px;top:16px;gap:8px}
   .nav{right:16px;top:75px;width:calc(100vw - 32px);min-width:auto}
-  h1{font-size:17vw}
+  .hero-title{font-size:13vw;letter-spacing:-1px}
+  .sub{font-size:16px}
   .explore{bottom:18px}
   .arrows{right:16px;bottom:16px}
 }
@@ -385,10 +368,9 @@ h1{font:400 clamp(55px,7vw,110px)/.87 "Playfair Display",serif;letter-spacing:-5
 
 <div class="overlay"></div>
 
-<!-- Brand Bar (Logo + Synchronized Rotating Sagar Mitra aligned to navbar height) -->
-<a href="main.html" class="brand-bar" aria-label="Sagar Mitra Home">
+<!-- Top-Left Clean Brand Logo (no duplicate small text) -->
+<a href="main.html" class="logo-link" aria-label="Sagar Mitra Home">
   <img src="assets/logo.svg" onerror="this.onerror=null;this.src='assets/logo.png';" class="logo" alt="Sagar Mitra">
-  <span class="brand-title" id="navBrandTitle">SAGAR MITRA</span>
 </a>
 
 <!-- Top-Right Navbar Expanding Controls: Navigation, Theme Toggle, Logout -->
@@ -405,9 +387,7 @@ h1{font:400 clamp(55px,7vw,110px)/.87 "Playfair Display",serif;letter-spacing:-5
   </button>
 
   <button class="ctrl-btn theme-toggle" id="themeToggle" aria-label="Toggle theme">
-    <span class="ctrl-icon" id="themeIconSlot">
-      <!-- Injected by JS: Sun or Moon SVG -->
-    </span>
+    <span class="ctrl-icon" id="themeIconSlot"></span>
     <span class="ctrl-label" id="themeLabel">Theme</span>
   </button>
 
@@ -431,10 +411,9 @@ h1{font:400 clamp(55px,7vw,110px)/.87 "Playfair Display",serif;letter-spacing:-5
   <a href="chatbot.html">CHATBOT</a>
 </nav>
 
-<!-- Centered Hero Composition -->
+<!-- Centered Hero Composition: Rotating Sagar Mitra across 10 Languages in H1 -->
 <div class="content">
-  <div class="kicker" id="heroLangTitle">SAGAR MITRA</div>
-  <h1>Homepage</h1>
+  <h1 class="hero-title" id="heroLangTitle">Sagar Mitra</h1>
   <div class="sub">Question the unexplored.</div>
 </div>
 
@@ -486,10 +465,10 @@ initTheme();
 
 // ============================================================
 // 2. ROTATING "SAGAR MITRA" ACROSS 10 INDIAN LANGUAGES (Every 2s)
-// English, Hindi, Marathi, Bengali, Gujarati, Tamil, Telugu, Kannada, Malayalam, Odia
+// Replaced "Homepage" in hero title with smooth transitions
 // ============================================================
 const sagarTranslations = [
-  { lang: "English", text: "SAGAR MITRA" },
+  { lang: "English", text: "Sagar Mitra" },
   { lang: "Hindi", text: "सागर मित्र" },
   { lang: "Marathi", text: "सागर मित्र" },
   { lang: "Bengali", text: "সাগর মিত্র" },
@@ -505,30 +484,25 @@ let langIdx = 0;
 setInterval(() => {
   langIdx = (langIdx + 1) % sagarTranslations.length;
   const nextItem = sagarTranslations[langIdx];
-
   const heroEl = document.getElementById("heroLangTitle");
-  const navEl = document.getElementById("navBrandTitle");
+  if(!heroEl) return;
 
-  [heroEl, navEl].forEach(el => {
-    if(!el) return;
-    el.style.opacity = "0";
-    el.style.transform = "translateY(-5px)";
-  });
+  heroEl.style.opacity = "0";
+  heroEl.style.transform = "translateY(-10px) scale(0.98)";
 
   setTimeout(() => {
-    [heroEl, navEl].forEach(el => {
-      if(!el) return;
-      el.textContent = nextItem.text;
-      el.style.opacity = "1";
-      el.style.transform = "translateY(0)";
-    });
-  }, 280);
+    heroEl.textContent = nextItem.text;
+    heroEl.style.opacity = "1";
+    heroEl.style.transform = "translateY(0) scale(1)";
+  }, 300);
 }, 2000);
 
 // ============================================================
-// 3. SUBTLE LIGHT-BLUE CURSOR GLOW / PARTICLE TRAIL
+// 3. SUBTLE AMBIENT LIGHT-BLUE CURSOR GLOW
+// Soft, diffuse, low opacity, no visible particles or sharp edges.
+// Smoothly follows cursor and fades out immediately when stopped.
 // ============================================================
-(function initCursorTrail(){
+(function initSubtleCursorGlow(){
   const canvas = document.getElementById("cursorTrailCanvas");
   if(!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -540,47 +514,88 @@ setInterval(() => {
     height = canvas.height = window.innerHeight;
   });
 
-  const particles = [];
-  const maxParticles = 35;
+  const trail = [];
+  let mouseX = -1000, mouseY = -1000;
+  let prevX = -1000, prevY = -1000;
+  let isMoving = false;
+  let stopTimer = null;
+  let leadGlowAlpha = 0;
 
   window.addEventListener("pointermove", e => {
-    for(let i = 0; i < 2; i++){
-      if(particles.length < maxParticles){
-        particles.push({
-          x: e.clientX + (Math.random() - 0.5) * 6,
-          y: e.clientY + (Math.random() - 0.5) * 6,
-          size: Math.random() * 4.5 + 2.5,
-          alpha: 0.65,
-          vx: (Math.random() - 0.5) * 0.6,
-          vy: (Math.random() - 0.5) * 0.6
-        });
-      }
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    isMoving = true;
+
+    clearTimeout(stopTimer);
+    stopTimer = setTimeout(() => {
+      isMoving = false;
+    }, 45);
+
+    const dist = Math.hypot(mouseX - prevX, mouseY - prevY);
+    if(dist > 6){
+      trail.push({
+        x: mouseX,
+        y: mouseY,
+        alpha: 0.22,
+        radius: 42
+      });
+      prevX = mouseX;
+      prevY = mouseY;
     }
+
+    if(trail.length > 12){
+      trail.shift();
+    }
+  });
+
+  window.addEventListener("pointerleave", () => {
+    isMoving = false;
+    leadGlowAlpha = 0;
   });
 
   function render(){
     ctx.clearRect(0, 0, width, height);
 
-    for(let i = particles.length - 1; i >= 0; i--){
-      const p = particles[i];
-      p.x += p.vx;
-      p.y += p.vy;
-      p.alpha -= 0.022;
-      p.size *= 0.96;
+    if(isMoving){
+      leadGlowAlpha += (0.18 - leadGlowAlpha) * 0.2;
+    } else {
+      leadGlowAlpha *= 0.72;
+    }
 
-      if(p.alpha <= 0 || p.size <= 0.5){
-        particles.splice(i, 1);
+    for(let i = trail.length - 1; i >= 0; i--){
+      const p = trail[i];
+      p.alpha *= isMoving ? 0.86 : 0.68;
+      p.radius += 0.8;
+
+      if(p.alpha < 0.005){
+        trail.splice(i, 1);
         continue;
       }
 
-      ctx.save();
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
+      grad.addColorStop(0, `rgba(56, 189, 248, ${p.alpha * 0.75})`);
+      grad.addColorStop(0.35, `rgba(56, 189, 248, ${p.alpha * 0.35})`);
+      grad.addColorStop(0.7, `rgba(56, 189, 248, ${p.alpha * 0.08})`);
+      grad.addColorStop(1, "rgba(56, 189, 248, 0)");
+
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(57, 189, 242, ${p.alpha})`;
-      ctx.shadowColor = "rgba(57, 189, 242, 0.75)";
-      ctx.shadowBlur = 8;
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.restore();
+    }
+
+    if(leadGlowAlpha > 0.005 && mouseX > 0 && mouseY > 0){
+      const leadRadius = 48;
+      const leadGrad = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, leadRadius);
+      leadGrad.addColorStop(0, `rgba(56, 189, 248, ${leadGlowAlpha * 0.85})`);
+      leadGrad.addColorStop(0.4, `rgba(56, 189, 248, ${leadGlowAlpha * 0.4})`);
+      leadGrad.addColorStop(0.75, `rgba(56, 189, 248, ${leadGlowAlpha * 0.1})`);
+      leadGrad.addColorStop(1, "rgba(56, 189, 248, 0)");
+
+      ctx.fillStyle = leadGrad;
+      ctx.beginPath();
+      ctx.arc(mouseX, mouseY, leadRadius, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     requestAnimationFrame(render);

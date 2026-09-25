@@ -706,7 +706,6 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 <!-- Logo Branding -->
 <a href="main.html" class="logo-container" title="Back to Homepage">
   <img src="assets/logo.svg" onerror="this.onerror=null;this.src='assets/logo.png';" class="logo" alt="Sagar Mitra">
-  <span class="logo-text">SAGAR MITRA</span>
 </a>
 
 <!-- Top-right Action Buttons: Navigation, Theme Toggle, Logout -->
@@ -892,9 +891,11 @@ if(themeBtn){
 initTheme();
 
 // ============================================================
-// 2. SUBTLE LIGHT-BLUE CURSOR GLOW / PARTICLE TRAIL
+// 2. SUBTLE AMBIENT LIGHT-BLUE CURSOR GLOW
+// Soft, diffuse, low opacity, no visible particles or sharp edges.
+// Smoothly follows cursor and fades out immediately when stopped.
 // ============================================================
-(function initCursorTrail(){
+(function initSubtleCursorGlow(){
   const canvas = document.getElementById("cursorTrailCanvas");
   if(!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -906,47 +907,88 @@ initTheme();
     height = canvas.height = window.innerHeight;
   });
 
-  const particles = [];
-  const maxParticles = 35;
+  const trail = [];
+  let mouseX = -1000, mouseY = -1000;
+  let prevX = -1000, prevY = -1000;
+  let isMoving = false;
+  let stopTimer = null;
+  let leadGlowAlpha = 0;
 
   window.addEventListener("pointermove", e => {
-    for(let i = 0; i < 2; i++){
-      if(particles.length < maxParticles){
-        particles.push({
-          x: e.clientX + (Math.random() - 0.5) * 6,
-          y: e.clientY + (Math.random() - 0.5) * 6,
-          size: Math.random() * 4.5 + 2.5,
-          alpha: 0.65,
-          vx: (Math.random() - 0.5) * 0.6,
-          vy: (Math.random() - 0.5) * 0.6
-        });
-      }
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    isMoving = true;
+
+    clearTimeout(stopTimer);
+    stopTimer = setTimeout(() => {
+      isMoving = false;
+    }, 45);
+
+    const dist = Math.hypot(mouseX - prevX, mouseY - prevY);
+    if(dist > 6){
+      trail.push({
+        x: mouseX,
+        y: mouseY,
+        alpha: 0.22,
+        radius: 42
+      });
+      prevX = mouseX;
+      prevY = mouseY;
     }
+
+    if(trail.length > 12){
+      trail.shift();
+    }
+  });
+
+  window.addEventListener("pointerleave", () => {
+    isMoving = false;
+    leadGlowAlpha = 0;
   });
 
   function render(){
     ctx.clearRect(0, 0, width, height);
 
-    for(let i = particles.length - 1; i >= 0; i--){
-      const p = particles[i];
-      p.x += p.vx;
-      p.y += p.vy;
-      p.alpha -= 0.022;
-      p.size *= 0.96;
+    if(isMoving){
+      leadGlowAlpha += (0.18 - leadGlowAlpha) * 0.2;
+    } else {
+      leadGlowAlpha *= 0.72;
+    }
 
-      if(p.alpha <= 0 || p.size <= 0.5){
-        particles.splice(i, 1);
+    for(let i = trail.length - 1; i >= 0; i--){
+      const p = trail[i];
+      p.alpha *= isMoving ? 0.86 : 0.68;
+      p.radius += 0.8;
+
+      if(p.alpha < 0.005){
+        trail.splice(i, 1);
         continue;
       }
 
-      ctx.save();
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius);
+      grad.addColorStop(0, `rgba(56, 189, 248, ${p.alpha * 0.75})`);
+      grad.addColorStop(0.35, `rgba(56, 189, 248, ${p.alpha * 0.35})`);
+      grad.addColorStop(0.7, `rgba(56, 189, 248, ${p.alpha * 0.08})`);
+      grad.addColorStop(1, "rgba(56, 189, 248, 0)");
+
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(57, 189, 242, ${p.alpha})`;
-      ctx.shadowColor = "rgba(57, 189, 242, 0.75)";
-      ctx.shadowBlur = 8;
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.restore();
+    }
+
+    if(leadGlowAlpha > 0.005 && mouseX > 0 && mouseY > 0){
+      const leadRadius = 48;
+      const leadGrad = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, leadRadius);
+      leadGrad.addColorStop(0, `rgba(56, 189, 248, ${leadGlowAlpha * 0.85})`);
+      leadGrad.addColorStop(0.4, `rgba(56, 189, 248, ${leadGlowAlpha * 0.4})`);
+      leadGrad.addColorStop(0.75, `rgba(56, 189, 248, ${leadGlowAlpha * 0.1})`);
+      leadGrad.addColorStop(1, "rgba(56, 189, 248, 0)");
+
+      ctx.fillStyle = leadGrad;
+      ctx.beginPath();
+      ctx.arc(mouseX, mouseY, leadRadius, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     requestAnimationFrame(render);
