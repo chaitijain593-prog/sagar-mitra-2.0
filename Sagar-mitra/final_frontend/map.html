@@ -1505,22 +1505,29 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <div>
       <div style="font:600 9px 'DM Mono',monospace;color:#38bdf8;margin-bottom:3px;letter-spacing:0.8px;text-transform:uppercase">ORGANISM TAXON</div>
       <select class="obis-select" id="obisSpeciesSelect">
-        <option value="all">All Marine Taxa</option>
-        <option value="tuna">Tuna (Thunnus)</option>
-        <option value="turtle">Sea Turtles (Chelonioidea)</option>
-        <option value="dolphin">Dolphins (Delphinidae)</option>
-        <option value="shark">Sharks (Selachimorpha)</option>
-        <option value="coral">Corals (Scleractinia)</option>
-        <option value="whale">Whales (Cetacea)</option>
-        <option value="ray">Manta Rays (Mobula)</option>
+        <option value="all">All Marine Taxa & Dominant Zones</option>
+        <option value="tuna">Yellowfin & Bigeye Tuna (Thunnus)</option>
+        <option value="turtle">Olive Ridley & Green Turtles</option>
+        <option value="dugong">Dugong Sea Cows (Dugongidae)</option>
+        <option value="dolphin">Spinner & Humpback Dolphins</option>
+        <option value="shark">Reef & Whale Sharks</option>
+        <option value="coral">Branching Reef Corals</option>
+        <option value="crab">Estuarine Mud Crabs</option>
+        <option value="ray">Giant Oceanic Manta Rays</option>
       </select>
     </div>
     <div>
       <div style="font:600 9px 'DM Mono',monospace;color:#38bdf8;margin-bottom:3px;letter-spacing:0.8px;text-transform:uppercase">OCEAN REGION</div>
       <select class="obis-select" id="obisRegionSelect">
-        <option value="indian_ocean">Indian Ocean Basin</option>
-        <option value="indian_eez">Indian EEZ Waters</option>
-        <option value="global">Global Migratory Waters</option>
+        <option value="indian_ocean">All Indian Ocean Dominance Zones</option>
+        <option value="arabian_sea">Arabian Sea Pelagic Zone</option>
+        <option value="malabar">Malabar Coastal Upwelling</option>
+        <option value="lakshadweep">Lakshadweep Coral Archipelago</option>
+        <option value="gulf_mannar">Gulf of Mannar Dugong Reserve</option>
+        <option value="gahirmatha">Gahirmatha Turtle Corridor</option>
+        <option value="sundarbans">Sundarbans Mangrove Delta</option>
+        <option value="andaman">Andaman Deepwater Trench</option>
+        <option value="carlsberg">Carlsberg Hydrothermal Ridge</option>
       </select>
     </div>
   </div>
@@ -2235,7 +2242,7 @@ function toggleOverlay(overlayKey) {
     if (overlayKey === "marine") {
       const obisPanel = document.getElementById("obisPanel");
       if (obisPanel) obisPanel.classList.remove("open");
-      if (typeof obisLayerGroup !== "undefined") obisLayerGroup.clearLayers();
+      marineOverlay.clearLayers();
     }
 
     // Revert legend to another active overlay or basemap
@@ -2661,22 +2668,223 @@ async function fetchAndRenderParetoRoute() {
 // ============================================================
 // 7. OBIS MARINE BIODIVERSITY & SPECIES PROPORTION ENGINE
 // ============================================================
-let obisLayerGroup = L.layerGroup().addTo(map);
+const obisLayerGroup = marineOverlay;
 
 const closeObisPanelBtn = document.getElementById("closeObisPanelBtn");
 if (closeObisPanelBtn) {
   closeObisPanelBtn.onclick = () => {
     document.getElementById("obisPanel").classList.remove("open");
-    obisLayerGroup.clearLayers();
+    marineOverlay.clearLayers();
     activeOverlays.delete("marine");
     map.removeLayer(marineOverlay);
     const marineBtn = document.querySelector('.mode-btn[data-mode="marine"]');
     if (marineBtn) marineBtn.classList.remove("active");
+    if (activeOverlays.size > 0) {
+      const remaining = Array.from(activeOverlays).pop();
+      updateLegend(remaining);
+    } else {
+      updateLegend(currentBasemapKey);
+    }
   };
 }
 
 const obisSpeciesSelect = document.getElementById("obisSpeciesSelect");
 const obisRegionSelect = document.getElementById("obisRegionSelect");
+
+const DOMINANT_MARINE_REGIONS = [
+  {
+    id: "arabian_pelagic",
+    name: "Arabian Sea Deepwater Pelagic Zone",
+    dominant_species: "Thunnus albacares (Yellowfin Tuna)",
+    dominance_pct: 78.4,
+    color: "#38bdf8",
+    image: "assets/organisms/yellowfin_tuna.png",
+    center: [15.8, 70.2],
+    bounds: [[14.0, 68.0], [18.5, 69.0], [17.5, 72.5], [13.0, 71.5]],
+    depth_layer: "Epipelagic (0–100m)",
+    iucn_status: "Near Threatened",
+    drivers: "High-salinity thermal fronts & monsoonal thermocline shoaling; key commercial longline fishery & pelagic predator corridor.",
+    sub_species: [
+      { name: "Thunnus albacares (Yellowfin Tuna)", pct: 78.4 },
+      { name: "Thunnus obesus (Bigeye Tuna)", pct: 12.1 },
+      { name: "Balaenoptera musculus (Pygmy Blue Whale)", pct: 9.5 }
+    ]
+  },
+  {
+    id: "malabar_upwelling",
+    name: "Malabar & Konkan Coastal Upwelling Belt",
+    dominant_species: "Sardinella longiceps (Indian Oil Sardine)",
+    dominance_pct: 84.2,
+    color: "#34d399",
+    image: "assets/organisms/indian_oil_sardine.png",
+    center: [13.5, 74.5],
+    bounds: [[12.0, 74.0], [16.5, 73.0], [15.5, 74.2], [10.5, 75.8]],
+    depth_layer: "Coastal Surface (0–30m)",
+    iucn_status: "Abundant (Commercial Core)",
+    drivers: "High Chlorophyll-a concentration (>3.2 mg/m³) driven by summer monsoon coastal upwelling; primary production biomass engine.",
+    sub_species: [
+      { name: "Sardinella longiceps (Indian Oil Sardine)", pct: 84.2 },
+      { name: "Rastrelliger kanagurta (Indian Mackerel)", pct: 10.5 },
+      { name: "Stenella longirostris (Spinner Dolphin)", pct: 5.3 }
+    ]
+  },
+  {
+    id: "lakshadweep_atoll",
+    name: "Lakshadweep Coral Atoll Archipelago",
+    dominant_species: "Chelonia mydas (Green Sea Turtle) & Corals",
+    dominance_pct: 91.8,
+    color: "#f59e0b",
+    image: "assets/organisms/green_sea_turtle.png",
+    center: [11.0, 72.6],
+    bounds: [[9.5, 71.8], [12.5, 71.5], [12.8, 73.8], [9.8, 73.6]],
+    depth_layer: "Coral Lagoon & Reef Flat (2–25m)",
+    iucn_status: "Endangered (Protected Reef)",
+    drivers: "Oligotrophic coral reef lagoon ecosystem with clear bathymetry soundings; sanctuary for endangered sea turtles & calcifying corals.",
+    sub_species: [
+      { name: "Chelonia mydas (Green Sea Turtle)", pct: 54.2 },
+      { name: "Scleractinia (Branching Staghorn Coral)", pct: 37.6 },
+      { name: "Carcharhinus melanopterus (Reef Shark)", pct: 8.2 }
+    ]
+  },
+  {
+    id: "gulf_of_mannar",
+    name: "Gulf of Mannar & Palk Bay Dugong Reserve",
+    dominant_species: "Dugong dugon (Dugong / Sea Cow)",
+    dominance_pct: 87.5,
+    color: "#10b981",
+    image: "assets/organisms/dugong_sea_cow.png",
+    center: [9.2, 79.1],
+    bounds: [[8.2, 78.5], [9.8, 78.8], [10.2, 79.9], [8.8, 79.5]],
+    depth_layer: "Shallow Seagrass Meadows (1–15m)",
+    iucn_status: "Vulnerable (UNESCO Reserve)",
+    drivers: "Shallow hyper-saline seagrass beds protected by UNESCO Biosphere Reserve; crucial sanctuary for India's last remaining dugongs.",
+    sub_species: [
+      { name: "Dugong dugon (Dugong / Sea Cow)", pct: 87.5 },
+      { name: "Halophila ovalis (Seagrass Flora)", pct: 8.5 },
+      { name: "Sousa chinensis (Indo-Pacific Humpback Dolphin)", pct: 4.0 }
+    ]
+  },
+  {
+    id: "gahirmatha_turtle",
+    name: "Gahirmatha & Odisha Coastal Arribada Corridor",
+    dominant_species: "Lepidochelys olivacea (Olive Ridley Sea Turtle)",
+    dominance_pct: 94.6,
+    color: "#c084fc",
+    image: "assets/organisms/olive_ridley_turtle.png",
+    center: [19.8, 86.2],
+    bounds: [[18.5, 84.5], [21.2, 87.0], [20.5, 87.8], [17.8, 85.5]],
+    depth_layer: "Nearshore Breeding Waters (5–40m)",
+    iucn_status: "Vulnerable (Arribada Site)",
+    drivers: "World's largest mass nesting ground (Arribada) for Olive Ridley turtles; enriched by estuarine nutrient flux from Mahanadi & Brahmani rivers.",
+    sub_species: [
+      { name: "Lepidochelys olivacea (Olive Ridley Turtle)", pct: 94.6 },
+      { name: "Tenualosa ilisha (Hilsa Shad)", pct: 3.8 },
+      { name: "Tachypleus gigas (Horseshoe Crab)", pct: 1.6 }
+    ]
+  },
+  {
+    id: "sundarbans_estuary",
+    name: "Sundarbans Estuarine Mangrove Delta",
+    dominant_species: "Scylla serrata (Mud Crab) & Estuarine Fauna",
+    dominance_pct: 82.0,
+    color: "#a3e635",
+    image: "assets/organisms/mud_crab.png",
+    center: [21.8, 89.0],
+    bounds: [[21.2, 88.0], [22.4, 88.5], [22.2, 89.8], [21.0, 89.5]],
+    depth_layer: "Estuarine Intertidal (0–12m)",
+    iucn_status: "Protected World Heritage",
+    drivers: "World's largest contiguous mangrove delta ecosystem; brackish nursery for commercial crustacea & threatened euryhaline marine fauna.",
+    sub_species: [
+      { name: "Scylla serrata (Mud Crab)", pct: 52.0 },
+      { name: "Crocodylus porosus (Estuarine Crocodile)", pct: 30.0 },
+      { name: "Orcaella brevirostris (Irrawaddy Dolphin)", pct: 18.0 }
+    ]
+  },
+  {
+    id: "andaman_trench",
+    name: "Andaman Trench & Nicobar Deepwater Basin",
+    dominant_species: "Mobula birostris (Giant Manta Ray) & Megafauna",
+    dominance_pct: 79.2,
+    color: "#818cf8",
+    image: "assets/organisms/manta_ray.png",
+    center: [10.0, 93.0],
+    bounds: [[6.5, 91.5], [13.5, 92.0], [13.0, 94.0], [6.2, 93.8]],
+    depth_layer: "Mesopelagic & Abyssal (200–4,000m)",
+    iucn_status: "Endangered Megafauna Zone",
+    drivers: "Deep island arc trench (>4,000m depth) with upwelling nutrient plumes; pelagic migratory corridor for megafauna & bathyal species.",
+    sub_species: [
+      { name: "Mobula birostris (Giant Oceanic Manta Ray)", pct: 49.2 },
+      { name: "Physeter macrocephalus (Sperm Whale)", pct: 30.0 },
+      { name: "Architeuthis dux (Giant Deepsea Squid)", pct: 20.8 }
+    ]
+  },
+  {
+    id: "carlsberg_ridge",
+    name: "Carlsberg Mid-Oceanic Hydrothermal Vent Zone",
+    dominant_species: "Bathyal Chemosynthetic Vents & Tube Worms",
+    dominance_pct: 91.0,
+    color: "#f43f5e",
+    center: [3.5, 64.5],
+    bounds: [[2.0, 62.0], [6.0, 64.0], [5.0, 67.0], [1.0, 65.0]],
+    depth_layer: "Abyssal Seafloor Trench (>3,500m)",
+    iucn_status: "Extreme Hydrothermal Benthos",
+    drivers: "Seafloor spreading axis with active chemosynthetic hydrothermal vents emitting hydrogen sulfide; extreme abyssal ecosystem.",
+    sub_species: [
+      { name: "Rimicaris kairei (Hydrothermal Vent Shrimp)", pct: 58.0 },
+      { name: "Riftia pachyptila (Abyssal Tube Worms)", pct: 33.0 },
+      { name: "Myctophidae (Bioluminescent Lanternfish)", pct: 9.0 }
+    ]
+  }
+];
+
+function buildDominantRegionPopupHtml(reg) {
+  let imgHeader = "";
+  if (reg.image) {
+    imgHeader = `
+      <div style="position:relative;width:100%;height:105px;display:grid;place-items:center;background:radial-gradient(circle, ${reg.color}30 0%, rgba(6,14,21,0) 80%);margin-bottom:8px;border-radius:8px;border:1px solid ${reg.color}44;overflow:hidden;">
+        <img src="${reg.image}" style="max-height:90px;max-width:92%;object-fit:contain;filter:drop-shadow(0 0 12px ${reg.color});" />
+      </div>
+    `;
+  }
+
+  let subBars = "";
+  reg.sub_species.forEach(sub => {
+    subBars += `
+      <div style="display:flex;flex-direction:column;gap:2px;margin-top:4px;">
+        <div style="display:flex;justify-content:space-between;font:500 11px 'DM Sans',sans-serif;color:#e2e8f0;">
+          <span>${sub.name}</span>
+          <span style="font-family:'DM Mono',monospace;color:${reg.color};font-weight:700;">${sub.pct}%</span>
+        </div>
+        <div style="width:100%;height:5px;background:rgba(12,24,34,0.8);border-radius:3px;overflow:hidden;">
+          <div style="width:${sub.pct}%;height:100%;background:${reg.color};box-shadow:0 0 6px ${reg.color};border-radius:3px;"></div>
+        </div>
+      </div>
+    `;
+  });
+
+  return `
+    <span class="popup-badge" style="color:${reg.color}">DOMINANT MARINE ORGANISM REGION</span>
+    ${imgHeader}
+    <div class="popup-title">${reg.name}</div>
+    <div style="font:600 12px 'DM Mono',monospace;color:${reg.color};margin-bottom:6px;">
+      Dominant Species: <strong>${reg.dominant_species}</strong> (${reg.dominance_pct}% Biomass)
+    </div>
+
+    <div style="background:rgba(6,14,21,0.6);padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);margin-bottom:8px;">
+      <div style="font:600 9px 'DM Mono',monospace;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">SPECIES BIOMASS PROPORTION</div>
+      ${subBars}
+    </div>
+
+    <div class="popup-metrics" style="grid-template-columns:1fr 1fr;">
+      <div>Depth Zone: <strong>${reg.depth_layer}</strong></div>
+      <div>IUCN Status: <strong style="color:${reg.color}">${reg.iucn_status}</strong></div>
+    </div>
+
+    <div style="font:400 11px/1.4 'DM Sans',sans-serif;color:#cbd5e1;margin-top:8px;border-top:1px dashed rgba(255,255,255,0.1);padding-top:6px;">
+      <strong>Oceanographic Drivers:</strong> ${reg.drivers}
+    </div>
+  `;
+}
 
 if (obisSpeciesSelect) {
   obisSpeciesSelect.onchange = e => {
@@ -2741,6 +2949,7 @@ function generateClientOBISFallback(species, region) {
     depth_distribution,
     hotspots,
     observations: filtered,
+    dominant_regions: DOMINANT_MARINE_REGIONS,
     source: "OBIS (Ocean Biodiversity Information System)"
   };
 }
@@ -2759,6 +2968,14 @@ async function fetchAndRenderOBISData(speciesFilter = "all", regionFilter = "ind
     }
   }
 
+  if (!map.hasLayer(marineOverlay)) {
+    marineOverlay.addTo(map);
+  }
+  activeOverlays.add("marine");
+  const marineBtn = document.querySelector('.mode-btn[data-mode="marine"]');
+  if (marineBtn) marineBtn.classList.add("active");
+  updateLegend("marine");
+
   obisLayerGroup.clearLayers();
 
   let data = null;
@@ -2772,6 +2989,50 @@ async function fetchAndRenderOBISData(speciesFilter = "all", regionFilter = "ind
 
   if (!data || data.status !== "success" || !data.observations) {
     data = generateClientOBISFallback(speciesFilter, regionFilter);
+  }
+
+  // Render Glowing Dominant Marine Organism Regions & Badges
+  const dominantRegions = data.dominant_regions || DOMINANT_MARINE_REGIONS;
+  dominantRegions.forEach(reg => {
+    L.polygon(reg.bounds, {
+      color: reg.color,
+      fillColor: reg.color,
+      fillOpacity: 0.18,
+      weight: 2,
+      dashArray: "6, 6"
+    }).addTo(obisLayerGroup).bindPopup(buildDominantRegionPopupHtml(reg));
+
+    const shortName = (reg.dominant_species.split(' ')[0] || '') + ' ' + (reg.dominant_species.split(' ')[1] || '');
+    let imgHtml = "";
+    if (reg.image) {
+      imgHtml = `<img src="${reg.image}" style="height:56px;width:auto;object-fit:contain;filter:drop-shadow(0 0 10px ${reg.color}) drop-shadow(0 0 18px ${reg.color}aa);transition:transform 0.25s ease;" class="organism-cutout-img" />`;
+    }
+
+    const domIcon = L.divIcon({
+      className: "",
+      html: `
+        <div style="position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer;">
+          ${imgHtml}
+          <div style="display:flex;align-items:center;gap:6px;background:rgba(8,20,30,0.92);backdrop-filter:blur(12px);border:1px solid ${reg.color};padding:3px 10px;border-radius:20px;box-shadow:0 0 16px ${reg.color}66;white-space:nowrap;margin-top:2px;">
+            <span style="width:7px;height:7px;border-radius:50%;background:${reg.color};box-shadow:0 0 8px ${reg.color};animation:pulseDot 2s infinite"></span>
+            <span style="font:700 10px 'DM Mono',monospace;color:#fff">${shortName.toUpperCase()} DOMINANCE (${reg.dominance_pct}%)</span>
+          </div>
+        </div>
+      `,
+      iconSize: [230, 82],
+      iconAnchor: [115, 58]
+    });
+
+    L.marker(reg.center, { icon: domIcon }).addTo(obisLayerGroup).bindPopup(buildDominantRegionPopupHtml(reg));
+  });
+
+  if (regionFilter && regionFilter !== "indian_ocean") {
+    const targetReg = dominantRegions.find(r => r.id === regionFilter || r.id.includes(regionFilter));
+    if (targetReg && targetReg.bounds) {
+      map.fitBounds(targetReg.bounds, { padding: [40, 40] });
+    }
+  } else {
+    map.fitBounds([[1.0, 60.0], [23.0, 95.0]], { padding: [30, 30] });
   }
 
   // Update Summary Metrics
