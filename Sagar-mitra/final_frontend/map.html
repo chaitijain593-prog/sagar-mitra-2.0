@@ -2617,7 +2617,12 @@ oceanCurrentVectors.forEach(c => {
 });
 
 // C. MARINE OVERLAY (SST thermal gradients, PFZ polygons, ARGO float buoys)
-const marineOverlay = L.layerGroup();
+// C. MARINE & ECOSYSTEM OVERLAY (SST thermal gradients, PFZ, ARGO floats, Ecosystem Layers)
+const pfzLayerGroup = L.layerGroup();
+const argoLayerGroup = L.layerGroup();
+const obisLayerGroup = L.layerGroup();
+const ecosystemLayerGroup = L.layerGroup();
+const marineOverlay = L.layerGroup([pfzLayerGroup, argoLayerGroup, obisLayerGroup, ecosystemLayerGroup]);
 
 // Potential Fishing Zones (PFZ)
 const pfzPolygonsData = [
@@ -2658,7 +2663,7 @@ pfzPolygonsData.forEach(p => {
       <div>Chlorophyll: <strong>${p.chl}</strong></div>
       <div>Status: <strong>High Biomass</strong></div>
     </div>
-  `).addTo(marineOverlay);
+  `).addTo(pfzLayerGroup);
 });
 
 // Active ARGO Autonomous Profiling Floats
@@ -2691,8 +2696,84 @@ argoFloats.forEach(f => {
       <div>Max Depth: <strong>${f.depth}</strong></div>
       <div>Mission: <strong>${f.cycle}</strong></div>
     </div>
-  `).addTo(marineOverlay);
+  `).addTo(argoLayerGroup);
 });
+
+// Load Marine Ecosystem Layers (/api/ecosystem-layers)
+async function loadEcosystemLayers() {
+  try {
+    const res = await fetch("http://127.0.0.1:8000/api/ecosystem-layers", {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (res.ok) {
+      const config = await res.json();
+      const mangroves = config.mangroves;
+      if (mangroves && mangroves.data_url) {
+        try {
+          const geoRes = await fetch(mangroves.data_url, { signal: AbortSignal.timeout(12000) });
+          if (geoRes.ok) {
+            const geoData = await geoRes.json();
+            L.geoJSON(geoData, {
+              style: { color: "#059669", weight: 1.5, fillColor: "#10b981", fillOpacity: 0.35 },
+              onEachFeature: (feature, layer) => {
+                layer.bindPopup(`
+                  <span class="popup-badge" style="color:#10b981;">COASTAL ECOSYSTEM</span>
+                  <div class="popup-title">${mangroves.name || "Global Mangrove Watch"}</div>
+                  <p>Protected coastal mangrove forest & blue carbon sink ecosystem.</p>
+                  <div style="font-size:11px;color:#94a3b8;">Source: UNEP-WCMC</div>
+                `);
+              }
+            }).addTo(ecosystemLayerGroup);
+          }
+        } catch (e) {
+          console.warn("Mangrove remote GeoJSON fetch fallback:", e);
+        }
+      }
+
+      const chlorophyll = config.chlorophyll;
+      if (chlorophyll && chlorophyll.tile_url && chlorophyll.layer_name) {
+        const chlWms = L.tileLayer.wms(chlorophyll.tile_url, {
+          layers: chlorophyll.layer_name,
+          format: "image/png",
+          transparent: true,
+          version: "1.3.0",
+          opacity: 0.55,
+          attribution: "NASA Ocean Color / GIBS"
+        });
+        chlWms.addTo(ecosystemLayerGroup);
+      }
+    }
+  } catch (err) {
+    console.warn("Ecosystem layers endpoint unavailable; using local conservation layers:", err);
+  }
+
+  // Marine Protected Areas (MPAs) Conservation Polygons
+  const indianMPAs = [
+    { name: "Gulf of Mannar Marine National Park", coords: [[9.2, 78.9], [9.3, 79.3], [9.1, 79.4], [8.9, 79.0]], type: "Coral Reef & Seagrass Biosphere" },
+    { name: "Marine National Park, Gulf of Kutch", coords: [[22.4, 69.3], [22.6, 69.7], [22.5, 70.1], [22.3, 69.8]], type: "Intertidal Coral & Mangrove Sanctuary" },
+    { name: "Gahirmatha Marine Sanctuary", coords: [[20.6, 86.8], [20.8, 87.1], [20.5, 87.2], [20.4, 86.9]], type: "Olive Ridley Sea Turtle Mass Nesting Rookery" },
+    { name: "Mahatma Gandhi Marine National Park (Wandoor)", coords: [[11.5, 92.5], [11.7, 92.6], [11.6, 92.7], [11.4, 92.6]], type: "Deep Coral Reef & Atoll Sanctuary" }
+  ];
+  indianMPAs.forEach(mpa => {
+    L.polygon(mpa.coords, {
+      color: "#059669",
+      fillColor: "#10b981",
+      fillOpacity: 0.22,
+      weight: 1.8,
+      dashArray: "5, 5"
+    }).bindPopup(`
+      <span class="popup-badge" style="color:#10b981;">MARINE PROTECTED AREA (MPA)</span>
+      <div class="popup-title">${mpa.name}</div>
+      <div class="popup-metrics">
+        <div>Classification: <strong>${mpa.type}</strong></div>
+        <div>Legal Status: <strong>Wildlife Protection Act</strong></div>
+      </div>
+      <p style="font-size:11px;color:#cbd5e1;margin-top:6px;">No-take fishing zone & endangered biodiversity breeding habitat.</p>
+    `).addTo(ecosystemLayerGroup);
+  });
+}
+loadEcosystemLayers();
 
 // Active overlays set
 const activeOverlays = new Set();
@@ -2879,7 +2960,7 @@ function toggleOverlay(overlayKey) {
     if (overlayKey === "marine") {
       const obisPanel = document.getElementById("obisPanel");
       if (obisPanel) obisPanel.classList.remove("open");
-      marineOverlay.clearLayers();
+      obisLayerGroup.clearLayers();
     }
 
     // Revert legend to another active overlay or basemap
@@ -3315,13 +3396,12 @@ async function fetchAndRenderParetoRoute() {
 // ============================================================
 // 7. OBIS MARINE BIODIVERSITY & SPECIES PROPORTION ENGINE
 // ============================================================
-const obisLayerGroup = marineOverlay;
-
+// Note: obisLayerGroup is dedicated to species occurrence markers so other marine layers are not wiped
 const closeObisPanelBtn = document.getElementById("closeObisPanelBtn");
 if (closeObisPanelBtn) {
   closeObisPanelBtn.onclick = () => {
     document.getElementById("obisPanel").classList.remove("open");
-    marineOverlay.clearLayers();
+    obisLayerGroup.clearLayers();
     activeOverlays.delete("marine");
     map.removeLayer(marineOverlay);
     const marineBtn = document.querySelector('.mode-btn[data-mode="marine"]');
@@ -4273,8 +4353,36 @@ function updateGeofenceTransition(data, nearestKm) {
 
   if (previous !== "CROSSED" && next === "CROSSED") {
     playSirenTone();
+    const breachReason = (data && data.inside_mpa) ? "Vessel entered Marine Protected Area (MPA) restricted boundary." : "Vessel crossed Indian EEZ maritime boundary into international / sensitive waters.";
+    escalateMaritimeIncident(currentVesselCoord[0], currentVesselCoord[1], breachReason);
   }
   return next;
+}
+
+// ------------------------------------------------------------
+// C-1. MARITIME BOUNDARY VIOLATION ESCALATION (/api/escalate)
+// ------------------------------------------------------------
+async function escalateMaritimeIncident(lat, lon, reason = "Maritime boundary violation detected.", nearestPort = "Coast Guard Regional Ops Center") {
+  try {
+    const res = await fetch(`${SENTRY_API_BASE}/api/escalate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lat,
+        lon,
+        reason,
+        nearest_port: nearestPort,
+        session_id: getSentrySessionId()
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      console.log("Maritime incident escalated to authority ops queue:", data);
+      return data;
+    }
+  } catch (err) {
+    console.warn("Escalation API unavailable:", err);
+  }
 }
 
 async function pollGeofence() {
