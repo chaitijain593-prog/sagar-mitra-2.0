@@ -522,30 +522,48 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 }
 
 /* ============================================================
-   TELEMETRY HUD / CONTROLS
+/* ============================================================
+   TELEMETRY HUD / CONTROLS (INLINE WITH NAVBAR)
    ============================================================ */
 .hud-coordinates{
   position:fixed;
-  top:28px;
-  left:50%;
-  transform:translateX(-50%);
-  z-index:35;
-  background:rgba(12,24,34,0.78);
+  top:27px;
+  left:280px;
+  right:480px;
+  height:48px;
+  z-index:40;
+  background:var(--ctrl-bg);
   backdrop-filter:blur(14px);
-  border:1px solid rgba(57,189,242,0.3);
-  padding:7px 18px;
-  border-radius:30px;
-  font:500 11px "DM Mono",monospace;
-  letter-spacing:1px;
+  -webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--ctrl-border);
+  border-radius:24px;
+  box-shadow:0 4px 15px rgba(0,0,0,.3);
+  padding:0 18px;
+  font:500 11.5px/1 "DM Mono",monospace;
+  letter-spacing:0.8px;
   color:#82cff0;
   display:flex;
   align-items:center;
-  gap:14px;
-  box-shadow:0 4px 20px rgba(0,0,0,0.3);
-  pointer-events:none;
+  justify-content:space-evenly;
+  pointer-events:auto;
+  white-space:nowrap;
+  overflow:hidden;
+  transition:border-color .25s ease, box-shadow .25s ease;
 }
-.hud-item{display:flex;gap:5px;align-items:center}
-.hud-sep{color:rgba(57,189,242,0.35)}
+.hud-coordinates:hover{
+  border-color:rgba(57,189,242,0.6);
+  box-shadow:0 6px 20px rgba(57,189,242,0.25);
+}
+.hud-item{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  flex-shrink:0;
+}
+.hud-sep{
+  color:rgba(57,189,242,0.35);
+  user-select:none;
+}
 
 /* Map Zoom Controls on Left */
 .map-nav-controls{
@@ -1623,13 +1641,27 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   <span class="logo-title-carousel" id="navLogoTitle">Sagar Mitra</span>
 </a>
 
-<!-- Live Coordinates & Telemetry HUD -->
-<div class="hud-coordinates">
-  <div class="hud-item"><span style="color:var(--blue)">CURSOR:</span> <span id="hudCoords">14.50°N, 76.50°E</span></div>
+<!-- Live Coordinates & Telemetry HUD (Inline Navbar Telemetry Strip) -->
+<div class="hud-coordinates" id="navCoordsHud" title="Live Hydrographic Telemetry & Cursor Coordinates">
+  <div class="hud-item">
+    <span style="color:var(--blue);font-weight:600;">CURSOR:</span>
+    <span id="hudCoords" style="color:#ffffff;font-weight:600;">14.50°N, 76.50°E</span>
+  </div>
   <span class="hud-sep">|</span>
-  <div class="hud-item"><span style="color:var(--blue)">ZOOM:</span> <span id="hudZoom">5</span></div>
+  <div class="hud-item">
+    <span style="color:var(--blue);font-weight:600;">ZOOM:</span>
+    <span id="hudZoom" style="color:#ffffff;">5 (SYNOPTIC)</span>
+  </div>
   <span class="hud-sep">|</span>
-  <div class="hud-item"><span style="color:var(--blue)">STATUS:</span> <span>ORCA SATELLITE TELEMETRY ONLINE</span></div>
+  <div class="hud-item">
+    <span style="color:var(--blue);font-weight:600;">BASIN:</span>
+    <span id="hudBasin" style="color:#ffffff;">INDIAN OCEAN BASIN</span>
+  </div>
+  <span class="hud-sep">|</span>
+  <div class="hud-item">
+    <span style="width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;display:inline-block;"></span>
+    <span style="color:#34d399;font-weight:600;">SENTINEL ACTIVE</span>
+  </div>
 </div>
 
 <!-- Floating Marine Safety & Drift Banners Stack -->
@@ -2368,16 +2400,61 @@ const map = L.map("map-viewport", {
   attributionControl: false
 });
 
-// HUD cursor coordinates tracker
+// Dynamic Navbar Alignment: Position HUD evenly between logo-container and actions
+function alignMapNavbarHud() {
+  const logo = document.querySelector(".logo-container");
+  const actions = document.querySelector(".actions");
+  const hud = document.getElementById("navCoordsHud") || document.querySelector(".hud-coordinates");
+  if (!logo || !actions || !hud) return;
+  const logoRect = logo.getBoundingClientRect();
+  const actionsRect = actions.getBoundingClientRect();
+  const leftPos = Math.round(logoRect.right + 14);
+  const rightPos = Math.round(window.innerWidth - actionsRect.left + 14);
+  if (window.innerWidth > 960 && rightPos > 0 && leftPos < (window.innerWidth - 300)) {
+    hud.style.left = leftPos + "px";
+    hud.style.right = rightPos + "px";
+    hud.style.display = "flex";
+  } else {
+    hud.style.left = "";
+    hud.style.right = "";
+    if (window.innerWidth <= 960) hud.style.display = "none";
+  }
+}
+window.addEventListener("resize", alignMapNavbarHud);
+setTimeout(alignMapNavbarHud, 80);
+setTimeout(alignMapNavbarHud, 500);
+
+// HUD cursor coordinates, zoom & basin tracker
 map.on("mousemove", e => {
-  const lat = e.latlng.lat.toFixed(2);
-  const lng = e.latlng.lng.toFixed(2);
-  const latStr = lat >= 0 ? `${lat}°N` : `${Math.abs(lat)}°S`;
-  const lngStr = lng >= 0 ? `${lng}°E` : `${Math.abs(lng)}°W`;
-  document.getElementById("hudCoords").textContent = `${latStr}, ${lngStr}`;
+  const lat = e.latlng.lat;
+  const lng = e.latlng.lng;
+  const latStr = lat >= 0 ? `${lat.toFixed(2)}°N` : `${Math.abs(lat).toFixed(2)}°S`;
+  const lngStr = lng >= 0 ? `${lng.toFixed(2)}°E` : `${Math.abs(lng).toFixed(2)}°W`;
+  const coordsEl = document.getElementById("hudCoords");
+  if (coordsEl) coordsEl.textContent = `${latStr}, ${lngStr}`;
+
+  const basinEl = document.getElementById("hudBasin");
+  if (basinEl) {
+    if (lat >= 8 && lat <= 25 && lng >= 64 && lng <= 77.5) {
+      basinEl.textContent = "ARABIAN SEA";
+    } else if (lat >= 8 && lat <= 23 && lng > 77.5 && lng <= 96) {
+      basinEl.textContent = "BAY OF BENGAL";
+    } else if (lat < 8 && lat >= -10 && lng >= 65 && lng <= 95) {
+      basinEl.textContent = "EQUATORIAL INDIAN OCEAN";
+    } else if (lat > 20 && lng <= 72) {
+      basinEl.textContent = "GULF OF KUTCH / GUJARAT";
+    } else {
+      basinEl.textContent = "INDIAN OCEAN BASIN";
+    }
+  }
 });
 map.on("zoomend", () => {
-  document.getElementById("hudZoom").textContent = map.getZoom();
+  const z = map.getZoom();
+  const zoomEl = document.getElementById("hudZoom");
+  if (zoomEl) {
+    const mode = z <= 5 ? "SYNOPTIC" : z <= 8 ? "REGIONAL" : "COASTAL";
+    zoomEl.textContent = `${z} (${mode})`;
+  }
 });
 
 // Map controls
