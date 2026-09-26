@@ -562,6 +562,12 @@ body {
 }
 .marine-filter-control input:focus { outline: 2px solid rgba(56, 189, 248, 0.45); border-color: var(--accent-cyan); }
 .marine-filter-control select:focus { outline: 2px solid rgba(56, 189, 248, 0.45); border-color: var(--accent-cyan); }
+.marine-filter-control input[type="range"] { padding: 0; border: 0; background: transparent; accent-color: #38bdf8; cursor: ew-resize; }
+.marine-depth-slider-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; color: var(--text-sub); font-size: 0.65rem; }
+.marine-depth-slider-row label { margin: 0; }
+.marine-depth-slider-row output { color: var(--text-main); font-weight: 800; font-variant-numeric: tabular-nums; }
+.marine-depth-slider-scale { display: flex; justify-content: space-between; color: var(--text-sub); font-size: 0.58rem; }
+.marine-filter-control input[type="range"] { padding: 0; border: 0; background: transparent; accent-color: #38bdf8; cursor: ew-resize; }
 .marine-filter-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .marine-filter-control .marine-filter-toggle {
   display: flex; align-items: center; gap: 8px; margin: 10px 0 0; color: var(--text-main); font-size: 0.74rem; font-weight: 700; cursor: pointer;
@@ -572,6 +578,12 @@ body {
 .marine-depth-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; color: var(--text-sub); font-size: 0.62rem; }
 .marine-depth-legend[hidden] { display: none; }
 .marine-depth-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.marine-depth-filter-item { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 3px 6px; border: 1px solid transparent; border-radius: 6px; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.marine-depth-filter-item:hover, .marine-depth-filter-item[aria-pressed="true"] { color: var(--text-main); background: rgba(56, 189, 248, .12); border-color: rgba(56, 189, 248, .45); }
+.marine-depth-filter-item i { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; }
+.depth-surface-swatch { background: #87cefa; }
+.depth-mid-swatch { background: #1e88e5; }
+.depth-deep-swatch { background: #001b44; border: 1px solid #67e8f9; }
 .marine-depth-legend i { width: 9px; height: 9px; border-radius: 50%; }
 .depth-shallow { background: #facc15; }
 .depth-shelf { background: #fb923c; }
@@ -585,17 +597,96 @@ body {
   min-width: 120px;
   height: 8px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #7dd3fc 0%, #38bdf8 25%, #2563eb 55%, #1d4ed8 75%, #082f49 100%);
+  background: linear-gradient(90deg, #87CEFA 0%, #1E88E5 50%, #001B44 100%);
 }
 .marine-depth-legend .depth-unknown { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
-.marine-observation-marker-icon { background: transparent; border: 0; }
-.marine-observation-marker-icon span {
+.marine-observation-marker-icon { background: transparent; border: 0; transition: opacity 180ms ease; }
+.marine-observation-marker-icon.leaflet-zoom-animated { transition: opacity 180ms ease, transform 180ms ease; }
+.marine-observation-marker-icon svg {
   display: block;
-  width: 15px;
-  height: 15px;
-  border: 2px solid #e0f2fe;
-  border-radius: 50%;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.75);
+  width: 24px;
+  height: 24px;
+  overflow: visible;
+  transition: opacity 180ms ease, filter 180ms ease, transform 180ms ease;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .9));
+}
+.marine-observation-marker-icon.marine-depth-surface svg { filter: none; }
+.marine-observation-marker-icon.marine-depth-mid_water svg { filter: drop-shadow(0 0 3px rgba(56, 189, 248, .65)); }
+.marine-observation-marker-icon.marine-depth-deep_sea svg {
+  animation: marine-bioluminescent-pulse 2.4s ease-in-out infinite;
+}
+.marine-observation-popup { min-width: 190px; color: #0f2436; }
+.marine-observation-popup header { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.marine-observation-popup header svg { width: 25px; height: 25px; flex: 0 0 25px; }
+.marine-observation-popup header strong { font-size: .88rem; line-height: 1.25; }
+.marine-observation-popup dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 9px; margin: 0 0 8px; font-size: .72rem; }
+.marine-observation-popup dt { color: #526579; }
+.marine-observation-popup dd { min-width: 0; margin: 0; font-weight: 650; overflow-wrap: anywhere; }
+.marine-observation-popup > a { color: #0369a1; font-size: .72rem; font-weight: 750; }
+.marine-observation-tooltip { border: 1px solid rgba(34, 211, 238, .45) !important; border-radius: 7px !important; color: #e0f2fe !important; background: rgba(3, 16, 32, .95) !important; }
+.marine-observation-tooltip::before { border-top-color: rgba(3, 16, 32, .95) !important; }
+.marine-region-selecting { cursor: crosshair !important; }
+.marker-cluster { width: 48px !important; height: 48px !important; margin-left: -24px !important; margin-top: -24px !important; }
+.marker-cluster div { width: 40px !important; height: 40px !important; margin: 4px !important; border-radius: 50% !important; font-size: .78rem !important; line-height: 40px !important; }
+.marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div { color: #061827 !important; }
+@keyframes marine-bioluminescent-pulse {
+  0%, 100% { filter: drop-shadow(0 0 3px #22d3ee) drop-shadow(0 0 7px rgba(34, 211, 238, .45)); transform: scale(1); }
+  50% { filter: drop-shadow(0 0 6px #67e8f9) drop-shadow(0 0 13px rgba(34, 211, 238, .78)); transform: scale(1.08); }
+}
+.marine-sonar-drawer {
+  position: absolute;
+  z-index: 1200;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: min(300px, calc(100% - 24px));
+  padding: 14px;
+  overflow: auto;
+  color: #e2f3ff;
+  background: rgba(3, 16, 32, .96);
+  border: 1px solid rgba(34, 211, 238, .45);
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .5), inset 0 0 24px rgba(8, 47, 73, .35);
+  backdrop-filter: blur(14px);
+  transform: translateX(calc(100% + 24px));
+  visibility: hidden;
+  transition: transform 220ms ease, visibility 220ms ease;
+}
+.marine-sonar-drawer.is-open { transform: translateX(0); visibility: visible; }
+.marine-sonar-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.marine-sonar-kicker { color: #67e8f9; font-size: .58rem; letter-spacing: .12em; font-weight: 800; }
+.marine-sonar-header h3 { margin: 3px 0 0; font-size: .98rem; }
+.marine-sonar-close { width: 30px; height: 30px; border: 1px solid rgba(148, 163, 184, .28); border-radius: 8px; color: #e2f3ff; background: rgba(148, 163, 184, .12); font-size: 1.2rem; cursor: pointer; }
+.marine-sonar-summary { margin: 10px 0; color: #a8c3d8; font-size: .68rem; line-height: 1.4; }
+.marine-sonar-plot { position: relative; height: 300px; margin: 0 0 12px 44px; overflow: hidden; border-left: 1px solid rgba(103, 232, 249, .5); background: linear-gradient(180deg, rgba(14, 165, 233, .12), rgba(8, 47, 73, .48)); }
+.marine-sonar-axis { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(to bottom, transparent 0, transparent calc(25% - 1px), rgba(148, 200, 225, .25) calc(25% - 1px), rgba(148, 200, 225, .25) 25%); }
+.marine-sonar-tick { position: absolute; left: -43px; width: 37px; color: #9fb8ca; font-size: .58rem; text-align: right; transform: translateY(-50%); }
+.marine-sonar-point { position: absolute; z-index: 2; width: 9px; height: 9px; border: 1px solid #e0f2fe; border-radius: 50%; box-shadow: 0 0 8px currentColor; transform: translate(-50%, -50%); }
+.marine-sonar-records { display: grid; gap: 5px; }
+.marine-sonar-record { display: flex; justify-content: space-between; gap: 8px; padding: 5px 7px; border-radius: 6px; color: #cde3f2; background: rgba(148, 163, 184, .08); font-size: .61rem; }
+.marine-sonar-record span:first-child { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.marine-sonar-record small { color: #91adc1; font-size: .55rem; line-height: 1.35; }
+.marine-sonar-record a { color: #67e8f9; }
+.marine-sonar-record span:last-child { flex: 0 0 auto; color: #67e8f9; font-variant-numeric: tabular-nums; }
+.marine-path-legend { display: flex; flex-wrap: wrap; gap: 5px 10px; margin: 6px 0; color: var(--text-sub); font-size: .62rem; }
+.marine-path-legend[hidden] { display: none; }
+.marine-path-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.marine-path-legend-item i { width: 18px; height: 0; border-top: 2px var(--path-style) var(--path-color); box-shadow: 0 0 6px var(--path-color); }
+.marine-path-legend-item small { color: #71869b; font-size: .55rem; }
+.migratory-path-gradient { cursor: pointer; transition: opacity 160ms ease, stroke-width 160ms ease; }
+.migratory-path-flow { cursor: pointer; stroke-dasharray: 8 5; animation: marine-migratory-flow 1.1s linear infinite; transition: opacity 160ms ease, stroke-width 160ms ease; }
+@keyframes marine-migratory-flow { to { stroke-dashoffset: -26px; } }
+.migratory-latest-glow { animation: marine-latest-pulse 1.8s ease-in-out infinite; }
+@keyframes marine-latest-pulse {
+  0%, 100% { filter: drop-shadow(0 0 2px #67e8f9); stroke-width: 2; }
+  50% { filter: drop-shadow(0 0 8px #22d3ee) drop-shadow(0 0 13px rgba(34, 211, 238, .65)); stroke-width: 3; }
+}
+.marine-path-incomplete-marker { background: transparent; border: 0; }
+.marine-path-incomplete-marker span { display: block; width: max-content; padding: 3px 6px; border: 1px dashed #fbbf24; border-radius: 5px; color: #fde68a; background: rgba(30, 25, 8, .85); font-size: .52rem; font-weight: 800; letter-spacing: .04em; box-shadow: 0 1px 5px rgba(0, 0, 0, .6); }
+.marine-path-tooltip { border: 1px solid rgba(34, 211, 238, .45) !important; color: #e0f2fe !important; background: rgba(3, 16, 32, .94) !important; }
+@media (prefers-reduced-motion: reduce) {
+  .marine-observation-marker-icon.marine-depth-deep_sea svg { animation: none; }
+  .marine-sonar-drawer, .marine-observation-marker-icon svg, .migratory-path-gradient, .migratory-path-flow { transition: none; animation: none; }
 }
 .marine-filter-note { margin: 8px 0 0; color: var(--text-sub); font-size: 0.61rem; line-height: 1.35; }
 .marine-filter-actions { display: flex; gap: 8px; margin-top: 12px; }
@@ -608,6 +699,10 @@ body {
 .marine-filter-status { min-height: 0; margin: 8px 0 0; color: var(--text-sub); font-size: 0.7rem; line-height: 1.35; }
 .marine-filter-status:empty { display: none; }
 @media (max-width: 520px) {
+  .marine-filter-control { width: min(286px, calc(100vw - 56px)); max-height: min(68vh, 520px); padding: 12px; }
+  .marker-cluster { width: 54px !important; height: 54px !important; margin-left: -27px !important; margin-top: -27px !important; }
+  .marker-cluster div { width: 46px !important; height: 46px !important; margin: 4px !important; line-height: 46px !important; font-size: .86rem !important; }
+  .marine-observation-popup { min-width: 170px; }
   .marine-filter-control { width: 246px; padding: 11px; }
 }
 

@@ -250,7 +250,20 @@ if (soundToggle) {
 // -------------------------------------------------------------
 // 6. LEAFLET MAP & SPATIAL LAYERS
 // -------------------------------------------------------------
-const map = L.map("oceanMap", { center: [18.9, 72.8], zoom: 6, zoomControl: false });
+const sharedMapParams = new URLSearchParams(window.location.search);
+const sharedLat = Number(sharedMapParams.get("mlat"));
+const sharedLon = Number(sharedMapParams.get("mlon"));
+const sharedZoom = Number(sharedMapParams.get("mz"));
+const validSharedCenter = sharedMapParams.has("mlat") && sharedMapParams.has("mlon")
+  && Number.isFinite(sharedLat) && Number.isFinite(sharedLon)
+  && Math.abs(sharedLat) <= 90 && Math.abs(sharedLon) <= 180;
+const map = L.map("oceanMap", {
+  center: validSharedCenter ? [sharedLat, sharedLon] : [18.9, 72.8],
+  zoom: Number.isFinite(sharedZoom) && sharedZoom >= 1 && sharedZoom <= 18 ? sharedZoom : 6,
+  zoomControl: false,
+  touchZoom: true,
+  tap: true,
+});
 const oceanLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}", { className: 'dark-ocean-tiles', maxZoom: 13 }).addTo(map);
 const satLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { className: 'dark-sat-tiles', maxZoom: 18 });
 
@@ -384,8 +397,8 @@ function plotRegionalZones(zones) {
       fillOpacity: 0.55,
       weight: 1.5,
     }).addTo(map).bindPopup(
-      `<b>${z.name || "Favorable Zone"}</b><br>SST: ${z.sst_c ?? "N/A"}°C<br>` +
-      `Chlorophyll: ${z.chlorophyll_mgm3 ?? "N/A"} mg/m³<br>ML Confidence: ${ml}`
+      `<b>${z.name || "Favorable Zone"}</b><br>SST: ${z.sst_c | "N/A"}°C<br>` +
+      `Chlorophyll: ${z.chlorophyll_mgm3 | "N/A"} mg/m³<br>ML Confidence: ${ml}`
     );
     regionalZoneMarkers.push(marker);
   });
@@ -1683,12 +1696,12 @@ async function fetchWhatIfPrediction(perturbedSst, perturbedChlo, sstDelta, chlo
         whatifProbVal.textContent = `${(data.probability * 100).toFixed(1)}%`;
       }
       if (whatifSstShapVal) {
-        const sstShap = data.shap_values?.sst ?? (sstDelta * 0.12);
+        const sstShap = data.shap_values?.sst | (sstDelta * 0.12);
         whatifSstShapVal.textContent = `${sstShap >= 0 ? '+' : ''}${sstShap.toFixed(3)}`;
         whatifSstShapVal.style.color = sstShap >= 0 ? "#38bdf8" : "#f87171";
       }
       if (whatifChloShapVal) {
-        const chloShap = data.shap_values?.chlorophyll ?? (chloDelta * 0.18);
+        const chloShap = data.shap_values?.chlorophyll | (chloDelta * 0.18);
         whatifChloShapVal.textContent = `${chloShap >= 0 ? '+' : ''}${chloShap.toFixed(3)}`;
         whatifChloShapVal.style.color = chloShap >= 0 ? "#10b981" : "#f87171";
       }
@@ -2060,7 +2073,7 @@ function initDispatchButton() {
         const breached = routing.breached === true || routing.inside_eez === false ||
           routing.alert_level === "EEZ BORDER ALERT";
         routingDisplay = breached ? "Border Alert (Outside EEZ)" : "Safe (Inside Indian EEZ)";
-        const rawDistance = routing.eez_distance_km ?? routing.distance_km ?? safety.eez_distance_km;
+        const rawDistance = routing.eez_distance_km | routing.distance_km | safety.eez_distance_km;
         const distance = Number.parseFloat(rawDistance);
         if (Number.isFinite(distance)) borderDist = ` - ${distance.toFixed(2)} km to boundary`;
       } else if (typeof routing === "string") {
@@ -2233,6 +2246,65 @@ let marineObservationsController = null;
 let marineObservationsRequestId = 0;
 let marineObservationRecords = [];
 let marineObservationStatus = "";
+let marineTrackInfo = { available: false };
+const marinePathSpeciesColors = new Map();
+let marinePathGradientUpdateScheduled = false;
+let marineFilterContainer = null;
+let marineFilterDebounceTimer = null;
+let marineMarkerRenderGeneration = 0;
+const marineObservationMarkerRegistry = new Map();
+let marinePathLayers = [];
+let marineSelectedBounds = null;
+let marineRegionSelectionEnabled = false;
+let marineRegionSelectionStart = null;
+let marineRegionSelectionRect = null;
+let marineActiveDepthBand = null;
+let marineDepthBandMatchCount = 0;
+
+function readMarinePanelFilters() {
+  const container = marineFilterContainer;
+  const temporalChoice = container?.querySelector("#marine-season-filter")?.value || "";
+  return {
+    species: container?.querySelector("#marine-species-filter")?.value.trim() || "",
+    start_date: container?.querySelector("#marine-start-date")?.value || "",
+    end_date: container?.querySelector("#marine-end-date")?.value || "",
+    month: temporalChoice === "current_month" ? String(new Date().getMonth() + 1) : "",
+    season: temporalChoice === "current_month" ? "" : temporalChoice,
+    region: container?.querySelector("#marine-region-filter")?.value || "indian_ocean",
+    include_global_tracks: Boolean(container?.querySelector("#marine-show-paths")?.checked),
+  };
+}
+
+function writeMarineMapState(filters = readMarinePanelFilters()) {
+  const params = new URLSearchParams(window.location.search);
+  const values = {
+    marine: map.hasLayer(marineOverlay) ? "1" : "0",
+    species: filters.species || "",
+    region: filters.region || "indian_ocean",
+    start_date: filters.start_date || "",
+    end_date: filters.end_date || "",
+    month: filters.month || "",
+    season: filters.season || "",
+    paths: marineFilterContainer?.querySelector("#marine-show-paths")?.checked ? "1" : "0",
+    depth_colors: marineFilterContainer?.querySelector("#marine-depth-colors")?.checked ? "1" : "0",
+    max_depth: marineFilterContainer?.querySelector("#marine-depth-peel")?.value || "4000",
+    depth_band: marineActiveDepthBand || "",
+    mlat: map.getCenter().lat.toFixed(5),
+    mlon: map.getCenter().lng.toFixed(5),
+    mz: map.getZoom().toFixed(2),
+    box: marineSelectedBounds
+      ? [marineSelectedBounds.getSouth(), marineSelectedBounds.getWest(), marineSelectedBounds.getNorth(), marineSelectedBounds.getEast()].map((value) => value.toFixed(5)).join(",")
+      : "",
+  };
+  for (const [key, value] of Object.entries(values)) {
+    if (value) params.set(key, value);
+    else params.delete(key);
+  }
+  const query = params.toString();
+  window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+}
+
+map.on("moveend zoomend", () => writeMarineMapState());
 
 const marineFilterControl = L.control({ position: "topright" });
 marineFilterControl.onAdd = () => {
@@ -2248,47 +2320,95 @@ marineFilterControl.onAdd = () => {
       <div><label for="marine-start-date">Start date</label><input id="marine-start-date" type="date"></div>
       <div><label for="marine-end-date">End date</label><input id="marine-end-date" type="date"></div>
     </div>
-    <label for="marine-season-filter">Indian marine season</label>
+    <label for="marine-season-filter">Month / season</label>
     <select id="marine-season-filter">
-        <option value="">Any season</option><option value="winter">Winter (Dec–Feb)</option>
-        <option value="pre_monsoon">Pre-monsoon (Mar–May)</option><option value="monsoon">Monsoon (Jun–Sep)</option>
-        <option value="post_monsoon">Post-monsoon (Oct–Nov)</option>
+        <option value="">Any time of year</option>
+        <option value="current_month">Current month (${new Intl.DateTimeFormat(undefined, { month: "long" }).format(new Date())})</option>
+        <option value="winter">Winter (Dec-Feb)</option>
+        <option value="summer">Summer (Mar-May)</option>
+        <option value="monsoon">Monsoon (Jun-Sep)</option>
+        <option value="post_monsoon">Post-monsoon (Oct-Nov)</option>
     </select>
     <label class="marine-filter-toggle"><input id="marine-show-paths" type="checkbox"> Show Migratory Paths</label>
     <label class="marine-filter-toggle"><input id="marine-depth-colors" type="checkbox"> Color-Grade by Depth</label>
+    <div class="marine-depth-slider-row"><label for="marine-depth-peel">Depth peel</label><output id="marine-depth-value" for="marine-depth-peel">4,000 m</output></div>
+    <input id="marine-depth-peel" type="range" min="0" max="4000" step="50" value="4000" aria-label="Show observations down to selected depth">
+    <div class="marine-depth-slider-scale"><span>0 m</span><span>4,000 m</span></div>
     <div class="marine-depth-legend" hidden>
-      <span>Shallow 0–50 m</span><i class="depth-gradient"></i><span>Mid-water</span><span>Deep &gt;1,000 m</span><span><i class="depth-unknown"></i>Not reported</span>
+      <button type="button" class="marine-depth-filter-item" data-depth-band="surface" aria-pressed="false"><i class="depth-surface-swatch"></i>Surface 0-50 m</button>
+      <button type="button" class="marine-depth-filter-item" data-depth-band="mid_water" aria-pressed="false"><i class="depth-mid-swatch"></i>Medium blue 50-1,000 m</button>
+      <button type="button" class="marine-depth-filter-item" data-depth-band="deep_sea" aria-pressed="false"><i class="depth-deep-swatch"></i>Dark navy &gt;1,000 m</button>
+      <button type="button" class="marine-depth-filter-item" data-depth-band="unknown" aria-pressed="false"><i class="depth-unknown"></i>Depth not reported</button>
+      <i class="depth-gradient" aria-label="Shallow to deep depth color gradient"></i>
     </div>
     <p id="marine-path-note" class="marine-filter-note" hidden></p>
+    <div id="marine-path-legend" class="marine-path-legend" hidden></div>
     <div class="marine-filter-actions">
       <button type="button" id="marine-apply-filters">Visualize</button>
       <button type="button" id="marine-reset-filters">Reset</button>
     </div>
+    <button type="button" id="marine-select-region" aria-pressed="false">Select map area</button>
     <p class="marine-filter-status" role="status" aria-live="polite"></p>`;
+
+  marineFilterContainer = container;
+  container.querySelector("#marine-species-filter").value = sharedMapParams.get("species") || "";
+  container.querySelector("#marine-region-filter").value = sharedMapParams.get("region") || "indian_ocean";
+  container.querySelector("#marine-start-date").value = sharedMapParams.get("start_date") || "";
+  container.querySelector("#marine-end-date").value = sharedMapParams.get("end_date") || "";
+  container.querySelector("#marine-season-filter").value = sharedMapParams.get("season") || "";
+  if (sharedMapParams.get("month") === String(new Date().getMonth() + 1)) {
+    container.querySelector("#marine-season-filter").value = "current_month";
+  }
+  container.querySelector("#marine-show-paths").checked = sharedMapParams.get("paths") === "1";
+  container.querySelector("#marine-depth-colors").checked = sharedMapParams.get("depth_colors") === "1";
+  container.querySelector(".marine-depth-legend").hidden = !container.querySelector("#marine-depth-colors").checked;
+  const sharedDepth = Number(sharedMapParams.get("max_depth"));
+  if (Number.isFinite(sharedDepth) && sharedDepth >= 0 && sharedDepth <= 4000) {
+    container.querySelector("#marine-depth-peel").value = String(sharedDepth);
+    container.querySelector("#marine-depth-value").textContent = `${sharedDepth.toLocaleString()} m`;
+  }
+  const sharedBand = sharedMapParams.get("depth_band");
+  marineActiveDepthBand = ["surface", "mid_water", "deep_sea", "unknown"].includes(sharedBand) ? sharedBand : null;
+  container.querySelectorAll(".marine-depth-filter-item").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.depthBand === marineActiveDepthBand));
+  });
+  const sharedBox = sharedMapParams.get("box")?.split(",").map(Number);
+  if (sharedBox?.length === 4 && sharedBox.every(Number.isFinite)) {
+    marineSelectedBounds = L.latLngBounds([sharedBox[0], sharedBox[1]], [sharedBox[2], sharedBox[3]]);
+  }
 
   L.DomEvent.disableClickPropagation(container);
   L.DomEvent.disableScrollPropagation(container);
-  container.querySelector("#marine-apply-filters").addEventListener("click", () => {
+  const applyFilters = (force = true) => {
     const species = container.querySelector("#marine-species-filter").value.trim();
     const startDate = container.querySelector("#marine-start-date").value;
     const endDate = container.querySelector("#marine-end-date").value;
-    const season = container.querySelector("#marine-season-filter").value;
+    const temporalChoice = container.querySelector("#marine-season-filter").value;
+    const month = temporalChoice === "current_month" ? String(new Date().getMonth() + 1) : "";
+    const season = temporalChoice === "current_month" ? "" : temporalChoice;
     const region = container.querySelector("#marine-region-filter").value;
-    const hasGlobalSpeciesSearch = Boolean(species) && region === "global";
     const status = container.querySelector(".marine-filter-status");
     if (startDate && endDate && startDate > endDate) {
       status.textContent = "Start date must be on or before the end date.";
       return;
     }
-    loadMarineObservations({
+    const filters = {
       species,
       start_date: startDate,
       end_date: endDate,
+      month,
       season,
       region,
-      include_global_tracks: hasGlobalSpeciesSearch && container.querySelector("#marine-show-paths").checked,
-    }, { force: true });
-  });
+      include_global_tracks: Boolean(species) && container.querySelector("#marine-show-paths").checked,
+    };
+    loadMarineObservations(filters, { force });
+    writeMarineMapState(filters);
+  };
+  const scheduleFilterFetch = () => {
+    window.clearTimeout(marineFilterDebounceTimer);
+    marineFilterDebounceTimer = window.setTimeout(() => applyFilters(true), 380);
+  };
+  container.querySelector("#marine-apply-filters").addEventListener("click", () => applyFilters(true));
   container.querySelector("#marine-reset-filters").addEventListener("click", () => {
     container.querySelector("#marine-species-filter").value = "";
     container.querySelector("#marine-start-date").value = "";
@@ -2299,41 +2419,71 @@ marineFilterControl.onAdd = () => {
     container.querySelector("#marine-path-note").hidden = true;
     container.querySelector("#marine-depth-colors").checked = false;
     container.querySelector(".marine-depth-legend").hidden = true;
-    loadMarineObservations({ species: "", start_date: "", end_date: "", season: "", region: "indian_ocean", include_global_tracks: false }, { force: true });
+    container.querySelector("#marine-depth-peel").value = "4000";
+    container.querySelector("#marine-depth-value").textContent = "4,000 m";
+    marineActiveDepthBand = null;
+    marineSelectedBounds = null;
+    container.querySelectorAll(".marine-depth-filter-item").forEach((button) => button.setAttribute("aria-pressed", "false"));
+    if (marineRegionSelectionRect) map.removeLayer(marineRegionSelectionRect);
+    marineRegionSelectionRect = null;
+    applyFilters(true);
   });
   const pathToggle = container.querySelector("#marine-show-paths");
   const updatePathToggle = () => {
-    const eligible = container.querySelector("#marine-region-filter").value === "global"
-      && Boolean(container.querySelector("#marine-species-filter").value.trim());
+    const eligible = Boolean(container.querySelector("#marine-species-filter").value.trim());
     const note = container.querySelector("#marine-path-note");
     note.hidden = !pathToggle.checked;
     if (pathToggle.checked) {
       note.textContent = eligible
-        ? "Paths connect dated observations of the same species, not individual animal tracks. Press Visualize to load them."
-        : "Enter a species and select Global, then press Visualize to load migratory paths.";
+        ? "Dashed lines connect dated records of the selected species across the chosen region; they represent population observations, not individual animal tracks."
+        : "Enter a species and enable this option to load its migratory occurrence sequence.";
       renderMarineObservationLayer();
     }
   };
-  container.querySelector("#marine-species-filter").addEventListener("input", updatePathToggle);
-  container.querySelector("#marine-region-filter").addEventListener("change", updatePathToggle);
+  const onFilterChange = () => {
+    updatePathToggle();
+    scheduleFilterFetch();
+  };
+  container.querySelector("#marine-species-filter").addEventListener("input", onFilterChange);
+  container.querySelector("#marine-region-filter").addEventListener("change", onFilterChange);
+  container.querySelector("#marine-start-date").addEventListener("change", onFilterChange);
+  container.querySelector("#marine-end-date").addEventListener("change", onFilterChange);
+  container.querySelector("#marine-season-filter").addEventListener("change", onFilterChange);
   updatePathToggle();
   container.querySelector("#marine-show-paths").addEventListener("change", () => {
-    const species = container.querySelector("#marine-species-filter").value.trim();
-    const region = container.querySelector("#marine-region-filter").value;
     updatePathToggle();
-    if (!species || region !== "global") return;
-    loadMarineObservations({
-      species,
-      start_date: container.querySelector("#marine-start-date").value,
-      end_date: container.querySelector("#marine-end-date").value,
-      season: container.querySelector("#marine-season-filter").value,
-      region,
-      include_global_tracks: Boolean(species) && region === "global" && container.querySelector("#marine-show-paths").checked,
-    }, { force: true });
+    applyFilters(true);
   });
   container.querySelector("#marine-depth-colors").addEventListener("change", (event) => {
     container.querySelector(".marine-depth-legend").hidden = !event.target.checked;
     renderMarineObservationLayer();
+    writeMarineMapState();
+  });
+  container.querySelectorAll(".marine-depth-filter-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      marineActiveDepthBand = marineActiveDepthBand === button.dataset.depthBand ? null : button.dataset.depthBand;
+      container.querySelectorAll(".marine-depth-filter-item").forEach((item) => {
+        item.setAttribute("aria-pressed", String(item.dataset.depthBand === marineActiveDepthBand));
+      });
+      renderMarineObservationLayer();
+      writeMarineMapState();
+    });
+  });
+  container.querySelector("#marine-depth-peel").addEventListener("input", (event) => {
+    const depth = Number(event.target.value);
+    container.querySelector("#marine-depth-value").textContent = `${depth.toLocaleString()} m`;
+    renderMarineObservationLayer();
+  });
+  container.querySelector("#marine-depth-peel").addEventListener("change", () => writeMarineMapState());
+  container.querySelector("#marine-select-region").addEventListener("click", (event) => {
+    marineRegionSelectionEnabled = !marineRegionSelectionEnabled;
+    event.currentTarget.setAttribute("aria-pressed", String(marineRegionSelectionEnabled));
+    event.currentTarget.textContent = marineRegionSelectionEnabled ? "Drag a map area..." : "Select map area";
+    map.getContainer().classList.toggle("marine-region-selecting", marineRegionSelectionEnabled);
+    if (map.dragging) {
+      if (marineRegionSelectionEnabled) map.dragging.disable();
+      else map.dragging.enable();
+    }
   });
   return container;
 };
@@ -2381,6 +2531,7 @@ async function loadMarineObservations(filters = {}, { force = false } = {}) {
     species: String(filters.species || "").trim(),
     start_date: String(filters.start_date || ""),
     end_date: String(filters.end_date || ""),
+    month: String(filters.month || ""),
     season: String(filters.season || ""),
     region: String(filters.region || "indian_ocean"),
     include_global_tracks: filters.include_global_tracks ? "true" : "",
@@ -2396,9 +2547,6 @@ async function loadMarineObservations(filters = {}, { force = false } = {}) {
   const status = document.querySelector(".marine-filter-status");
   if (status) status.textContent = "Filtering observations…";
   setMarineObservationStatus("Filtering marine observations…");
-  marineOverlay.clearLayers();
-  marineMarkerGroup.clearLayers();
-  marineOverlay.addLayer(marineMarkerGroup);
 
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(normalizedFilters)) {
@@ -2411,16 +2559,35 @@ async function loadMarineObservations(filters = {}, { force = false } = {}) {
         signal: controller.signal,
       });
       if (!response.ok) throw new Error(`OBIS service returned HTTP ${response.status}`);
-      const observations = await response.json();
+      const payload = await response.json();
+      const observations = Array.isArray(payload) ? payload : payload?.data;
       if (!Array.isArray(observations)) throw new Error("Unexpected marine observations response");
       if (requestId !== marineObservationsRequestId) return;
 
+      if (payload?.status === "error") {
+        marineLoadedFilterKey = null;
+        if (marineObservationRecords.length) renderMarineObservationLayer();
+        if (status) status.textContent = payload.message || "Marine observations are temporarily unavailable. Please try again.";
+        setMarineObservationStatus(payload.message || "Marine observation data is temporarily unavailable.");
+        return;
+      }
+
       marineObservationRecords = observations;
-      marineOverlay.clearLayers();
+      marineTrackInfo = payload?.tracks || { available: false };
       const markerCount = renderMarineObservationLayer();
+      const pathNote = document.querySelector("#marine-path-note");
+      if (pathNote && document.querySelector("#marine-show-paths")?.checked) {
+        const trackInfo = payload?.tracks || {};
+        pathNote.hidden = false;
+        pathNote.textContent = trackInfo.message || (trackInfo.point_count >= 2
+          ? `Loaded ${trackInfo.point_count} dated occurrence records for the path overlay.`
+          : "No path can be drawn yet; at least two dated records of a supported migratory species are required.");
+      }
       marineLoadedFilterKey = filterKey;
+      const areaText = marineSelectedBounds ? " in selected area" : "";
+      const bandText = marineActiveDepthBand ? `; ${marineDepthBandMatchCount} in ${marineActiveDepthBand.replaceAll("_", " ")} band` : "";
       if (status) status.textContent = markerCount
-        ? `Showing ${markerCount} marine observation${markerCount === 1 ? "" : "s"}.`
+        ? `Showing ${markerCount} marine observation${markerCount === 1 ? "" : "s"}${areaText}${bandText}.`
         : "No marine observations match these filters.";
       setMarineObservationStatus(markerCount
         ? `Showing ${markerCount} marine observations.`
@@ -2438,8 +2605,8 @@ async function loadMarineObservations(filters = {}, { force = false } = {}) {
 function depthColor(depthMeters) {
   if (!Number.isFinite(depthMeters)) return "#94a3b8";
   const stops = [
-    [0, [125, 211, 252]], [50, [125, 211, 252]], [200, [56, 189, 248]],
-    [500, [37, 99, 235]], [1000, [29, 78, 216]], [4000, [8, 47, 73]],
+    [0, [135, 206, 250]], [50, [135, 206, 250]], [200, [75, 154, 222]],
+    [500, [30, 136, 229]], [1000, [30, 136, 229]], [4000, [0, 27, 68]],
   ];
   const depth = Math.min(4000, Math.max(0, depthMeters));
   let upper = stops.findIndex(([limit]) => depth <= limit);
@@ -2452,29 +2619,247 @@ function depthColor(depthMeters) {
   return `rgb(${rgb.join(",")})`;
 }
 
+function marineDepthIcon(category, color) {
+  const silhouettes = {
+    surface: `<path d="M4 20c5-8 11-10 20-8l8-6v10l-8-3c-9 2-15 8-20 7Zm11-7 4-6 3 5-3 5-4-4Z"/><circle cx="24" cy="13" r="1.1" fill="#031020" stroke="none"/>`,
+    mid_water: `<path d="M20 3c7 5 10 11 8 17l-8 8-8-8c-2-6 1-12 8-17Zm-9 17-5 7m9-5-2 8m8-8 2 8m2-10 5 7"/><circle cx="22" cy="15" r="1.2" fill="#031020" stroke="none"/>`,
+    deep_sea: `<path d="M5 21c2-7 8-11 16-9l4 2 7-5-2 8 3 6-8-3c-8 5-15 5-20 1Zm13-11-1-5m0 0 5-3m-5 3 5 2"/><circle cx="23" cy="17" r="1.4" fill="#031020" stroke="none"/><path d="M25 20c-2 3-5 3-7 1" fill="none"/>`,
+    unknown: `<path d="M5 20c5-8 11-10 20-8l8-6v10l-8-3c-9 2-15 8-20 7Z"/><circle cx="24" cy="13" r="1.1" fill="#031020" stroke="none"/>`,
+  };
+  const safeCategory = Object.hasOwn(silhouettes, category) ? category : "unknown";
+  const colorText = String(color);
+  const safeColor = (/^#[0-9a-f]{6}$/i.test(colorText) || /^rgb\(\d{1,3},\s*\d{1,3},\s*\d{1,3}\)$/i.test(colorText))
+    ? colorText
+    : "#94a3b8";
+  return L.divIcon({
+    className: `marine-observation-marker-icon marine-depth-${safeCategory}`,
+    html: `<svg viewBox="0 0 40 40" aria-hidden="true" fill="${safeColor}" stroke="#e0f2fe" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${silhouettes[safeCategory]}</svg>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+  });
+}
+
+const marineSonarDrawer = document.querySelector("#marine-sonar-drawer");
+L.DomEvent.disableClickPropagation(marineSonarDrawer);
+L.DomEvent.disableScrollPropagation(marineSonarDrawer);
+marineSonarDrawer.querySelector(".marine-sonar-close").addEventListener("click", () => {
+  marineSonarDrawer.classList.remove("is-open");
+  marineSonarDrawer.setAttribute("aria-hidden", "true");
+});
+
+function openMarineSonar(records) {
+  const withDepth = records.filter((record) => {
+    const depth = Number(record.depth_m);
+    return record.depth_m != null && Number.isFinite(depth) && depth >= 0;
+  });
+  const points = marineSonarDrawer.querySelector(".marine-sonar-points");
+  const axis = marineSonarDrawer.querySelector(".marine-sonar-axis");
+  const list = marineSonarDrawer.querySelector(".marine-sonar-records");
+  const summary = marineSonarDrawer.querySelector(".marine-sonar-summary");
+  axis.innerHTML = [0, 1000, 2000, 3000, 4000].map((depth) =>
+    `<span class="marine-sonar-tick" style="top:${depth / 40}%">${depth.toLocaleString()} m</span>`
+  ).join("");
+  points.innerHTML = "";
+  list.innerHTML = "";
+  if (!withDepth.length) {
+    summary.textContent = `No reported depth for these ${records.length} observation${records.length === 1 ? "" : "s"}. The sonar profile omits unknown-depth records.`;
+  } else {
+    summary.textContent = `${withDepth.length} of ${records.length} observation${records.length === 1 ? " has" : "s have"} reported depth.`;
+    withDepth.forEach((record, index) => {
+      const depth = Number(record.depth_m);
+      const category = record.depth_category || (depth <= 50 ? "surface" : depth <= 1000 ? "mid_water" : "deep_sea");
+      const color = /^#[0-9a-f]{6}$/i.test(String(record.depth_color || "")) ? record.depth_color : depthColor(depth);
+      const point = document.createElement("span");
+      point.className = "marine-sonar-point";
+      point.style.top = `${Math.min(depth, 4000) / 40}%`;
+      point.style.left = `${12 + (index % 5) * 18}%`;
+      point.style.backgroundColor = color;
+      point.style.color = color;
+      point.title = `${record.species_name || "Unknown species"} - ${depth.toLocaleString()} m`;
+      points.appendChild(point);
+
+      const row = document.createElement("div");
+      row.className = "marine-sonar-record";
+      const sourceUrl = getObisSourceUrl(record.source_link);
+      row.innerHTML = `<span><strong>${escapeHtml(record.species_name || "Unknown species")}</strong><small>${escapeHtml(category.replaceAll("_", " "))} | ${escapeHtml(record.observation_date || "Date unavailable")} | ${escapeHtml(record.dataset_name || "OBIS")}${sourceUrl ? ` | <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source</a>` : ""}</small></span><span>${depth.toLocaleString()} m</span>`;
+      list.appendChild(row);
+    });
+  }
+  marineSonarDrawer.classList.add("is-open");
+  marineSonarDrawer.setAttribute("aria-hidden", "false");
+}
+
+if (typeof marineMarkerGroup.on === "function" && typeof marineMarkerGroup.spiderfy === "function") {
+  marineMarkerGroup.on("clusterclick", (event) => {
+    L.DomEvent.stop(event.originalEvent);
+    const cluster = event.layer;
+    const bounds = cluster.getBounds();
+    map.flyToBounds(bounds, { padding: [36, 36], maxZoom: 10, duration: 0.9, easeLinearity: 0.22 });
+    window.setTimeout(() => {
+      const child = cluster.getAllChildMarkers()[0];
+      const visibleParent = child && marineMarkerGroup.getVisibleParent(child);
+      if (visibleParent && visibleParent !== child && visibleParent.spiderfy) visibleParent.spiderfy();
+    }, 950);
+  });
+}
+
 function isMigratoryMarineTaxon(speciesName) {
   const name = String(speciesName || "").toLocaleLowerCase();
   return [
     "thunnus", "tuna", "cheloni", "caretta", "eretmochelys", "lepido", "dermochelys",
     "delphin", "tursiops", "cetacea", "balaenoptera", "megaptera", "rhincodon", "selachimorpha",
+    "xiphias", "istiophoridae", "mobula", "manta",
   ].some((taxon) => name.includes(taxon));
 }
 
 function speciesPathColor(speciesName) {
-  const colors = ["#22d3ee", "#f472b6", "#a3e635", "#fb923c", "#c084fc", "#f87171"];
-  const hash = Array.from(String(speciesName || "")).reduce((value, character) => value + character.charCodeAt(0), 0);
-  return colors[hash % colors.length];
+  const name = String(speciesName || "Unknown species").trim().toLocaleLowerCase();
+  if (marinePathSpeciesColors.has(name)) return marinePathSpeciesColors.get(name);
+  const colors = ["#22d3ee", "#f472b6", "#a3e635", "#fb923c", "#c084fc", "#f87171", "#60a5fa", "#facc15"];
+  // Stable hashing gives a species the same color after filters and redraws.
+  let hash = 2166136261;
+  for (const character of name) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  const color = colors[(hash >>> 0) % colors.length];
+  marinePathSpeciesColors.set(name, color);
+  return color;
+}
+
+function mixPathColor(color, neutral = "#94a3b8", neutralWeight = 0.72) {
+  const parse = (hex) => hex.match(/[\da-f]{2}/gi).map((part) => parseInt(part, 16));
+  const source = parse(color);
+  const gray = parse(neutral);
+  return `#${source.map((channel, index) => Math.round(channel * (1 - neutralWeight) + gray[index] * neutralWeight).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function greatCircleArc(start, end, steps = 16) {
+  const radians = (degrees) => degrees * Math.PI / 180;
+  const degrees = (radiansValue) => radiansValue * 180 / Math.PI;
+  const vector = (point) => {
+    const latitude = radians(point.lat);
+    const longitude = radians(point.lng);
+    return [Math.cos(latitude) * Math.cos(longitude), Math.cos(latitude) * Math.sin(longitude), Math.sin(latitude)];
+  };
+  const a = vector(start);
+  const b = vector(end);
+  const dot = Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]));
+  const angle = Math.acos(dot);
+  let longitudeEnd = end.lng;
+  while (longitudeEnd - start.lng > 180) longitudeEnd -= 360;
+  while (longitudeEnd - start.lng < -180) longitudeEnd += 360;
+  const points = [];
+  for (let index = 0; index <= steps; index += 1) {
+    const fraction = index / steps;
+    let xyz;
+    if (Math.abs(Math.sin(angle)) < 1e-6) {
+      const latitude = start.lat + (end.lat - start.lat) * fraction;
+      let longitude = start.lng + (longitudeEnd - start.lng) * fraction;
+      if (points.length) {
+        while (longitude - points[points.length - 1].lng > 180) longitude -= 360;
+        while (longitude - points[points.length - 1].lng < -180) longitude += 360;
+      }
+      points.push(L.latLng(latitude, longitude));
+      continue;
+    } else {
+      const scaleA = Math.sin((1 - fraction) * angle) / Math.sin(angle);
+      const scaleB = Math.sin(fraction * angle) / Math.sin(angle);
+      xyz = a.map((value, axis) => value * scaleA + b[axis] * scaleB);
+    }
+    const latitude = degrees(Math.atan2(xyz[2], Math.hypot(xyz[0], xyz[1])));
+    let longitude = degrees(Math.atan2(xyz[1], xyz[0]));
+    if (points.length) {
+      while (longitude - points[points.length - 1].lng > 180) longitude -= 360;
+      while (longitude - points[points.length - 1].lng < -180) longitude += 360;
+    }
+    points.push(L.latLng(latitude, longitude));
+  }
+  return points;
+}
+
+function setPathGradient(line, gradientId, mutedColor, vividColor) {
+  const path = line.getElement?.();
+  if (!path) return;
+  const svg = path.ownerSVGElement;
+  if (!svg) return;
+  let defs = svg.querySelector("defs[data-marine-path-gradients]");
+  if (!defs) {
+    defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    defs.setAttribute("data-marine-path-gradients", "true");
+    svg.insertBefore(defs, svg.firstChild);
+  }
+  let gradient = svg.querySelector(`#${gradientId}`);
+  if (!gradient) {
+    gradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+    gradient.id = gradientId;
+    gradient.setAttribute("gradientUnits", "userSpaceOnUse");
+    const oldStop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+    oldStop.setAttribute("offset", "0%");
+    oldStop.setAttribute("stop-color", mutedColor);
+    const newStop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+    newStop.setAttribute("offset", "100%");
+    newStop.setAttribute("stop-color", vividColor);
+    gradient.append(oldStop, newStop);
+    defs.appendChild(gradient);
+  }
+  const coordinatePairs = [...(path.getAttribute("d") || "").matchAll(/[ML]\s*([-+\d.e]+)[ ,]+([-+\d.e]+)/gi)];
+  if (coordinatePairs.length < 2) return;
+  const first = coordinatePairs[0];
+  const last = coordinatePairs[coordinatePairs.length - 1];
+  gradient.setAttribute("x1", first[1]);
+  gradient.setAttribute("y1", first[2]);
+  gradient.setAttribute("x2", last[1]);
+  gradient.setAttribute("y2", last[2]);
+  path.setAttribute("stroke", `url(#${gradientId})`);
+}
+
+function scheduleMarinePathGradientUpdate() {
+  if (marinePathGradientUpdateScheduled) return;
+  marinePathGradientUpdateScheduled = true;
+  requestAnimationFrame(() => {
+    marinePathGradientUpdateScheduled = false;
+    document.querySelectorAll(".migratory-path-gradient[data-gradient-id]").forEach((path) => {
+      const id = path.getAttribute("data-gradient-id");
+      const muted = path.getAttribute("data-muted-color");
+      const vivid = path.getAttribute("data-vivid-color");
+      setPathGradient({ getElement: () => path }, id, muted, vivid);
+    });
+  });
+}
+
+map.on("zoomend moveend", scheduleMarinePathGradientUpdate);
+
+function updateMarinePathLegend(entries) {
+  const legend = document.querySelector("#marine-path-legend");
+  if (!legend) return;
+  legend.innerHTML = "";
+  if (!entries.length) {
+    legend.hidden = true;
+    return;
+  }
+  legend.hidden = false;
+  for (const entry of entries) {
+    const item = document.createElement("span");
+    item.className = "marine-path-legend-item";
+    const density = entry.count >= 20 ? "dense" : entry.count >= 8 ? "medium" : "sparse";
+    const dashStyle = density === "dense" ? "solid" : density === "medium" ? "dashed" : "dotted";
+    item.innerHTML = `<i style="--path-color:${entry.color};--path-style:${dashStyle}"></i>${escapeHtml(entry.name)} <small>${entry.count} records · ${density}</small>`;
+    legend.appendChild(item);
+  }
 }
 
 function renderMarineObservationLayer() {
-  marineOverlay.clearLayers();
-  marineMarkerGroup.clearLayers();
-  marineOverlay.addLayer(marineMarkerGroup);
+  const generation = ++marineMarkerRenderGeneration;
+  for (const pathLayer of marinePathLayers) marineOverlay.removeLayer(pathLayer);
+  marinePathLayers = [];
+  if (!marineOverlay.hasLayer(marineMarkerGroup)) marineOverlay.addLayer(marineMarkerGroup);
   const depthColorsEnabled = document.querySelector("#marine-depth-colors")?.checked || false;
   const showPaths = Boolean(document.querySelector("#marine-show-paths")?.checked)
-    && Boolean(document.querySelector("#marine-species-filter")?.value.trim())
-    && document.querySelector("#marine-region-filter")?.value === "global";
+    && Boolean(document.querySelector("#marine-species-filter")?.value.trim());
   const pathsBySpecies = new Map();
+  const pathLegendEntries = [];
+  const pathVisuals = [];
+  const wantedMarkerKeys = new Set();
+  const activeBounds = marineSelectedBounds;
+  let depthBandMatchCount = 0;
   let markerCount = 0;
 
   for (const observation of marineObservationRecords) {
@@ -2485,31 +2870,65 @@ function renderMarineObservationLayer() {
     const depthMeters = observation.depth_m != null && Number.isFinite(Number(observation.depth_m))
       ? Number(observation.depth_m)
       : null;
-    const color = depthColorsEnabled ? depthColor(depthMeters) : "#38bdf8";
-    const sourceUrl = getObisSourceUrl(observation.source_link);
-    const source = sourceUrl
-      ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">View Source</a>`
-      : "Source unavailable";
+    const explicitDepthColor = /^#[0-9a-f]{6}$/i.test(String(observation.depth_color || ""))
+      ? observation.depth_color
+      : depthColor(depthMeters);
+    const suggestedCategory = observation.depth_category || (
+      depthMeters == null ? "unknown"
+        : depthMeters <= 50 ? "surface"
+          : depthMeters <= 1000 ? "mid_water" : "deep_sea"
+    );
+    const depthCategory = ["surface", "mid_water", "deep_sea", "unknown"].includes(suggestedCategory)
+      ? suggestedCategory
+      : "unknown";
+    const color = depthColorsEnabled ? explicitDepthColor : "#38bdf8";
+    const maxDepth = Number(document.querySelector("#marine-depth-peel")?.value || 4000);
+    if ((depthMeters != null && depthMeters > maxDepth) || (depthMeters == null && maxDepth < 4000)) continue;
+    if (activeBounds && !activeBounds.contains([lat, lon])) continue;
     const dateLabel = observation.observation_date || "Unknown";
-    const popup = `<div class="marine-observation-popup">
-      <strong>${escapeHtml(observation.species_name || "Unknown species")}</strong><br>
-      <span><b>Observation Date:</b> ${escapeHtml(dateLabel)}</span><br>
-      <span><b>Month / Season:</b> ${escapeHtml(observation.month ?? "Unknown")} / ${escapeHtml(observation.season || "Unknown")}</span><br>
-      <span><b>Depth:</b> ${depthMeters == null ? "Not reported" : `${depthMeters.toLocaleString()} m`}</span><br>
-      <span><b>Dataset / Provider:</b> ${escapeHtml(observation.dataset_name || "OBIS")}</span><br>${source}
-    </div>`;
-    const observationMarker = L.marker([lat, lon], {
-      icon: L.divIcon({
-        className: "marine-observation-marker-icon",
-        html: `<span style="background-color:${color}"></span>`,
-        iconSize: [17, 17],
-        iconAnchor: [8.5, 8.5],
-      }),
-    }).bindPopup(popup);
-    marineMarkerGroup.addLayer(observationMarker);
+    const fadeStart = Math.max(0, maxDepth - 400);
+    const markerOpacity = depthMeters == null || depthMeters <= fadeStart
+      ? 1
+      : Math.max(0.2, (maxDepth - depthMeters) / Math.max(1, maxDepth - fadeStart));
+    const bandMatches = !marineActiveDepthBand || marineActiveDepthBand === depthCategory;
+    if (bandMatches) depthBandMatchCount += 1;
+    const displayOpacity = markerOpacity * (bandMatches ? 1 : 0.16);
+    const sourceKey = observation.source_link || `${observation.species_name || ""}|${dateLabel}|${lat.toFixed(5)}|${lon.toFixed(5)}`;
+    const markerKey = String(sourceKey);
+    wantedMarkerKeys.add(markerKey);
+    const icon = marineDepthIcon(depthCategory, color);
+    const speciesName = String(observation.species_name || "Unknown species");
+    const temperature = observation.water_temperature ?? observation.waterTemperature ?? observation.sea_surface_temperature ?? observation.seaSurfaceTemperature ?? observation.temperature ?? observation.sst;
+    const depthText = depthMeters == null ? "Not reported" : `${depthMeters.toLocaleString()} m`;
+    const sourceUrl = getObisSourceUrl(observation.source_link);
+    const popupHtml = `<article class="marine-observation-popup"><header>${icon.options.html}<strong>${escapeHtml(speciesName)}</strong></header><dl><dt>Date</dt><dd>${escapeHtml(dateLabel)}</dd><dt>Depth</dt><dd>${escapeHtml(depthText)}</dd>${temperature != null && Number.isFinite(Number(temperature)) ? `<dt>Water temperature</dt><dd>${escapeHtml(Number(temperature).toFixed(1))} °C</dd>` : ""}<dt>Dataset</dt><dd>${escapeHtml(observation.dataset_name || "OBIS")}</dd></dl>${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">View source ↗</a>` : ""}</article>`;
+    let markerEntry = marineObservationMarkerRegistry.get(markerKey);
+    const isNewMarker = !markerEntry;
+    if (!markerEntry) {
+      const observationMarker = L.marker([lat, lon], { icon, opacity: 0, riseOnHover: true, keyboard: true, title: `${speciesName} — ${dateLabel}` });
+      markerEntry = { marker: observationMarker, fadeTimer: null };
+      marineObservationMarkerRegistry.set(markerKey, markerEntry);
+      marineMarkerGroup.addLayer(observationMarker);
+    }
+    const observationMarker = markerEntry.marker;
+    if (markerEntry.fadeTimer) { window.clearTimeout(markerEntry.fadeTimer); markerEntry.fadeTimer = null; }
+    observationMarker.setLatLng([lat, lon]);
+    observationMarker.setIcon(icon);
+    observationMarker.options.marineObservation = observation;
+    observationMarker.unbindPopup();
+    observationMarker.bindPopup(popupHtml, { maxWidth: 280, className: "marine-observation-popup-shell" });
+    observationMarker.unbindTooltip();
+    observationMarker.bindTooltip(`<strong>${escapeHtml(speciesName)}</strong><br>${escapeHtml(dateLabel)}`, {
+      direction: "top", sticky: true, opacity: 0.96, className: "marine-observation-tooltip",
+    });
+    if (isNewMarker) {
+      observationMarker.setOpacity(0);
+      const fadeIn = () => requestAnimationFrame(() => observationMarker.setOpacity(displayOpacity));
+      if (observationMarker._icon) fadeIn();
+      else observationMarker.once("add", fadeIn);
+    } else observationMarker.setOpacity(displayOpacity);
     markerCount += 1;
 
-    const speciesName = String(observation.species_name || "Unknown species");
     if (showPaths && isMigratoryMarineTaxon(speciesName) && Number.isFinite(Date.parse(dateLabel))) {
       const key = speciesName.toLocaleLowerCase();
       if (!pathsBySpecies.has(key)) pathsBySpecies.set(key, { name: speciesName, records: [] });
@@ -2517,42 +2936,213 @@ function renderMarineObservationLayer() {
     }
   }
 
+  for (const [key, entry] of marineObservationMarkerRegistry) {
+    if (wantedMarkerKeys.has(key)) continue;
+    entry.marker.setOpacity(0);
+    entry.fadeTimer = window.setTimeout(() => {
+      if (generation !== marineMarkerRenderGeneration && wantedMarkerKeys.has(key)) return;
+      marineMarkerGroup.removeLayer(entry.marker);
+      marineObservationMarkerRegistry.delete(key);
+    }, 210);
+  }
+  marineDepthBandMatchCount = depthBandMatchCount;
+
   for (const { name, records } of pathsBySpecies.values()) {
     records.sort((a, b) => a.timestamp - b.timestamp);
     if (records.length < 2) continue;
-    const line = L.polyline(records.map(({ lat, lon }) => [lat, lon]), {
-      color: speciesPathColor(name),
-      weight: 3,
-      opacity: 0.82,
-      dashArray: "8 5",
-    });
-    line.bindTooltip(`${escapeHtml(name)} - dated observation sequence (not an individual track)`);
-    marineOverlay.addLayer(line);
-
-    const endpoints = [
-      { record: records[0], label: "Earliest dated observation", color: "#f8fafc" },
-      { record: records[records.length - 1], label: "Latest dated observation", color: "#0f172a" },
-    ];
-    for (const { record, label, color } of endpoints) {
-      L.circleMarker([record.lat, record.lon], {
-        radius: 5,
-        color: "#ffffff",
-        weight: 2,
-        fillColor: color,
-        fillOpacity: 1,
-      })
-        .bindTooltip(`${escapeHtml(name)} - ${label}: ${escapeHtml(record.observation.observation_date || "Unknown date")}`)
-        .addTo(marineOverlay);
+    const speciesColor = speciesPathColor(name);
+    const earliest = records[0].timestamp;
+    const latest = records[records.length - 1].timestamp;
+    const fullTrack = [];
+    for (let index = 0; index < records.length - 1; index += 1) {
+      const arc = greatCircleArc(L.latLng(records[index].lat, records[index].lon), L.latLng(records[index + 1].lat, records[index + 1].lon));
+      fullTrack.push(...(index ? arc.slice(1) : arc));
     }
+    const bounds = L.latLngBounds(fullTrack);
+    const tooltip = `${escapeHtml(name)} · ${escapeHtml(records[0].observation.observation_date || "Unknown")} to ${escapeHtml(records[records.length - 1].observation.observation_date || "Unknown")} · ${records.length} dated observations`;
+    const incomplete = document.querySelector("#marine-region-filter")?.value !== "global" && marineTrackInfo.available !== true;
+    const densityDash = records.length >= 20 ? "14 5" : records.length >= 8 ? "8 5" : "2 6";
+    const gradientId = `marine-path-gradient-${Array.from(name).reduce((sum, character) => sum + character.charCodeAt(0), 0)}-${pathLegendEntries.length}`;
+    const fadedColor = mixPathColor(speciesColor);
+    const baseLine = L.polyline(fullTrack, {
+      className: "migratory-path-gradient",
+      color: speciesColor,
+      weight: 4,
+      opacity: 0.9,
+      smoothFactor: 1,
+    });
+    const applyGradient = () => {
+      const baseElement = baseLine.getElement?.();
+      if (!baseElement) return;
+      baseElement.setAttribute("data-gradient-id", gradientId);
+      baseElement.setAttribute("data-muted-color", fadedColor);
+      baseElement.setAttribute("data-vivid-color", speciesColor);
+      setPathGradient(baseLine, gradientId, fadedColor, speciesColor);
+    };
+    baseLine.on("add", applyGradient).addTo(marineOverlay);
+    applyGradient();
+    const flowLine = L.polyline(fullTrack, {
+      className: "migratory-path-flow",
+      color: speciesColor,
+      weight: 2,
+      opacity: 0.95,
+      dashArray: densityDash,
+      smoothFactor: 1,
+    }).addTo(marineOverlay);
+    flowLine.getElement?.()?.style.setProperty("stroke-dasharray", densityDash);
+    flowLine.bindTooltip(tooltip, { sticky: true, className: "marine-path-tooltip" });
+    const pathParts = [baseLine, flowLine];
+    for (let index = 0; index < records.length - 1; index += 1) {
+      const fraction = latest > earliest
+        ? ((records[index].timestamp + records[index + 1].timestamp) / 2 - earliest) / (latest - earliest)
+        : (index + 0.5) / (records.length - 1);
+      // Chronological waypoint dots reinforce the same old-to-new color progression.
+      const waypoint = L.circleMarker([records[index].lat, records[index].lon], {
+        radius: 2.6,
+        color: mixPathColor(speciesColor, "#94a3b8", 0.75 * (1 - fraction)),
+        weight: 1,
+        fillColor: mixPathColor(speciesColor, "#94a3b8", 0.75 * (1 - fraction)),
+        fillOpacity: 0.35 + fraction * 0.55,
+        opacity: 0.35 + fraction * 0.55,
+        interactive: false,
+      }).addTo(marineOverlay);
+      pathParts.push(waypoint);
+    }
+    const endpoint = records[records.length - 1];
+    const liveMarker = L.circleMarker([endpoint.lat, endpoint.lon], {
+      className: "migratory-latest-glow",
+      radius: 6,
+      color: "#ffffff",
+      weight: 2,
+      fillColor: speciesColor,
+      fillOpacity: 1,
+    }).bindTooltip(`${escapeHtml(name)} · Latest sighting ${escapeHtml(endpoint.observation.observation_date || "Unknown date")}`)
+      .addTo(marineOverlay);
+    pathParts.push(liveMarker);
+
+    const setDimState = (active) => {
+      for (const visual of pathVisuals) {
+        const isOwnPath = pathParts.includes(visual.layer);
+        visual.layer.setStyle({
+          opacity: active ? (isOwnPath ? visual.opacity : 0.2) : visual.opacity,
+          fillOpacity: active ? (isOwnPath ? visual.fillOpacity : 0.08) : visual.fillOpacity,
+        });
+        const element = visual.layer.getElement?.();
+        const gradientIdForLayer = element?.getAttribute("data-gradient-id");
+        if (gradientIdForLayer) {
+          setPathGradient({ getElement: () => element }, gradientIdForLayer,
+            element.getAttribute("data-muted-color"), element.getAttribute("data-vivid-color"));
+        }
+      }
+      if (active) {
+        baseLine.setStyle({ weight: 6 });
+        flowLine.setStyle({ weight: 3 });
+      } else {
+        baseLine.setStyle({ weight: 4 });
+        flowLine.setStyle({ weight: 2 });
+      }
+      applyGradient();
+    };
+    for (const line of [baseLine, flowLine]) {
+      line.on("mouseover", () => setDimState(true));
+      line.on("mouseout", () => setDimState(false));
+      line.on("click", (event) => {
+        if (event.originalEvent) L.DomEvent.stop(event.originalEvent);
+      map.flyToBounds(bounds, { padding: [36, 36], maxZoom: 8, duration: 1, easeLinearity: 0.2 });
+      });
+    }
+    liveMarker.on("click", () => map.flyToBounds(bounds, { padding: [36, 36], maxZoom: 8, duration: 1, easeLinearity: 0.2 }));
+    pathParts.forEach((layer) => pathVisuals.push({
+      layer,
+      opacity: layer.options.opacity ?? 1,
+      fillOpacity: layer.options.fillOpacity ?? 0,
+    }));
+
+    if (incomplete) {
+      const middle = fullTrack[Math.floor(fullTrack.length / 2)];
+      const badge = L.marker(middle, {
+        interactive: false,
+        icon: L.divIcon({
+          className: "marine-path-incomplete-marker",
+          html: `<span>INCOMPLETE DATA</span>`,
+          iconSize: [104, 22],
+          iconAnchor: [52, 11],
+        }),
+      }).addTo(marineOverlay);
+      pathParts.push(badge);
+    }
+    marinePathLayers.push(...pathParts);
+    pathLegendEntries.push({ name, color: speciesColor, count: records.length });
+  }
+  updateMarinePathLegend(pathLegendEntries);
+  scheduleMarinePathGradientUpdate();
+  const filterStatus = marineFilterContainer?.querySelector(".marine-filter-status");
+  if (filterStatus && (activeBounds || marineActiveDepthBand)) {
+    const areaText = activeBounds ? " in selected area" : "";
+    const bandText = marineActiveDepthBand ? `; ${depthBandMatchCount} in ${marineActiveDepthBand.replaceAll("_", " ")} band` : "";
+    filterStatus.textContent = `Showing ${markerCount} observations${areaText}${bandText}.`;
   }
   return markerCount;
 }
 
 map.on("overlayadd", (event) => {
+  writeMarineMapState();
   if (event.layer === marineOverlay && !marineObservationsController && marineLoadedFilterKey === null) {
-    loadMarineObservations();
+    loadMarineObservations(readMarinePanelFilters(), { force: true });
   }
 });
+map.on("overlayremove", (event) => {
+  if (event.layer === marineOverlay) writeMarineMapState();
+});
+
+let marineSelectionMoveHandler = null;
+function startMarineRegionSelection(event) {
+  if (!marineRegionSelectionEnabled || !event.latlng) return;
+  marineRegionSelectionStart = event.latlng;
+  if (marineRegionSelectionRect) map.removeLayer(marineRegionSelectionRect);
+  marineRegionSelectionRect = L.rectangle([marineRegionSelectionStart, marineRegionSelectionStart], {
+    color: "#22d3ee", weight: 2, dashArray: "6 4", fillColor: "#22d3ee", fillOpacity: 0.12,
+  }).addTo(map);
+  marineSelectionMoveHandler = (moveEvent) => marineRegionSelectionRect?.setBounds(L.latLngBounds(marineRegionSelectionStart, moveEvent.latlng));
+  map.on("mousemove", marineSelectionMoveHandler);
+}
+
+function finishMarineRegionSelection() {
+  if (!marineRegionSelectionStart || !marineRegionSelectionRect) return;
+  marineSelectedBounds = marineRegionSelectionRect.getBounds();
+  map.removeLayer(marineRegionSelectionRect);
+  marineRegionSelectionRect = L.rectangle(marineSelectedBounds, {
+    color: "#22d3ee", weight: 2, dashArray: "6 4", fillColor: "#22d3ee", fillOpacity: 0.06,
+    interactive: false,
+  }).addTo(map);
+  marineRegionSelectionStart = null;
+  if (marineSelectionMoveHandler) map.off("mousemove", marineSelectionMoveHandler);
+  marineSelectionMoveHandler = null;
+  marineRegionSelectionEnabled = false;
+  map.dragging.enable();
+  const button = marineFilterContainer?.querySelector("#marine-select-region");
+  if (button) {
+    button.setAttribute("aria-pressed", "false");
+    button.textContent = "Select map area";
+  }
+  map.getContainer().classList.remove("marine-region-selecting");
+  renderMarineObservationLayer();
+  writeMarineMapState();
+}
+
+map.on("mousedown", startMarineRegionSelection);
+map.on("mouseup", finishMarineRegionSelection);
+
+if (sharedMapParams.get("marine") === "1") {
+  marineOverlay.addTo(map);
+  if (marineSelectedBounds) {
+    marineRegionSelectionRect = L.rectangle(marineSelectedBounds, {
+      color: "#22d3ee", weight: 2, dashArray: "6 4", fillColor: "#22d3ee", fillOpacity: 0.06,
+      interactive: false,
+    }).addTo(map);
+  }
+  loadMarineObservations(readMarinePanelFilters(), { force: true });
+}
 /**
  * Fetches ecosystem layer configurations and adds them to the Leaflet map with layer controls.
  * @param {L.Map} mapInstance - The active Leaflet map instance
@@ -2561,7 +3151,7 @@ async function loadEcosystemLayers(mapInstance) {
   try {
     const response = await fetch(`${API_BASE}/api/ecosystem-layers`, {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(8000),
     });
     if (!response.ok) throw new Error(`Layer metadata returned HTTP ${response.status}`);
     const layersConfig = await response.json();
@@ -2578,7 +3168,7 @@ async function loadEcosystemLayers(mapInstance) {
           try {
             const geoResponse = await fetch(dataUrl, {
               headers: { Accept: "application/geo+json, application/json" },
-              signal: AbortSignal.timeout(20000),
+              signal: AbortSignal.timeout(8000),
             });
             if (!geoResponse.ok) throw new Error(`Mangrove source returned HTTP ${geoResponse.status}`);
             const payload = await geoResponse.json();

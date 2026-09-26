@@ -1115,6 +1115,18 @@
             <button id="setAnchorBtn" onclick="toggleAnchorMode()" title="Drop a virtual anchor and get warned if the vessel drifts outside its safe radius">Set Anchor</button>
           </div>
           <div id="oceanMap"></div>
+          <aside id="marine-sonar-drawer" class="marine-sonar-drawer" aria-hidden="true" aria-labelledby="marine-sonar-title">
+            <div class="marine-sonar-header">
+              <div><span class="marine-sonar-kicker">WATER COLUMN PROFILE</span><h3 id="marine-sonar-title">Fish-Finder</h3></div>
+              <button type="button" class="marine-sonar-close" aria-label="Close water column profile">×</button>
+            </div>
+            <p class="marine-sonar-summary" aria-live="polite"></p>
+            <div class="marine-sonar-plot" role="img" aria-label="Marine observations plotted by depth from the surface to 4000 meters">
+              <div class="marine-sonar-axis"></div>
+              <div class="marine-sonar-points"></div>
+            </div>
+            <div class="marine-sonar-records"></div>
+          </aside>
         </div>
         
         <div class="dashboard-side-panel" id="chat-slide">
