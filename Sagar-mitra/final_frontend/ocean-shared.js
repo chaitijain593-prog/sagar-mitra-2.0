@@ -214,7 +214,7 @@
     const roleDropdown = document.getElementById("roleDropdown");
     if (!roleTrigger || !roleDropdown) return;
 
-    // Dynamically render dropdown content with the 5 canonical roles + Morning Dispatch button
+    // Dynamically render dropdown content with the 5 canonical roles
     let itemsHtml = `<div class="role-dropdown-header">SELECT USER PERSONA</div>`;
     ROLES.forEach(r => {
       itemsHtml += `
@@ -228,14 +228,6 @@
         </div>
       `;
     });
-    itemsHtml += `
-      <div class="role-dispatch-footer">
-        <button type="button" class="role-dispatch-btn" id="roleMorningDispatchBtn">
-          <span>📄</span>
-          <span>Generate Morning Dispatch</span>
-        </button>
-      </div>
-    `;
     roleDropdown.innerHTML = itemsHtml;
 
     updateDropdownActiveRole(currentRole);
@@ -260,15 +252,6 @@
         window.dispatchEvent(new CustomEvent("sagarRoleChanged", { detail: { role: roleId, roleData: found } }));
       });
     });
-
-    const dispatchBtn = document.getElementById("roleMorningDispatchBtn");
-    if (dispatchBtn) {
-      dispatchBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        roleDropdown.classList.remove("open");
-        generateAndDisplayMorningDispatch();
-      });
-    }
 
     document.addEventListener("click", (e) => {
       if (!roleDropdown.contains(e.target) && e.target !== roleTrigger) {
