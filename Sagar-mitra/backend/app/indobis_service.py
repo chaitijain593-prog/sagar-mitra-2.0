@@ -17,6 +17,8 @@ EEZ_BBOX = "POLYGON ((65 5, 95 5, 95 25, 65 25, 65 5))"
 INDIAN_OCEAN_BBOX = "POLYGON ((20 -60, 120 -60, 120 30, 20 30, 20 -60))"
 DEFAULT_LIMIT = 500
 MAX_LIMIT = 1000
+OBIS_REQUEST_TIMEOUT_SECONDS = 60.0
+OBIS_CONNECT_TIMEOUT_SECONDS = 10.0
 GLOBAL_TRACK_DEFAULT_YEARS = 10
 DEFAULT_MIGRATORY_TAXA = ("Thunnus", "Chelonioidea", "Cetacea", "Selachimorpha")
 SEASON_MONTHS = {
@@ -332,7 +334,10 @@ async def get_marine_observations(
     tracks_available = False
     track_message = None
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=3.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(
+            OBIS_REQUEST_TIMEOUT_SECONDS,
+            connect=OBIS_CONNECT_TIMEOUT_SECONDS,
+        )) as client:
             records, error_code = await _fetch_records(client, params)
             if records is None:
                 return {"data": [], "status": "error", "message": "Marine observations are temporarily unavailable from OBIS.", "error_code": error_code, "source": "OBIS", "tracks": {"requested": include_global_tracks, "available": False, "message": "Track data is unavailable because the OBIS query failed."}}
@@ -380,6 +385,7 @@ async def get_marine_observations(
                         if key in known_records:
                             continue
                         observation["track_scope"] = "global"
+                        observation["track_only"] = True
                         known_records.add(key)
                         observations.append(observation)
             observations.sort(key=_observation_sort_key)

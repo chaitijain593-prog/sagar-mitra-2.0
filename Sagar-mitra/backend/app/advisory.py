@@ -23,6 +23,9 @@ Author: Sagar Mitra Hackathon Team
 import re
 import os
 import json
+import urllib.error
+import urllib.request
+import time
 from types import SimpleNamespace
 from typing import Dict, Any, Literal, Optional
 from dotenv import load_dotenv
@@ -41,53 +44,107 @@ _openai_client = (
     OpenAI(api_key=GROQ_API_KEY, base_url=GROQ_BASE_URL, timeout=OPENAI_TIMEOUT_SECONDS)
     if GROQ_API_KEY else None
 )
+GEMINI_CHAT_MODEL = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.8-flash")
+
+
+def _gemini_chat_models() -> list[str]:
+    configured = os.getenv("GEMINI_CHAT_MODELS", "")
+    models = [GEMINI_CHAT_MODEL]
+    if configured:
+        models.extend(item.strip() for item in configured.split(",") if item.strip())
+    else:
+        # A lightweight stable model is the fallback for transient overloads.
+        models.append("gemini-3.5-flash-lite")
+    return list(dict.fromkeys(models))
+
+
+def _gemini_api_keys() -> list[str]:
+    """Read chat-capable Gemini keys without ever logging their values."""
+    raw = os.getenv("GEMINI_API_KEYS") or os.getenv("GEMINI_API_KEY") or os.getenv("IMAGE_API_KEY", "")
+    return list(dict.fromkeys(key.strip() for key in raw.split(",") if key.strip()))
 
 
 def get_openai_client():
-    """Return the shared client or a mock client when configuration is missing."""
+    """Return the configured chat client or fail instead of fabricating a reply."""
     if _openai_client is None:
-        class MockCompletions:
-            def create(self, **kwargs):
-                messages = kwargs.get("messages", [])
-                user_msg = messages[-1].get("content", "") if messages else ""
-                is_json = kwargs.get("response_format", {}).get("type") == "json_object"
-                if is_json:
-                    txt = json.dumps({
-                        "location_name": "Goa Waters" if "goa" in user_msg.lower() or "गोवा" in user_msg else "Ratnagiri",
-                        "latitude": 15.49 if "goa" in user_msg.lower() or "गोवा" in user_msg else 16.99,
-                        "longitude": 73.82 if "goa" in user_msg.lower() or "गोवा" in user_msg else 73.30,
-                        "date": "2026-09-26",
-                        "depth_m": 10.0,
-                        "persona": "Fisherman",
-                        "language": "Hindi" if re.search(r"[\u0900-\u097f]", user_msg) else "English",
-                        "query_intent": "ocean weather query",
-                        "agents": ["fishing", "navigation", "compliance"]
-                    })
-                else:
-                    if re.search(r"[\u0900-\u097f]", user_msg):
-                        txt = "🌊 **तटीय समुद्री मौसम एवं सुरक्षा एडवाइजरी:**\n\n• **तरंग ऊंचाई (Wave Height):** 1.5 - 2.1 मीटर (मध्यम तरंग स्थिति)।\n• **समुद्र सतह तापमान (SST):** 28.4°C।\n• **क्लोरोफिल-ए घनत्व:** 1.82 mg/m³ (मछली पकड़ने हेतु अनुकूल तापीय क्षेत्र)।\n• **सुरक्षा सलाह:** भारतीय समुद्री सीमा (EEZ) के भीतर नौकायन सुरक्षित है।"
-                    else:
-                        txt = f"🌊 **Coastal Maritime Telemetry & Safety Advisory:**\n\n• **Wave Height:** 1.6m–2.1m (Moderate sea state).\n• **Sea Surface Temp (SST):** 28.4°C.\n• **Chlorophyll-a Density:** 1.82 mg/m³ (Active PFZ thermal front).\n• **Safety Notice:** Clear inside Indian EEZ boundaries. Maintain standard VHF Channel 16 watch."
-                
-                msg = SimpleNamespace(content=txt)
-                choice = SimpleNamespace(message=msg)
-                return SimpleNamespace(choices=[choice])
-        
-        class MockChat:
-            completions = MockCompletions()
-
-        class MockClient:
-            chat = MockChat()
-            audio = None
-
-        return MockClient()
+        raise RuntimeError("No OpenAI-compatible chat provider is configured.")
     return _openai_client
 
 
 def require_openai_key() -> None:
     """Keep startup available; OpenAI-backed requests fail clearly without a key."""
     if _openai_client is None:
-        print("[ORCA LLM ERROR] GROQ_API_KEY is not configured.")
+        print("[ORCA LLM] OpenAI-compatible provider key is not configured.")
+
+
+def _generate_with_gemini(messages: list[dict], *, temperature: float, max_tokens: int,
+                          response_format: dict | None):
+    keys = _gemini_api_keys()
+    if not keys:
+        raise RuntimeError(
+            "Chat AI is not configured. Set GROQ_API_KEY or GEMINI_API_KEY in backend/.env, then restart the backend."
+        )
+
+    system_parts = []
+    contents = []
+    for message in messages:
+        role = str(message.get("role", "user")).lower()
+        content = message.get("content", "")
+        if not isinstance(content, str):
+            content = json.dumps(content, ensure_ascii=False)
+        if role in {"system", "developer"}:
+            system_parts.append(content)
+            continue
+        gemini_role = "model" if role in {"assistant", "model"} else "user"
+        if contents and contents[-1]["role"] == gemini_role:
+            contents[-1]["parts"][0]["text"] += "\n\n" + content
+        else:
+            contents.append({"role": gemini_role, "parts": [{"text": content}]})
+    if not contents:
+        contents = [{"role": "user", "parts": [{"text": "Respond to the request."}]}]
+
+    generation_config = {"temperature": temperature, "maxOutputTokens": max_tokens}
+    if response_format is not None:
+        generation_config["responseMimeType"] = "application/json"
+    body = {"contents": contents, "generationConfig": generation_config}
+    if system_parts:
+        body["systemInstruction"] = {"parts": [{"text": "\n\n".join(system_parts)}]}
+
+    last_error = None
+    retryable_statuses = {401, 403, 404, 429, 500, 502, 503, 504}
+    retry_deadline = time.monotonic() + 60
+    for model_name in _gemini_chat_models():
+        for key in keys:
+            remaining = retry_deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            request = urllib.request.Request(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent",
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json", "x-goog-api-key": key},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=min(15, remaining)) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                parts = payload.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                text = "".join(part.get("text", "") for part in parts if isinstance(part, dict))
+                if not text.strip():
+                    raise RuntimeError("Gemini returned an empty chat response.")
+                return SimpleNamespace(text=text, completion=payload, message=None)
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")
+                last_error = RuntimeError(
+                    f"Gemini chat request failed for {model_name} (HTTP {exc.code}): {detail[:1000]}"
+                )
+                # Try other configured keys/models for quota, model availability,
+                # and temporary provider outages such as HTTP 503.
+                if exc.code not in retryable_statuses:
+                    raise last_error from exc
+            except (urllib.error.URLError, TimeoutError) as exc:
+                last_error = RuntimeError(f"Gemini chat connection failed for {model_name}: {exc}")
+                break
+    raise last_error or RuntimeError("Gemini chat is unavailable.")
 
 
 def _is_quota_error(error: Exception) -> bool:
@@ -113,30 +170,7 @@ def generate_content(
     tools: list | None = None,
     tool_choice=None,
 ):
-    """Call OpenAI Chat Completions and propagate API errors to the caller."""
-    if _openai_client is None:
-        user_str = str(contents)
-        is_json = response_format and response_format.get("type") == "json_object"
-        if is_json:
-            fallback_json = json.dumps({
-                "location_name": "Goa Waters" if "goa" in user_str.lower() or "गोवा" in user_str else "Ratnagiri",
-                "latitude": 15.49 if "goa" in user_str.lower() or "गोवा" in user_str else 16.99,
-                "longitude": 73.82 if "goa" in user_str.lower() or "गोवा" in user_str else 73.30,
-                "date": "2026-09-26",
-                "depth_m": 10.0,
-                "persona": "Fisherman",
-                "language": "Hindi" if re.search(r"[\u0900-\u097f]", user_str) else "English",
-                "query_intent": "ocean weather query",
-                "agents": ["fishing", "navigation", "compliance"]
-            })
-            return SimpleNamespace(text=fallback_json, completion=None, message=SimpleNamespace(content=fallback_json))
-        else:
-            if re.search(r"[\u0900-\u097f]", user_str):
-                fallback_text = "🌊 **तटीय समुद्री मौसम एवं सुरक्षा एडवाइजरी:**\n\n• **तरंग ऊंचाई (Wave Height):** 1.5 - 2.1 मीटर (मध्यम तरंग स्थिति)।\n• **समुद्र सतह तापमान (SST):** 28.4°C।\n• **क्लोरोफिल-ए घनत्व:** 1.82 mg/m³ (मछली पकड़ने हेतु अनुकूल तापीय क्षेत्र)।\n• **सुरक्षा सलाह:** भारतीय समुद्री सीमा (EEZ) के भीतर नौकायन सुरक्षित है।"
-            else:
-                fallback_text = f"🌊 **Coastal Maritime Telemetry & Safety Advisory:**\n\n• **Wave Height:** 1.6m–2.1m (Moderate sea state).\n• **Sea Surface Temp (SST):** 28.4°C.\n• **Chlorophyll-a Density:** 1.82 mg/m³ (Active PFZ thermal front).\n• **Safety Notice:** Clear inside Indian EEZ boundaries. Maintain standard VHF Channel 16 watch."
-            return SimpleNamespace(text=fallback_text, completion=None, message=SimpleNamespace(content=fallback_text))
-
+    """Call the configured chat model; never substitute canned sample answers."""
     messages = []
     if system_instruction:
         messages.append({"role": "system", "content": system_instruction})
@@ -144,6 +178,14 @@ def generate_content(
         messages.extend(contents)
     else:
         messages.append({"role": "user", "content": str(contents)})
+    if _openai_client is None:
+        if tools:
+            raise RuntimeError("Gemini chat fallback does not support this model tool call; configure GROQ_API_KEY.")
+        return _generate_with_gemini(
+            messages, temperature=temperature, max_tokens=max_tokens,
+            response_format=response_format,
+        )
+
     kwargs = {
         "model": model or OPENAI_MODEL,
         "messages": messages,
@@ -468,8 +510,8 @@ def generate_sagar_mitra_advisory(
 
 def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: str = "English",
                          user_message: str = "", history_text: str = "",
-
-                         model: str = PRIMARY_MODEL, vessel_persona: str = "artisanal_coastal") -> str:
+                         model: str = PRIMARY_MODEL, vessel_persona: str = "artisanal_coastal",
+                         response_persona: str = "general") -> str:
 
                          
 
@@ -486,11 +528,14 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
     """
 
     language = "Hindi" if _query_language(user_message, language) == "hi" else "English"
-    persona_block = PERSONA_SYSTEM_PROMPTS.get(persona, PERSONA_SYSTEM_PROMPTS["Fisherman"])
     vessel_block = _vessel_context_block(vessel_persona)
-
-    persona = normalize_persona(persona)
-    persona_block = PERSONA_SYSTEM_PROMPTS[persona]
+    audience_persona = {
+        "fisherman": "Fisherman",
+        "student": "Student",
+        "researcher": "Researcher",
+        "general": "General Public",
+    }.get(str(response_persona or "general").strip().lower(), "General Public")
+    persona_block = PERSONA_SYSTEM_PROMPTS[audience_persona]
 
     system_instruction = (
         persona_block.strip() + "\n\n"
@@ -522,19 +567,28 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
         "clearly in your answer -- state plainly which figures are the future forecast and "
         "which are today's live reading. Never imply the current/live figures are themselves "
         "a forecast for that future time.\n\n"
-        "FORMATTING: Plain text only, no markdown (no **bold**, no # headers, no backticks), "
-        "no LaTeX ($...$)."
+        "FORMATTING: Use concise Markdown with ##/### headings when useful, bold key terms, "
+        "bullets for lists, and numbered steps for procedures. For conceptual/theory questions, "
+        "use '## Concept First' for one intuitive paragraph, then '## Statistics Second' for "
+        "quantitative evidence, then a 'Data sources:' line. Do not invent statistics. "
+        "When a chart would clarify the answer and data is available, include [GRAPH] or [PIECHART] "
+        "as a standalone marker; the interface labels it as a chart placeholder.\n\n"
+        + {
+            "fisherman": "AUDIENCE: Fisherman. Prioritize immediate sea/weather risks, practical go/no-go considerations, relevant fishing-zone data and concrete precautions. Keep it concise and avoid scientific jargon.",
+            "student": "AUDIENCE: Student. Explain in easy, simple language, one idea at a time. Define each scientific term in everyday words and use a short analogy when helpful. Do not assume the learner already knows ocean science.",
+            "researcher": "AUDIENCE: Researcher. Give a detailed, technically precise analysis. Separate observations from interpretation; report units, methods, uncertainty, data limitations, and sources when present. Never invent citations or measurements.",
+            "general": "AUDIENCE: General public. Explain clearly in plain language, focus on relevant everyday coastal implications and safety, and avoid unnecessary technical detail.",
+        }.get(audience_persona.casefold().replace(" public", ""), "AUDIENCE: General. Explain clearly in plain language.")
     )
     history_block = f"Conversation so far:\n{history_text}\n\n" if history_text else ""
     user_prompt = (
-        f"{history_block}The user just asked: \"{user_message}\"\n\n"
+        f"{history_block}The user's latest question is: \"{user_message}\"\n\n"
         f"Raw data gathered by ORCA's specialist agents:\n{raw_report}\n\n"
-        "Answer the user's actual question directly first, then mention any other relevant "
-        "findings from the data above."
+        "Answer the user's latest question directly. Make the response specific to the wording and topic of that question; do not repeat a generic advisory template or answer a different question. Use conversation history only to resolve references, not to override a new question. Only include findings relevant to the latest question."
     )
     response = generate_content(
         model=model, contents=user_prompt, system_instruction=system_instruction,
-        temperature=0.3, max_tokens=2048,
+        temperature=0.55, max_tokens=2048,
     )
     text = (response.text or "").strip()
     if not text:
@@ -543,7 +597,8 @@ def synthesize_advisory(raw_report: str, persona: str = "Fisherman", language: s
 
 
 def plain_openai_answer(user_message: str, persona: str = "General Public",
-                        language: str = "English", model: str = PRIMARY_MODEL) -> str:
+                        language: str = "English", model: str = PRIMARY_MODEL,
+                        history_text: str = "") -> str:
     """
     General-knowledge path used when nearby ocean data is not available.
     Answers directly from OpenAI's own
@@ -552,19 +607,20 @@ def plain_openai_answer(user_message: str, persona: str = "General Public",
     """
     language = "Hindi" if _query_language(user_message, language) == "hi" else "English"
     persona = normalize_persona(persona)
+    persona_block = PERSONA_SYSTEM_PROMPTS.get(persona, PERSONA_SYSTEM_PROMPTS["General Public"])
     system_instruction = (
-        f"You are Sagar Mitra, an ocean-intelligence assistant for the "
-        f"Maharashtra coast. Answer the user's question as best you can in "
-        f"{language}, in a tone appropriate for a {persona}. You do NOT have "
-        f"specific real-time sensor data for this exact query, so answer "
-        f"from general oceanographic/coastal knowledge, and briefly note "
-        f"that this is general guidance, not a live sensor-based reading.\n\n"
-        f"FORMATTING: Plain text only. Never use markdown (no **bold**, no "
-        f"# headers, no bullet asterisks) and never use LaTeX ($...$). Use "
-        f"blank lines between points/paragraphs instead of markdown lists."
+        f"You are Sagar Mitra, an ocean-intelligence assistant.\n\n{persona_block}\n\n"
+        f"This is a conceptual question, not a request for live sensor readings. Answer from "
+        f"established oceanographic knowledge in {language}; do not invent current measurements "
+        "or claim that live telemetry was checked. Address the latest question specifically. "
+        "For a student, explain simply and use an everyday example; for a researcher, be technically "
+        "precise and thorough; for a fisherman, emphasize practical relevance when applicable. "
+        "Use clear Markdown headings and bullets only when they improve readability."
     )
+    prompt = (f"Conversation context:\n{history_text}\n\n" if history_text else "")
+    prompt += f"Latest question: {user_message}"
     response = generate_content(
-        model=model, contents=user_message, system_instruction=system_instruction,
+        model=model, contents=prompt, system_instruction=system_instruction,
         temperature=0.3, max_tokens=2048,
     )
     text = (response.text or "").strip()

@@ -32,6 +32,8 @@ class AgentState(TypedDict):
     # above, which is the AUDIENCE communication style (Fisherman/Student/
     # Researcher/General Public) the planner detects live from message tone.
     vessel_persona: str
+    response_persona: str
+    research_context: str
     stakeholder_role: str
     role_permissions: List[str]
     query_intent: str

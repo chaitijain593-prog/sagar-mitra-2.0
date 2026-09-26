@@ -48,6 +48,37 @@ def _drop_agents_subsumed_by_dispatch(agents: List[str]) -> List[str]:
     return [a for a in agents if a not in _DISPATCH_SUBSUMED_AGENTS]
 
 
+def _fallback_plan(user_message: str) -> dict:
+    """Recover routing when the model returns malformed planner JSON.
+
+    This only chooses which data agents to run; the final answer is still
+    generated from the user's actual question by the configured chat model.
+    """
+    query = str(user_message or "").casefold()
+    agents = []
+    if any(word in query for word in ("historical", "trend", "over time", "past", "pie chart", "graph")):
+        agents.append("historical")
+    if any(word in query for word in ("anomaly", "unusual", "explain", "why", "how", "temperature", "chlorophyll", "salinity")):
+        agents.append("analytics")
+    if any(word in query for word in ("fish", "fishing", "pfz", "tuna", "catch")):
+        agents.append("fishing")
+    if any(word in query for word in ("border", "eez", "protected area", "mpa", "legal")):
+        agents.append("compliance")
+    if any(word in query for word in ("storm", "cyclone", "lightning", "thunder")):
+        agents.append("hazard")
+    if any(word in query for word in ("weather", "wave", "tide", "current", "safe", "sail", "route")):
+        agents.append("navigation")
+    if not agents:
+        agents = ["navigation"]
+    language = "Hindi" if re.search(r"[\u0900-\u097f]", query) else "English"
+    return {
+        "agents": list(dict.fromkeys(agents)),
+        "language": language,
+        "persona": "General Public",
+        "query_intent": str(user_message or "general ocean question")[:240],
+    }
+
+
 _cache = TTLCache(ttl_seconds=300)  # short TTL -- routing decisions go stale fast in a live convo
 
 # Deterministic fast path: these phrasings unambiguously mean "run the
@@ -139,10 +170,23 @@ def plan_query(user_message: str, history: Optional[List[dict]] = None,
         response_format={"type": "json_object"},
     )
     text = (response.text or "").strip()
-    parsed = json.loads(text)
-    agents = [agent for agent in parsed.get("agents", []) if agent in VALID_AGENTS]
+    try:
+        # Some model responses wrap valid JSON in a markdown fence or add a
+        # short preamble. Decode the first object instead of failing the chat.
+        start = text.find("{")
+        if start < 0:
+            raise json.JSONDecodeError("planner returned no JSON object", text, 0)
+        parsed, _ = json.JSONDecoder().raw_decode(text[start:])
+    except (json.JSONDecodeError, TypeError):
+        return _fallback_plan(user_message)
+    if not isinstance(parsed, dict):
+        return _fallback_plan(user_message)
+    raw_agents = parsed.get("agents", [])
+    if not isinstance(raw_agents, list):
+        return _fallback_plan(user_message)
+    agents = [agent for agent in raw_agents if agent in VALID_AGENTS]
     if not agents:
-        raise ValueError("OpenAI planner returned no valid agents.")
+        return _fallback_plan(user_message)
     agents = _drop_agents_subsumed_by_dispatch(agents)
     result = {
         "agents": agents,

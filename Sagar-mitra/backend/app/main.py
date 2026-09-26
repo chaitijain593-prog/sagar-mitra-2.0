@@ -4,7 +4,11 @@ import re
 import traceback
 import uuid
 import json, secrets, hashlib, smtplib, time
-from urllib.parse import urlencode
+import base64
+from io import BytesIO
+from urllib.parse import quote, urlencode
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as URLRequest, urlopen
 from email.message import EmailMessage
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
@@ -31,7 +35,7 @@ from app.db_store import store as session_store, insert_hazard_point, get_hazard
 from app.data import store
 from app import db
 from app.voice import transcribe_and_translate, synthesize_speech, save_advisory_audio, UnsupportedAudioError
-from app.advisory import _is_quota_error, _is_permission_denied_error, synthesize_advisory, GROQ_API_KEY
+from app.advisory import _is_quota_error, _is_permission_denied_error, synthesize_advisory, plain_openai_answer, GROQ_API_KEY
 from app.boundary_toool import check_geofence, distance_to_nearest_boundary_km, return_heading_to_safety
 from app.news_feed import get_oceanography_news, DOMAIN_TAXONOMY
 from app.marine_weather_tool import get_live_ocean_conditions
@@ -39,6 +43,7 @@ from app.pfz_tool import get_nearest_pfz_details
 from app.chlorophyll_tool import get_chlorophyll_data
 from app.response_formatter import derive_hazard_status
 from app.indobis_service import get_marine_observations
+from app.research_sources import add_source, list_sources, retrieve_context
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -81,6 +86,8 @@ class OrchestrateRequest(BaseModel):
     reset_context: bool = False  # set when an edited prompt creates a history branch
 
     onboarding_persona: str | None = None  # raw vessel-type string from the onboarding UI (see reconcile_persona_key)
+    response_persona: str = "general"
+    workspace_id: str = "arabian"
 
     # SHAP "What-If" sensitivity slider: optional perturbations applied to the
     # ML confidence inputs before predict_pfz_confidence runs, so the
@@ -286,6 +293,105 @@ def health():
         "status": "ok",
         "groq_key_configured": bool(GROQ_API_KEY),
     }
+
+
+class GenerateImageRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=2000)
+
+
+@app.post("/api/generate-image")
+def generate_image(request: GenerateImageRequest):
+    """Generate with Hugging Face by default; Gemini remains an opt-in provider."""
+    provider = os.getenv("IMAGE_PROVIDER", "huggingface").strip().lower()
+
+    if provider in {"huggingface", "hf"}:
+        token = os.getenv("HF_TOKEN")
+        if not token:
+            raise HTTPException(
+                status_code=503,
+                detail=("Image generation needs a Hugging Face token. Create a fine-grained token "
+                        "with 'Make calls to Inference Providers' permission and set HF_TOKEN in backend/.env."),
+            )
+        try:
+            from huggingface_hub import InferenceClient
+
+            image = InferenceClient(api_key=token).text_to_image(
+                request.prompt,
+                model=os.getenv("HF_IMAGE_MODEL", "black-forest-labs/FLUX.1-dev"),
+            )
+            output = BytesIO()
+            image.save(output, format="PNG")
+            return {
+                "status": "success",
+                "image_data": base64.b64encode(output.getvalue()).decode("ascii"),
+                "mime_type": "image/png",
+            }
+        except ImportError as exc:
+            raise HTTPException(status_code=503, detail="Install the image provider dependency with: pip install huggingface_hub") from exc
+        except Exception as exc:
+            status_code = getattr(exc, "response", None)
+            status_code = getattr(status_code, "status_code", None)
+            if status_code == 429:
+                raise HTTPException(status_code=429, detail="Hugging Face image quota is temporarily exhausted. Check your Inference Providers credits and try later.") from exc
+            if status_code in {401, 403}:
+                raise HTTPException(status_code=502, detail="Hugging Face rejected the token or it lacks Inference Providers permission.") from exc
+            raise HTTPException(status_code=502, detail=f"Hugging Face image generation failed: {exc}") from exc
+
+    if provider in {"gemini", "google"}:
+        api_key = os.getenv("IMAGE_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=503, detail="Set IMAGE_API_KEY to a Gemini API key.")
+        model = os.getenv("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
+        endpoint = f"https://generativelanguage.googleapis.com/v1/models/{quote(model, safe='-._')}:generateContent"
+        payload = {"contents": [{"parts": [{"text": request.prompt}]}], "generationConfig": {"responseModalities": ["Image"]}}
+        upstream_request = URLRequest(endpoint, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json", "x-goog-api-key": api_key}, method="POST")
+        try:
+            with urlopen(upstream_request, timeout=90) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            try:
+                detail = json.loads(exc.read().decode("utf-8")).get("error", {}).get("message", "Gemini image request failed.")
+            except (ValueError, AttributeError):
+                detail = "Gemini image request failed. Check API key, model access, and quota."
+            raise HTTPException(status_code=502, detail=f"Image generation failed: {detail}") from exc
+        except (TimeoutError, URLError) as exc:
+            raise HTTPException(status_code=504, detail="Gemini image generation timed out or could not be reached.") from exc
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=502, detail="Gemini returned an unreadable image response.") from exc
+        candidates = result.get("candidates") or []
+        parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+        for part in parts:
+            image_data = part.get("inlineData") or part.get("inline_data")
+            if image_data and image_data.get("data"):
+                return {"status": "success", "image_data": image_data["data"], "mime_type": image_data.get("mimeType") or image_data.get("mime_type") or "image/png"}
+        raise HTTPException(status_code=502, detail="Gemini returned no image data. Check model access and quota.")
+
+    raise HTTPException(status_code=503, detail="Unsupported IMAGE_PROVIDER. Choose 'huggingface' or 'gemini'.")
+
+
+@app.post("/api/upload-source")
+async def upload_research_source(file: UploadFile = File(...), workspace_id: str = Form(...)):
+    if not workspace_id.strip():
+        raise HTTPException(status_code=422, detail="workspace_id is required.")
+    filename = Path((file.filename or "source").replace("\\", "/")).name
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".pdf", ".txt"}:
+        raise HTTPException(status_code=415, detail="Only PDF and TXT documents are supported.")
+    content = await file.read(20 * 1024 * 1024 + 1)
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Source file exceeds the 20 MB limit.")
+    try:
+        source = add_source(workspace_id.strip(), filename, content, suffix)
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="PDF extraction requires pypdf. Install the backend dependency.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"status": "success", **source}
+
+
+@app.get("/api/research-sources")
+def research_sources(workspace_id: str):
+    return {"sources": list_sources(workspace_id)}
 
 @app.get("/api/marine-observations")
 async def marine_observations(
@@ -529,6 +635,21 @@ def get_news(domain: str | None = None):
 @app.get("/api/news/domains")
 def get_news_domains():
     return {"domains": list(DOMAIN_TAXONOMY.keys())}
+
+
+def _is_conceptual_chat_question(message: str) -> bool:
+    """Identify explanations that do not need a live-data agent fan-out."""
+    query = str(message or "").casefold()
+    asks_for_explanation = (
+        re.search(r"\bhow\b.+\b(work|works|form|forms|happen|happens|occur|occurs|function|functions)\b", query)
+        or re.search(r"\b(explain|define|teach me|what does .+ mean|what is a|what is an|what are)\b", query)
+        or re.search(r"\b(simple everyday example|simple example|in simple terms)\b", query)
+    )
+    asks_for_live_conditions = re.search(
+        r"\b(now|today|currently|current|live|forecast|near me|nearby|here|at my location|"
+        r"safe to sail|safe to fish|weather|sea conditions|wave height|wind speed)\b", query
+    )
+    return bool(asks_for_explanation and not asks_for_live_conditions)
 
 
 # --- OBIS Marine Biodiversity API Endpoint --------------------------------
@@ -831,6 +952,51 @@ def run_orchestration(request: OrchestrateRequest):
     day_offset, target_hour = extract_target_datetime_from_message(request.user_message)
     vessel_persona = reconcile_persona_key(request.onboarding_persona)
     stakeholder_role = stakeholder_role_for(request.onboarding_persona)
+    response_persona = request.response_persona.strip().lower()
+    if response_persona not in {"fisherman", "student", "researcher", "general"}:
+        response_persona = "general"
+    if _is_conceptual_chat_question(request.user_message):
+        persona_name = {
+            "fisherman": "Fisherman",
+            "student": "Student",
+            "researcher": "Researcher",
+            "general": "General Public",
+        }[response_persona]
+        history_text = "\n".join(f"{turn['role']}: {turn['text']}" for turn in history[-6:])
+        try:
+            answer = plain_openai_answer(
+                request.user_message,
+                persona=persona_name,
+                language="English",
+                history_text=history_text,
+            )
+        except Exception as exc:
+            traceback.print_exc()
+            raise HTTPException(status_code=503, detail=f"Chat model unavailable: {exc}") from exc
+        session_store.append_turn(session_id, "user", request.user_message)
+        session_store.append_turn(session_id, "assistant", answer)
+        return {
+            "status": "success",
+            "advisory_source": "general_knowledge_model",
+            "session_id": session_id,
+            "user_message": request.user_message,
+            "coordinates": coordinates,
+            "advisory": answer,
+            "agents_invoked": ["general_knowledge"],
+            "query_intent": "conceptual explanation",
+            "language": "English",
+            "persona": persona_name,
+            "response_persona": response_persona,
+            "telemetry": {},
+            "hazard_status": None,
+            "data_mode": "general_knowledge",
+        }
+    research_context = ""
+    if response_persona == "researcher":
+        try:
+            research_context = retrieve_context(request.workspace_id, request.user_message)
+        except Exception as exc:
+            print(f"[Research sources] Retrieval unavailable: {exc}")
 
     initial_state: AgentState = {
         "user_message": request.user_message,
@@ -852,6 +1018,8 @@ def run_orchestration(request: OrchestrateRequest):
         "language": "English",
         "persona": "Fisherman",
         "vessel_persona": vessel_persona,
+        "response_persona": response_persona,
+        "research_context": research_context,
         "stakeholder_role": stakeholder_role,
         "role_permissions": [],
         "query_intent": "",
