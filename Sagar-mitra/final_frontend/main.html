@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sagar Mitra — Question the Unexplored</title>
+<title>Sagar Mitra — Where ocean data meets ocean intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -69,13 +69,15 @@ body.page-enter{animation:enter .65s ease both}
 
 .overlay{position:absolute;inset:0;background:var(--overlay-bg);pointer-events:none;transition:background .3s ease}
 
-/* Clean Top-Left Logo without text */
+/* Top-Left Logo with Rotating Language Carousel */
 .logo-link{
   position:fixed;
   top:24px;
   left:28px;
   z-index:30;
-  display:inline-block;
+  display:inline-flex;
+  align-items:center;
+  gap:12px;
   text-decoration:none;
 }
 .logo-link .logo{
@@ -88,6 +90,16 @@ body.page-enter{animation:enter .65s ease both}
 .logo-link:hover .logo{
   transform:scale(1.06);
   filter:drop-shadow(0 4px 18px rgba(57,189,242,.65));
+}
+.logo-title-carousel{
+  font:700 17px/1 "DM Sans", "Nirmala UI", sans-serif;
+  letter-spacing:1.8px;
+  color:#ffffff;
+  text-shadow:0 2px 10px rgba(0,0,0,.7), 0 0 16px rgba(57,189,242,.4);
+  transition:opacity .28s ease, transform .28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  white-space:nowrap;
+  user-select:none;
+  display:inline-block;
 }
 
 /* Expanding Top-Right Controls */
@@ -132,8 +144,11 @@ body.page-enter{animation:enter .65s ease both}
 }
 .ctrl-icon svg{width:22px;height:22px}
 .nav-trigger .ctrl-icon svg{stroke:var(--blue)}
-.theme-toggle .ctrl-icon svg{stroke:var(--blue)}
-[data-theme="dark"] .theme-toggle .ctrl-icon svg{stroke:#facc15}
+.dispatch-trigger .ctrl-icon svg{stroke:#f97316;fill:none}
+.theme-toggle .ctrl-icon svg{stroke:#f97316}
+[data-theme="dark"] .theme-toggle .ctrl-icon svg{stroke:#f97316}
+.role-trigger .ctrl-icon svg{stroke:#22c55e}
+.news-trigger .ctrl-icon svg{stroke:#eab308}
 .logout .ctrl-icon svg{stroke:#ff4050;fill:none}
 
 .ctrl-label{
@@ -159,6 +174,22 @@ body.page-enter{animation:enter .65s ease both}
   max-width:95px;
   opacity:1;
   margin-left:8px;
+}
+.dispatch-trigger:hover{
+  border-color:rgba(249,115,22,.5);
+  box-shadow:0 6px 20px rgba(249,115,22,.25);
+}
+.theme-toggle:hover{
+  border-color:rgba(249,115,22,.5);
+  box-shadow:0 6px 20px rgba(249,115,22,.25);
+}
+.role-trigger:hover{
+  border-color:rgba(34,197,94,.5);
+  box-shadow:0 6px 20px rgba(34,197,94,.25);
+}
+.news-trigger:hover{
+  border-color:rgba(234,179,8,.5);
+  box-shadow:0 6px 20px rgba(234,179,8,.25);
 }
 .logout:hover{
   border-color:rgba(255,64,80,.5);
@@ -464,14 +495,15 @@ body.page-enter{animation:enter .65s ease both}
 <main class="page">
 
 <div class="hero-video">
-<iframe src="https://www.youtube.com/embed/UTCeMwFPZLQ?autoplay=1&mute=1&controls=0&loop=1&playlist=UTCeMwFPZLQ&start=44&end=60&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0" allow="autoplay" tabindex="-1"></iframe>
+<iframe src="https://www.youtube.com/embed/UTCeMwFPZLQ?autoplay=1&mute=1&controls=0&loop=1&playlist=UTCeMwFPZLQ&start=44&end=150&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1&fs=0" allow="autoplay" tabindex="-1"></iframe>
 </div>
 
 <div class="overlay"></div>
 
-<!-- Top-Left Clean Brand Logo (no duplicate small text) -->
+<!-- Top-Left Clean Brand Logo with Rotating Language Text -->
 <a href="main.html" class="logo-link" aria-label="Sagar Mitra Home">
   <img src="assets/logo.svg" onerror="this.onerror=null;this.src='assets/logo.png';" class="logo" alt="Sagar Mitra">
+  <span class="logo-title-carousel" id="navLogoTitle">Sagar Mitra</span>
 </a>
 
 <!-- Top-Right Navbar Expanding Controls: Navigation, News Feed, Switch Role, Theme Toggle, Logout -->
@@ -595,7 +627,7 @@ body.page-enter{animation:enter .65s ease both}
 <!-- Centered Hero Composition: Rotating Sagar Mitra across 10 Languages in H1 -->
 <div class="content">
   <h1 class="hero-title" id="heroLangTitle">Sagar Mitra</h1>
-  <div class="sub">Question the unexplored.</div>
+  <div class="sub">Where ocean data meets ocean intelligence</div>
 </div>
 
 <!-- Explore About Us with Arrow pointing RIGHT -->
@@ -896,7 +928,9 @@ function triggerWaveTransition(dir, targetUrl){
   if(!wave){
     wave = document.createElement("div");
     wave.id = "oceanWaveOverlay";
-    document.body.appendChild(wave);
+    document.documentElement.appendChild(wave);
+  } else if(wave.parentElement !== document.documentElement){
+    document.documentElement.appendChild(wave);
   }
   wave.className = "ocean-swipe-wave " + (dir > 0 ? "swipe-left" : "swipe-right");
 

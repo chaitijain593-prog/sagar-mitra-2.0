@@ -407,9 +407,12 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 }
 .ctrl-icon svg{width:20px;height:20px}
 .nav-trigger .ctrl-icon svg{stroke:var(--blue)}
+.dispatch-trigger .ctrl-icon svg{stroke:#f97316;fill:none}
 .split-toggle-btn .ctrl-icon svg{stroke:var(--blue)}
-.theme-toggle .ctrl-icon svg{stroke:var(--blue)}
-[data-theme="dark"] .theme-toggle .ctrl-icon svg{stroke:#facc15}
+.theme-toggle .ctrl-icon svg{stroke:#f97316}
+[data-theme="dark"] .theme-toggle .ctrl-icon svg{stroke:#f97316}
+.role-trigger .ctrl-icon svg{stroke:#22c55e}
+.news-trigger .ctrl-icon svg{stroke:#eab308}
 .logout .ctrl-icon svg{stroke:#ff4050;fill:none}
 .ctrl-label{
   max-width:0;
@@ -432,6 +435,22 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   max-width:95px;
   opacity:1;
   margin-left:8px;
+}
+.dispatch-trigger:hover{
+  border-color:rgba(249,115,22,.5);
+  box-shadow:0 6px 20px rgba(249,115,22,.25);
+}
+.theme-toggle:hover{
+  border-color:rgba(249,115,22,.5);
+  box-shadow:0 6px 20px rgba(249,115,22,.25);
+}
+.role-trigger:hover{
+  border-color:rgba(34,197,94,.5);
+  box-shadow:0 6px 20px rgba(34,197,94,.25);
+}
+.news-trigger:hover{
+  border-color:rgba(234,179,8,.5);
+  box-shadow:0 6px 20px rgba(234,179,8,.25);
 }
 .logout:hover{
   border-color:rgba(255,64,80,.5);
@@ -1494,7 +1513,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <div class="sidebar-header">
       <a href="main.html" class="sidebar-brand" title="Sagar Mitra Home">
         <img src="assets/logo.svg" onerror="this.onerror=null;this.src='assets/logo.png';" class="sidebar-logo" alt="Sagar Mitra">
-        <span class="sidebar-brand-name">SAGAR MITRA</span>
+        <span class="sidebar-brand-name logo-title-carousel" id="navLogoTitle">SAGAR MITRA</span>
       </a>
       <button class="sidebar-toggle-btn" id="sidebarCollapseBtn" aria-label="Collapse sidebar" title="Collapse sidebar">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
@@ -4717,7 +4736,9 @@ function triggerWaveTransition(dir, targetUrl){
   if(!wave){
     wave = document.createElement("div");
     wave.id = "oceanWaveOverlay";
-    document.body.appendChild(wave);
+    document.documentElement.appendChild(wave);
+  } else if(wave.parentElement !== document.documentElement){
+    document.documentElement.appendChild(wave);
   }
   wave.className = "ocean-swipe-wave " + (dir > 0 ? "swipe-left" : "swipe-right");
 

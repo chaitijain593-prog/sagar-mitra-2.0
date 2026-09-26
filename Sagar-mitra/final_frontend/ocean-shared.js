@@ -923,6 +923,43 @@
   }
 
   // ------------------------------------------------------------
+  // NAVBAR LOGO TEXT CAROUSEL (10 Indian Languages)
+  // Changes every 2.2s with smooth fade/scale transition & high contrast
+  // ------------------------------------------------------------
+  function initNavLogoCarousel() {
+    const logoEls = document.querySelectorAll(".logo-title-carousel, #navLogoTitle");
+    if (!logoEls || logoEls.length === 0) return;
+
+    const sagarTranslations = [
+      { lang: "English", text: "Sagar Mitra" },
+      { lang: "Hindi", text: "सागर मित्र" },
+      { lang: "Marathi", text: "सागर मित्र" },
+      { lang: "Bengali", text: "সাগর মিত্র" },
+      { lang: "Gujarati", text: "સાગર મિત્ર" },
+      { lang: "Tamil", text: "சாகர் மித்ரா" },
+      { lang: "Telugu", text: "సాగర్ మిత్ర" },
+      { lang: "Kannada", text: "ಸಾಗರ ಮಿತ್ರ" },
+      { lang: "Malayalam", text: "സാഗർ മിത്ര" },
+      { lang: "Odia", text: "ସାଗର ମିତ୍ର" }
+    ];
+
+    let currentIdx = 0;
+    setInterval(() => {
+      currentIdx = (currentIdx + 1) % sagarTranslations.length;
+      const nextText = sagarTranslations[currentIdx].text;
+      logoEls.forEach(el => {
+        el.style.opacity = "0";
+        el.style.transform = "translateY(-4px) scale(0.96)";
+        setTimeout(() => {
+          el.textContent = nextText;
+          el.style.opacity = "1";
+          el.style.transform = "translateY(0) scale(1)";
+        }, 260);
+      });
+    }, 2200);
+  }
+
+  // ------------------------------------------------------------
   // 8. AUTO-INIT ON DOM READY
   // ------------------------------------------------------------
   function initAll() {
@@ -931,6 +968,7 @@
     initMorningDispatch();
     initNewsFeedModal();
     initGlobalNavigation();
+    initNavLogoCarousel();
   }
 
   if (document.readyState === "loading") {

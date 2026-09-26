@@ -3,18 +3,30 @@
    Role Switcher Dropdown & Multi-Domain Ocean News Feed
    ============================================================ */
 
-/* Expanding Buttons: Split Map, News Feed, Switch Role & Morning Dispatch */
-.actions .split-toggle-btn .ctrl-icon svg,
-.actions .news-trigger .ctrl-icon svg,
-.actions .role-trigger .ctrl-icon svg,
-.actions .dispatch-trigger .ctrl-icon svg {
-  stroke: var(--blue, #38bdf8);
+/* Expanding Buttons Accent Colours: Morning Dispatch (Orange), Theme Sun (Orange), Switch Role (Green), News Feed (Yellow) */
+.actions .dispatch-trigger .ctrl-icon svg { stroke: #f97316 !important; fill: none; }
+.actions .dispatch-trigger:hover {
+  border-color: rgba(249, 115, 22, 0.5) !important;
+  box-shadow: 0 6px 20px rgba(249, 115, 22, 0.25) !important;
 }
 
-.actions .split-toggle-btn:hover,
-.actions .dispatch-trigger:hover {
-  border-color: var(--blue, #38bdf8);
-  box-shadow: 0 4px 16px var(--blue-glow, rgba(56, 189, 248, 0.4));
+.actions .theme-toggle .ctrl-icon svg,
+[data-theme="dark"] .actions .theme-toggle .ctrl-icon svg { stroke: #f97316 !important; }
+.actions .theme-toggle:hover {
+  border-color: rgba(249, 115, 22, 0.5) !important;
+  box-shadow: 0 6px 20px rgba(249, 115, 22, 0.25) !important;
+}
+
+.actions .role-trigger .ctrl-icon svg { stroke: #22c55e !important; }
+.actions .role-trigger:hover {
+  border-color: rgba(34, 197, 94, 0.5) !important;
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.25) !important;
+}
+
+.actions .news-trigger .ctrl-icon svg { stroke: #eab308 !important; }
+.actions .news-trigger:hover {
+  border-color: rgba(234, 179, 8, 0.5) !important;
+  box-shadow: 0 6px 20px rgba(234, 179, 8, 0.25) !important;
 }
 
 .actions .ctrl-btn:hover .ctrl-label {
@@ -616,4 +628,26 @@
   background: #16a34a;
   transform: translateY(-1px);
 }
+
+/* ============================================================
+   NAVBAR BRAND LOGO ROTATING LANGUAGE CAROUSEL
+   Adapts with contrast to the colour and theme of each page
+   ============================================================ */
+.logo-title-carousel {
+  font-family: "DM Sans", "Nirmala UI", -apple-system, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  color: var(--brand-text, #101820);
+  transition: opacity 0.3s ease, transform 0.3s ease, color 0.3s ease;
+  white-space: nowrap;
+  user-select: none;
+  display: inline-block;
+  line-height: 1;
+}
+
+[data-theme="dark"] .logo-title-carousel {
+  color: var(--brand-text, #f4f4f5);
+}
+
 
