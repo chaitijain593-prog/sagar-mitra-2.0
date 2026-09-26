@@ -1249,3 +1249,11 @@ def get_ecosystem_layers():
             "layer_name": "S3A_OLCI_Chlorophyll_a",
         },
     }
+
+
+# Mount the complete final_frontend application at root so navigating to http://127.0.0.1:8000
+# serves chatbot.html, map.html, main.html, etc. directly.
+_FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "final_frontend"))
+if os.path.exists(_FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")
+

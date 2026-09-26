@@ -3929,45 +3929,18 @@ async function sendQuery(text){
       `;
     }
 
-    responseText = "<div style='font-size:14px;line-height:1.65;color:var(--ink);'>" + formattedAdvisory + "</div>" + mapPreviewCardHtml;
+    responseText = advisoryCardHtml + "<br><div style='font-size:14px;line-height:1.65;color:var(--ink);'>" + formattedAdvisory + "</div>" + mapPreviewCardHtml;
   } else {
     let synthText = (typeof analysis === "object" && analysis.html) ? analysis.html : String(analysis);
-    responseText = "<div style='font-size:14px;line-height:1.65;color:var(--ink);'>" + synthText + "</div>";
+    responseText = advisoryCardHtml + "<br><div style='font-size:14px;line-height:1.65;color:var(--ink);'>" + synthText + "</div>";
   }
 
   const target = aiRow.querySelector("#streamTarget");
-  if (responseText.includes("<div") || responseText.includes("<a ") || responseText.includes("<br")) {
+  if (target) {
     target.innerHTML = responseText;
-    scrollArea.scrollTop = scrollArea.scrollHeight;
-  } else {
-    let charIdx = 0;
-    const speed = 12;
-    const timer = setInterval(() => {
-      charIdx += 4;
-      target.innerHTML = responseText.slice(0, charIdx);
-      scrollArea.scrollTop = scrollArea.scrollHeight;
-
-      if (charIdx >= responseText.length) {
-        clearInterval(timer);
-        target.id = "";
-      }
-    }, speed);
+    if (target.id) target.removeAttribute("id");
   }
-
-  // 5. If spatial data is detected in response, auto-trigger split view on the map!
-  if (analysis && analysis.spatial) {
-    setTimeout(() => {
-      if (typeof window.triggerSplitMap === "function") {
-        window.triggerSplitMap(
-          analysis.spatial.lat,
-          analysis.spatial.lng,
-          analysis.spatial.title,
-          analysis.spatial.details,
-          analysis.spatial.mode
-        );
-      }
-    }, 450);
-  }
+  scrollArea.scrollTop = scrollArea.scrollHeight;
 }
 
 // Feature 4: Prompt Edit Handler
@@ -3977,14 +3950,14 @@ function editUserPrompt(btn) {
   const textEl = userBubble.querySelector('.user-text-content');
   const promptText = textEl ? textEl.textContent.trim() : userBubble.textContent.trim();
   
-  const composerInput = document.getElementById("chatInput");
+  const composerInput = document.getElementById("composerInput");
   if (composerInput) {
     composerInput.value = promptText;
     composerInput.focus();
     composerInput.style.height = "auto";
     composerInput.style.height = Math.min(composerInput.scrollHeight, 140) + "px";
     
-    const composerBar = document.querySelector(".composer-bar") || composerInput;
+    const composerBar = document.querySelector(".composer-card") || document.querySelector(".composer-bar") || composerInput;
     composerBar.style.borderColor = "var(--blue)";
     composerBar.style.boxShadow = "0 0 16px var(--blue-glow)";
     setTimeout(() => {
