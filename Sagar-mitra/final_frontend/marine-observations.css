@@ -27,3 +27,21 @@
 .marine-observation-popup strong{font-size:12px}
 .marine-observation-popup a{display:inline-block;margin-top:5px;color:#087eaf}
 .marine-live-error{color:#fca5a5}
+
+/* Live species record-share callouts. */
+.marine-species-callout-icon{background:transparent;border:0}
+.marine-species-callout{display:flex;flex-direction:column;align-items:center;gap:3px;width:250px;pointer-events:auto}
+.marine-species-callout>img{height:38px;max-width:110px;object-fit:contain;filter:drop-shadow(0 0 8px var(--species-color))}
+.marine-species-callout>span{display:flex;align-items:center;gap:6px;max-width:245px;padding:5px 9px;color:#fff;background:rgba(3,12,17,.94);border:1px solid var(--species-color);border-radius:20px;box-shadow:0 0 12px rgba(56,189,248,.28);font:700 10px "DM Mono",monospace;white-space:nowrap}
+.marine-species-callout i{flex:0 0 7px;height:7px;border-radius:50%;background:var(--species-color);box-shadow:0 0 8px var(--species-color)}
+.marine-species-callout b{min-width:0;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.marine-species-callout strong{color:var(--species-color);font-size:9px}
+
+/* Always-available illustrative photo labels, kept separate from live sightings. */
+.species-reference-icon{background:transparent;border:0}
+.species-reference-callout{display:flex;flex-direction:column;align-items:center;gap:2px;width:260px;pointer-events:auto}
+.species-reference-callout>img{height:42px;max-width:116px;object-fit:contain;filter:drop-shadow(0 0 9px var(--species-color))}
+.species-reference-callout>span{display:flex;align-items:center;gap:6px;max-width:255px;padding:5px 9px;color:#fff;background:rgba(3,12,17,.95);border:1px solid var(--species-color);border-radius:18px;box-shadow:0 0 14px rgba(3,12,17,.55);font:700 9px "DM Mono",monospace;white-space:nowrap}
+.species-reference-callout i{flex:0 0 7px;height:7px;border-radius:50%;background:var(--species-color)}
+.species-reference-callout b{max-width:130px;overflow:hidden;text-overflow:ellipsis}
+.species-reference-callout strong{color:var(--species-color);font-size:8px}

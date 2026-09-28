@@ -1559,6 +1559,14 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 }
 
 /* Species Proportion Bars Component */
+/* Live OBIS species callouts, styled after the reference map */
+.obis-dominance-icon { background: transparent; border: 0; }
+.obis-dominance-tag { display:flex; flex-direction:column; align-items:center; gap:3px; width:250px; pointer-events:auto; }
+.obis-dominance-tag > img { height:42px; max-width:112px; object-fit:contain; filter:drop-shadow(0 0 8px var(--organism-color)); }
+.obis-dominance-pill { display:flex; align-items:center; gap:6px; max-width:245px; padding:5px 10px; color:#f8fafc; background:rgba(3,12,17,.94); border:1px solid var(--organism-color); border-radius:999px; box-shadow:0 0 12px rgba(56,189,248,.28); font:700 10px "DM Mono",monospace; white-space:nowrap; }
+.obis-dominance-pill i { flex:0 0 7px; height:7px; border-radius:50%; background:var(--organism-color); box-shadow:0 0 8px var(--organism-color); }
+.obis-dominance-pill b { min-width:0; max-width:155px; overflow:hidden; text-overflow:ellipsis; }
+.obis-dominance-pill strong { color:var(--organism-color); font-size:9px; }
 .species-prop-container {
   display: flex;
   flex-direction: column;
@@ -2198,6 +2206,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <div style="display:flex;flex-direction:column">
       <span class="obis-title">OBIS Marine Biodiversity</span>
       <span style="font:400 11px 'DM Sans',sans-serif;color:#94a3b8">Ocean Biodiversity Information System API</span>
+      <span style="font:400 9px 'DM Sans',sans-serif;color:#94a3b8">Photo callouts are illustrative references, not live sightings.</span>
     </div>
     <button id="closeObisPanelBtn" style="background:none;color:#94a3b8;font-size:16px;cursor:pointer">✕</button>
   </div>
@@ -2206,7 +2215,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <div>
       <div style="font:600 9px 'DM Mono',monospace;color:#38bdf8;margin-bottom:3px;letter-spacing:0.8px;text-transform:uppercase">ORGANISM TAXON</div>
       <select class="obis-select" id="obisSpeciesSelect">
-        <option value="all">All Marine Taxa & Dominant Zones</option>
+        <option value="all">All observed marine taxa</option>
         <option value="tuna">Yellowfin & Bigeye Tuna (Thunnus)</option>
         <option value="turtle">Olive Ridley & Green Turtles</option>
         <option value="dugong">Dugong Sea Cows (Dugongidae)</option>
@@ -2220,15 +2229,9 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <div>
       <div style="font:600 9px 'DM Mono',monospace;color:#38bdf8;margin-bottom:3px;letter-spacing:0.8px;text-transform:uppercase">OCEAN REGION</div>
       <select class="obis-select" id="obisRegionSelect">
-        <option value="indian_ocean">All Indian Ocean Dominance Zones</option>
-        <option value="arabian_sea">Arabian Sea Pelagic Zone</option>
-        <option value="malabar">Malabar Coastal Upwelling</option>
-        <option value="lakshadweep">Lakshadweep Coral Archipelago</option>
-        <option value="gulf_mannar">Gulf of Mannar Dugong Reserve</option>
-        <option value="gahirmatha">Gahirmatha Turtle Corridor</option>
-        <option value="sundarbans">Sundarbans Mangrove Delta</option>
-        <option value="andaman">Andaman Deepwater Trench</option>
-        <option value="carlsberg">Carlsberg Hydrothermal Ridge</option>
+        <option value="indian_ocean">Indian Ocean</option>
+        <option value="global">Global Ocean</option>
+        <option value="indian_eez">Indian EEZ</option>
       </select>
     </div>
   </div>
@@ -2236,11 +2239,11 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   <div class="route-metrics-grid" style="grid-template-columns:1fr 1fr 1fr">
     <div class="metric-box">
       <span class="metric-lbl">Organisms</span>
-      <span class="metric-val" id="obisMetricTotal" style="color:#38bdf8">148</span>
+      <span class="metric-val" id="obisMetricTotal" style="color:#38bdf8">--</span>
     </div>
     <div class="metric-box">
       <span class="metric-lbl">Taxa Count</span>
-      <span class="metric-val" id="obisMetricTaxa" style="color:#34d399">12</span>
+      <span class="metric-val" id="obisMetricTaxa" style="color:#34d399">--</span>
     </div>
     <div class="metric-box">
       <span class="metric-lbl">Top Depth</span>
@@ -2250,13 +2253,13 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 
   <!-- Optimal Hotspot Recommendation Card -->
   <div class="obis-hotspot-box">
-    <span class="hotspot-badge">OPTIMAL BIODIVERSITY HOTSPOT</span>
-    <span class="hotspot-title" id="obisHotspotTitle">Lakshadweep Pelagic Reef Cluster</span>
-    <span class="hotspot-coords" id="obisHotspotCoords">Location: 10.50°N, 72.60°E • Density Rating: 96/100</span>
+    <span class="hotspot-badge">HIGHEST OBSERVATION DENSITY</span>
+    <span class="hotspot-title" id="obisHotspotTitle">Waiting for occurrence data</span>
+    <span class="hotspot-coords" id="obisHotspotCoords">Hotspots and species shares are calculated from returned occurrence records.</span>
   </div>
 
   <div style="font:600 10px 'DM Mono',monospace;color:#94a3b8;letter-spacing:0.8px;text-transform:uppercase">
-    Marine Species Proportion Breakdown:
+    Species share of returned records:
   </div>
 
   <div class="species-prop-container" id="obisProportionContainer">
@@ -2850,6 +2853,19 @@ const argoLayerGroup = L.layerGroup();
 const obisLayerGroup = L.layerGroup();
 const ecosystemLayerGroup = L.layerGroup();
 const marineOverlay = L.layerGroup([pfzLayerGroup, argoLayerGroup, obisLayerGroup, ecosystemLayerGroup]);
+const speciesReferenceLayer = L.layerGroup();
+pfzLayerGroup.addLayer(speciesReferenceLayer);
+[
+  {species:"Thunnus albacares", common:"Yellowfin tuna", image:"yellowfin_tuna.png", position:[15.8,70.2], color:"#38bdf8"},
+  {species:"Sardinella longiceps", common:"Indian oil sardine", image:"indian_oil_sardine.png", position:[13.5,74.5], color:"#34d399"},
+  {species:"Chelonia mydas", common:"Green sea turtle", image:"green_sea_turtle.png", position:[11.0,72.6], color:"#f59e0b"},
+  {species:"Dugong dugon", common:"Dugong", image:"dugong_sea_cow.png", position:[9.2,79.1], color:"#10b981"}
+].forEach(item => {
+  const html=`<div class="species-reference-callout" style="--species-color:${item.color}"><img src="assets/organisms/${item.image}" alt="${item.common}"><span><i></i><b>${item.species}</b><strong>SPECIES REFERENCE</strong></span></div>`;
+  const icon=L.divIcon({className:"species-reference-icon",html,iconSize:[260,78],iconAnchor:[130,66]});
+  const popup=`<strong>${item.species}</strong><div>${item.common}</div><small>Illustrative species photo and reference location only; this is not a live occurrence record.</small>`;
+  L.marker(item.position,{icon,title:`${item.common} - illustrative species reference`}).bindPopup(popup).addTo(speciesReferenceLayer);
+});
 
 // Potential Fishing Zones (PFZ)
 const pfzPolygonsData = [
@@ -3238,7 +3254,7 @@ function toggleOverlay(overlayKey) {
     updateLegend(overlayKey);
 
     if (overlayKey === "marine") {
-      fetchAndRenderOBISData("all", "indian_ocean");
+      window.fetchAndRenderOBISData?.("all", "indian_ocean");
     }
   }
 }
@@ -3678,199 +3694,76 @@ if (closeObisPanelBtn) {
 const obisSpeciesSelect = document.getElementById("obisSpeciesSelect");
 const obisRegionSelect = document.getElementById("obisRegionSelect");
 
-const DOMINANT_MARINE_REGIONS = [
-  {
-    id: "arabian_pelagic",
-    name: "Arabian Sea Deepwater Pelagic Zone",
-    dominant_species: "Thunnus albacares (Yellowfin Tuna)",
-    dominance_pct: 78.4,
-    color: "#38bdf8",
-    image: "assets/organisms/yellowfin_tuna.png",
-    center: [15.8, 70.2],
-    bounds: [[14.0, 68.0], [18.5, 69.0], [17.5, 72.5], [13.0, 71.5]],
-    depth_layer: "Epipelagic (0–100m)",
-    iucn_status: "Near Threatened",
-    drivers: "High-salinity thermal fronts & monsoonal thermocline shoaling; key commercial longline fishery & pelagic predator corridor.",
-    sub_species: [
-      { name: "Thunnus albacares (Yellowfin Tuna)", pct: 78.4 },
-      { name: "Thunnus obesus (Bigeye Tuna)", pct: 12.1 },
-      { name: "Balaenoptera musculus (Pygmy Blue Whale)", pct: 9.5 }
-    ]
-  },
-  {
-    id: "malabar_upwelling",
-    name: "Malabar & Konkan Coastal Upwelling Belt",
-    dominant_species: "Sardinella longiceps (Indian Oil Sardine)",
-    dominance_pct: 84.2,
-    color: "#34d399",
-    image: "assets/organisms/indian_oil_sardine.png",
-    center: [13.5, 74.5],
-    bounds: [[12.0, 74.0], [16.5, 73.0], [15.5, 74.2], [10.5, 75.8]],
-    depth_layer: "Coastal Surface (0–30m)",
-    iucn_status: "Abundant (Commercial Core)",
-    drivers: "High Chlorophyll-a concentration (>3.2 mg/m³) driven by summer monsoon coastal upwelling; primary production biomass engine.",
-    sub_species: [
-      { name: "Sardinella longiceps (Indian Oil Sardine)", pct: 84.2 },
-      { name: "Rastrelliger kanagurta (Indian Mackerel)", pct: 10.5 },
-      { name: "Stenella longirostris (Spinner Dolphin)", pct: 5.3 }
-    ]
-  },
-  {
-    id: "lakshadweep_atoll",
-    name: "Lakshadweep Coral Atoll Archipelago",
-    dominant_species: "Chelonia mydas (Green Sea Turtle) & Corals",
-    dominance_pct: 91.8,
-    color: "#f59e0b",
-    image: "assets/organisms/green_sea_turtle.png",
-    center: [11.0, 72.6],
-    bounds: [[9.5, 71.8], [12.5, 71.5], [12.8, 73.8], [9.8, 73.6]],
-    depth_layer: "Coral Lagoon & Reef Flat (2–25m)",
-    iucn_status: "Endangered (Protected Reef)",
-    drivers: "Oligotrophic coral reef lagoon ecosystem with clear bathymetry soundings; sanctuary for endangered sea turtles & calcifying corals.",
-    sub_species: [
-      { name: "Chelonia mydas (Green Sea Turtle)", pct: 54.2 },
-      { name: "Scleractinia (Branching Staghorn Coral)", pct: 37.6 },
-      { name: "Carcharhinus melanopterus (Reef Shark)", pct: 8.2 }
-    ]
-  },
-  {
-    id: "gulf_of_mannar",
-    name: "Gulf of Mannar & Palk Bay Dugong Reserve",
-    dominant_species: "Dugong dugon (Dugong / Sea Cow)",
-    dominance_pct: 87.5,
-    color: "#10b981",
-    image: "assets/organisms/dugong_sea_cow.png",
-    center: [9.2, 79.1],
-    bounds: [[8.2, 78.5], [9.8, 78.8], [10.2, 79.9], [8.8, 79.5]],
-    depth_layer: "Shallow Seagrass Meadows (1–15m)",
-    iucn_status: "Vulnerable (UNESCO Reserve)",
-    drivers: "Shallow hyper-saline seagrass beds protected by UNESCO Biosphere Reserve; crucial sanctuary for India's last remaining dugongs.",
-    sub_species: [
-      { name: "Dugong dugon (Dugong / Sea Cow)", pct: 87.5 },
-      { name: "Halophila ovalis (Seagrass Flora)", pct: 8.5 },
-      { name: "Sousa chinensis (Indo-Pacific Humpback Dolphin)", pct: 4.0 }
-    ]
-  },
-  {
-    id: "gahirmatha_turtle",
-    name: "Gahirmatha & Odisha Coastal Arribada Corridor",
-    dominant_species: "Lepidochelys olivacea (Olive Ridley Sea Turtle)",
-    dominance_pct: 94.6,
-    color: "#c084fc",
-    image: "assets/organisms/olive_ridley_turtle.png",
-    center: [19.8, 86.2],
-    bounds: [[18.5, 84.5], [21.2, 87.0], [20.5, 87.8], [17.8, 85.5]],
-    depth_layer: "Nearshore Breeding Waters (5–40m)",
-    iucn_status: "Vulnerable (Arribada Site)",
-    drivers: "World's largest mass nesting ground (Arribada) for Olive Ridley turtles; enriched by estuarine nutrient flux from Mahanadi & Brahmani rivers.",
-    sub_species: [
-      { name: "Lepidochelys olivacea (Olive Ridley Turtle)", pct: 94.6 },
-      { name: "Tenualosa ilisha (Hilsa Shad)", pct: 3.8 },
-      { name: "Tachypleus gigas (Horseshoe Crab)", pct: 1.6 }
-    ]
-  },
-  {
-    id: "sundarbans_estuary",
-    name: "Sundarbans Estuarine Mangrove Delta",
-    dominant_species: "Scylla serrata (Mud Crab) & Estuarine Fauna",
-    dominance_pct: 82.0,
-    color: "#a3e635",
-    image: "assets/organisms/mud_crab.png",
-    center: [21.8, 89.0],
-    bounds: [[21.2, 88.0], [22.4, 88.5], [22.2, 89.8], [21.0, 89.5]],
-    depth_layer: "Estuarine Intertidal (0–12m)",
-    iucn_status: "Protected World Heritage",
-    drivers: "World's largest contiguous mangrove delta ecosystem; brackish nursery for commercial crustacea & threatened euryhaline marine fauna.",
-    sub_species: [
-      { name: "Scylla serrata (Mud Crab)", pct: 52.0 },
-      { name: "Crocodylus porosus (Estuarine Crocodile)", pct: 30.0 },
-      { name: "Orcaella brevirostris (Irrawaddy Dolphin)", pct: 18.0 }
-    ]
-  },
-  {
-    id: "andaman_trench",
-    name: "Andaman Trench & Nicobar Deepwater Basin",
-    dominant_species: "Mobula birostris (Giant Manta Ray) & Megafauna",
-    dominance_pct: 79.2,
-    color: "#818cf8",
-    image: "assets/organisms/manta_ray.png",
-    center: [10.0, 93.0],
-    bounds: [[6.5, 91.5], [13.5, 92.0], [13.0, 94.0], [6.2, 93.8]],
-    depth_layer: "Mesopelagic & Abyssal (200–4,000m)",
-    iucn_status: "Endangered Megafauna Zone",
-    drivers: "Deep island arc trench (>4,000m depth) with upwelling nutrient plumes; pelagic migratory corridor for megafauna & bathyal species.",
-    sub_species: [
-      { name: "Mobula birostris (Giant Oceanic Manta Ray)", pct: 49.2 },
-      { name: "Physeter macrocephalus (Sperm Whale)", pct: 30.0 },
-      { name: "Architeuthis dux (Giant Deepsea Squid)", pct: 20.8 }
-    ]
-  },
-  {
-    id: "carlsberg_ridge",
-    name: "Carlsberg Mid-Oceanic Hydrothermal Vent Zone",
-    dominant_species: "Bathyal Chemosynthetic Vents & Tube Worms",
-    dominance_pct: 91.0,
-    color: "#f43f5e",
-    center: [3.5, 64.5],
-    bounds: [[2.0, 62.0], [6.0, 64.0], [5.0, 67.0], [1.0, 65.0]],
-    depth_layer: "Abyssal Seafloor Trench (>3,500m)",
-    iucn_status: "Extreme Hydrothermal Benthos",
-    drivers: "Seafloor spreading axis with active chemosynthetic hydrothermal vents emitting hydrogen sulfide; extreme abyssal ecosystem.",
-    sub_species: [
-      { name: "Rimicaris kairei (Hydrothermal Vent Shrimp)", pct: 58.0 },
-      { name: "Riftia pachyptila (Abyssal Tube Worms)", pct: 33.0 },
-      { name: "Myctophidae (Bioluminescent Lanternfish)", pct: 9.0 }
-    ]
-  }
+function escapeObisHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+}
+
+const ORGANISM_IMAGES = [
+  { match: /thunnus|tuna/i, file: "yellowfin_tuna.png" },
+  { match: /sardinella|sardine/i, file: "indian_oil_sardine.png" },
+  { match: /cheloni|lepidochelys|turtle/i, file: "green_sea_turtle.png" },
+  { match: /dugong/i, file: "dugong_sea_cow.png" },
+  { match: /mobula|manta/i, file: "manta_ray.png" },
+  { match: /scylla|crab/i, file: "mud_crab.png" }
 ];
+const OBIS_PALETTE = ["#55d6be", "#ffb454", "#63b3ed", "#f472b6", "#a3e635", "#c4b5fd", "#fb7185", "#facc15"];
 
-function buildDominantRegionPopupHtml(reg) {
-  let imgHeader = "";
-  if (reg.image) {
-    imgHeader = `
-      <div style="position:relative;width:100%;height:105px;display:grid;place-items:center;background:radial-gradient(circle, ${reg.color}30 0%, rgba(6,14,21,0) 80%);margin-bottom:8px;border-radius:8px;border:1px solid ${reg.color}44;overflow:hidden;">
-        <img src="${reg.image}" style="max-height:90px;max-width:92%;object-fit:contain;filter:drop-shadow(0 0 12px ${reg.color});" />
-      </div>
-    `;
+function organismImage(species) {
+  const entry = ORGANISM_IMAGES.find(item => item.match.test(species));
+  return entry ? `assets/organisms/${entry.file}` : "";
+}
+
+function observationDominanceRegions(observations, speciesProportions = []) {
+  // Percentages are the share of returned records in a map cell, not biomass.
+  const cells = new Map();
+  for (const obs of observations) {
+    const lat = Number(obs.lat), lon = Number(obs.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const key = `${Math.floor(lat * 2) / 2}:${Math.floor(lon * 2) / 2}`;
+    if (!cells.has(key)) cells.set(key, { records: [], lat: 0, lon: 0 });
+    const cell = cells.get(key);
+    cell.records.push(obs);
+    cell.lat += lat;
+    cell.lon += lon;
   }
 
-  let subBars = "";
-  reg.sub_species.forEach(sub => {
-    subBars += `
-      <div style="display:flex;flex-direction:column;gap:2px;margin-top:4px;">
-        <div style="display:flex;justify-content:space-between;font:500 11px 'DM Sans',sans-serif;color:#e2e8f0;">
-          <span>${sub.name}</span>
-          <span style="font-family:'DM Mono',monospace;color:${reg.color};font-weight:700;">${sub.pct}%</span>
-        </div>
-        <div style="width:100%;height:5px;background:rgba(12,24,34,0.8);border-radius:3px;overflow:hidden;">
-          <div style="width:${sub.pct}%;height:100%;background:${reg.color};box-shadow:0 0 6px ${reg.color};border-radius:3px;"></div>
-        </div>
-      </div>
-    `;
+  const colors = new Map();
+  const orderedSpecies = [
+    ...speciesProportions.map(item => item.species_name),
+    ...[...cells.values()].flatMap(cell => cell.records.map(obs => String(obs.species_name || "Unknown species")))
+  ];
+  orderedSpecies.forEach(name => {
+    if (name && !colors.has(name)) colors.set(name, OBIS_PALETTE[colors.size % OBIS_PALETTE.length]);
   });
 
-  return `
-    <span class="popup-badge" style="color:${reg.color}">DOMINANT MARINE ORGANISM REGION</span>
-    ${imgHeader}
-    <div class="popup-title">${reg.name}</div>
-    <div style="font:600 12px 'DM Mono',monospace;color:${reg.color};margin-bottom:6px;">
-      Dominant Species: <strong>${reg.dominant_species}</strong> (${reg.dominance_pct}% Biomass)
-    </div>
+  const regions = [];
+  for (const [key, cell] of cells) {
+    if (cell.records.length < 2) continue;
+    const counts = new Map();
+    for (const obs of cell.records) {
+      const name = String(obs.species_name || "Unknown species");
+      counts.set(name, (counts.get(name) || 0) + 1);
+    }
+    const [species, count] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (species === "Unknown species") continue;
+    const [cellLat, cellLon] = key.split(":").map(Number);
+    regions.push({
+      id: key, species, count, total: cell.records.length,
+      share: Math.round(count / cell.records.length * 1000) / 10,
+      color: colors.get(species) || OBIS_PALETTE[0],
+      center: [cell.lat / cell.records.length, cell.lon / cell.records.length],
+      bounds: [[cellLat, cellLon], [cellLat + 0.5, cellLon + 0.5]],
+      observations: cell.records
+    });
+  }
+  return regions.sort((a, b) => b.total - a.total).slice(0, 12);
+}
 
-    <div style="background:rgba(6,14,21,0.6);padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);margin-bottom:8px;">
-      <div style="font:600 9px 'DM Mono',monospace;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">SPECIES BIOMASS PROPORTION</div>
-      ${subBars}
-    </div>
-
-    <div class="popup-metrics" style="grid-template-columns:1fr 1fr;">
-      <div>Depth Zone: <strong>${reg.depth_layer}</strong></div>
-      <div>IUCN Status: <strong style="color:${reg.color}">${reg.iucn_status}</strong></div>
-    </div>
-
-    <div style="font:400 11px/1.4 'DM Sans',sans-serif;color:#cbd5e1;margin-top:8px;border-top:1px dashed rgba(255,255,255,0.1);padding-top:6px;">
-      <strong>Oceanographic Drivers:</strong> ${reg.drivers}
-    </div>
-  `;
+function buildDominantRegionPopupHtml(reg) {
+  const depths = reg.observations.map(o => Number(o.depth_m)).filter(Number.isFinite);
+  const depthText = depths.length ? `${Math.min(...depths)}-${Math.max(...depths)} m` : "Depth not reported";
+  const img = organismImage(reg.species);
+  return `<span class="popup-badge" style="color:${reg.color}">OBIS OBSERVATION CLUSTER</span>${img ? `<div style="display:grid;place-items:center;height:76px"><img src="${img}" alt="" style="max-height:68px;max-width:120px;object-fit:contain"></div>` : ""}<div class="popup-title">${escapeObisHtml(reg.species)}</div><div style="font:600 11px 'DM Mono',monospace;color:${reg.color};margin:5px 0">${reg.share}% of records in this map cell</div><div class="popup-metrics"><div>Species records: <strong>${reg.count}</strong></div><div>Cell records: <strong>${reg.total}</strong></div><div>Depth: <strong>${depthText}</strong></div><div>Center: <strong>${reg.center[0].toFixed(2)}, ${reg.center[1].toFixed(2)}</strong></div></div><div style="font:400 10px/1.4 'DM Sans',sans-serif;color:#94a3b8;margin-top:7px">Record share is not an estimate of biomass or population abundance.</div>`;
 }
 
 if (obisSpeciesSelect) {
@@ -3884,244 +3777,131 @@ if (obisRegionSelect) {
   };
 }
 
-function generateClientOBISFallback(species, region) {
-  const rawOrganisms = [
-    { species_name: "Thunnus albacares (Yellowfin Tuna)", lat: 15.2, lon: 71.8, depth_m: 25, depth_category: "surface", depth_color: "#38bdf8", season: "winter", dataset_name: "OBIS Indian Ocean Scombridae" },
-    { species_name: "Thunnus albacares (Yellowfin Tuna)", lat: 12.4, lon: 73.1, depth_m: 40, depth_category: "surface", depth_color: "#38bdf8", season: "winter", dataset_name: "OBIS Indian Ocean Scombridae" },
-    { species_name: "Thunnus obesus (Bigeye Tuna)", lat: 10.8, lon: 72.5, depth_m: 110, depth_category: "mid_water", depth_color: "#0284c7", season: "summer", dataset_name: "INCOIS Marine Survey" },
-    { species_name: "Thunnus obesus (Bigeye Tuna)", lat: 9.6, lon: 74.2, depth_m: 95, depth_category: "mid_water", depth_color: "#0284c7", season: "summer", dataset_name: "OBIS Pelagic Data" },
-    { species_name: "Lepidochelys olivacea (Olive Ridley Turtle)", lat: 19.8, lon: 86.1, depth_m: 15, depth_category: "surface", depth_color: "#38bdf8", season: "winter", dataset_name: "OBIS Turtle Tracking" },
-    { species_name: "Lepidochelys olivacea (Olive Ridley Turtle)", lat: 17.5, lon: 83.9, depth_m: 18, depth_category: "surface", depth_color: "#38bdf8", season: "winter", dataset_name: "OBIS Turtle Tracking" },
-    { species_name: "Chelonia mydas (Green Sea Turtle)", lat: 11.2, lon: 72.8, depth_m: 12, depth_category: "surface", depth_color: "#38bdf8", season: "summer", dataset_name: "Lakshadweep Reef Biodiversity" },
-    { species_name: "Delphinus delphis (Short-beaked Dolphin)", lat: 16.8, lon: 72.9, depth_m: 8, depth_category: "surface", depth_color: "#38bdf8", season: "monsoon", dataset_name: "OBIS Cetacea Index" },
-    { species_name: "Stenella longirostris (Spinner Dolphin)", lat: 14.1, lon: 73.5, depth_m: 14, depth_category: "surface", depth_color: "#38bdf8", season: "winter", dataset_name: "OBIS Cetacea Index" },
-    { species_name: "Rhincodon typus (Whale Shark)", lat: 21.2, lon: 69.4, depth_m: 30, depth_category: "surface", depth_color: "#38bdf8", season: "winter", dataset_name: "Gujarat Coast Marine Survey" },
-    { species_name: "Scleractinia (Scleractinian Coral)", lat: 10.5, lon: 72.6, depth_m: 45, depth_category: "surface", depth_color: "#38bdf8", season: "year_round", dataset_name: "OBIS Coral Reef Census" },
-    { species_name: "Scleractinia (Deepsea Lophelia)", lat: 8.2, lon: 76.5, depth_m: 1200, depth_category: "deep_sea", depth_color: "#818cf8", season: "year_round", dataset_name: "OBIS Deepsea Benthos" },
-    { species_name: "Xiphias gladius (Swordfish)", lat: 18.4, lon: 70.1, depth_m: 350, depth_category: "mid_water", depth_color: "#0284c7", season: "winter", dataset_name: "OBIS Pelagic Fishery" },
-    { species_name: "Mobula birostris (Giant Oceanic Manta Ray)", lat: 12.8, lon: 74.8, depth_m: 22, depth_category: "surface", depth_color: "#38bdf8", season: "summer", dataset_name: "OBIS Marine Megafauna" }
-  ];
-
-  let filtered = rawOrganisms;
-  if (species && species !== "all") {
-    filtered = rawOrganisms.filter(o => o.species_name.toLowerCase().includes(species.toLowerCase()));
-  }
-
-  const taxa_counts = {};
-  const depth_distribution = { surface: 0, mid_water: 0, deep_sea: 0, unknown: 0 };
-  filtered.forEach(o => {
-    taxa_counts[o.species_name] = (taxa_counts[o.species_name] || 0) + 1;
-    depth_distribution[o.depth_category] = (depth_distribution[o.depth_category] || 0) + 1;
-  });
-
-  const total = filtered.length;
-  const proportions = Object.entries(taxa_counts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([sp_name, count]) => ({
-      species_name: sp_name,
-      count,
-      percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0
-    }));
-
-  const hotspots = [
-    { lat: 10.50, lon: 72.60, density_score: 96, description: "Lakshadweep Pelagic Reef Cluster" },
-    { lat: 19.80, lon: 86.10, density_score: 88, description: "Odisha Coastal Turtle Corridor" },
-    { lat: 21.20, lon: 69.40, density_score: 82, description: "Saurashtra Whale Shark Sanctuary" }
-  ];
-
-  return {
-    status: "success",
-    total_records: total,
-    species_proportions: proportions,
-    depth_distribution,
-    hotspots,
-    observations: filtered,
-    dominant_regions: DOMINANT_MARINE_REGIONS,
-    source: "OBIS (Ocean Biodiversity Information System)"
-  };
-}
-
 async function fetchAndRenderOBISData(speciesFilter = "all", regionFilter = "indian_ocean") {
   const obisPanel = document.getElementById("obisPanel");
   const routePanel = document.getElementById("routePanel");
   const reasoningDrawer = document.getElementById("reasoningDrawer");
+  const setStatus = message => {
+    const title = document.getElementById("obisHotspotTitle");
+    const coords = document.getElementById("obisHotspotCoords");
+    if (title) title.textContent = message;
+    if (coords) coords.textContent = "No synthetic/demo records are shown.";
+  };
 
   if (obisPanel) {
     obisPanel.classList.add("open");
-    if ((routePanel && routePanel.classList.contains("open")) || (reasoningDrawer && reasoningDrawer.classList.contains("open"))) {
-      obisPanel.classList.remove("standalone");
-    } else {
-      obisPanel.classList.add("standalone");
-    }
+    obisPanel.classList.toggle("standalone", !((routePanel && routePanel.classList.contains("open")) || (reasoningDrawer && reasoningDrawer.classList.contains("open"))));
   }
-
-  if (!map.hasLayer(marineOverlay)) {
-    marineOverlay.addTo(map);
-  }
+  if (!map.hasLayer(marineOverlay)) marineOverlay.addTo(map);
   activeOverlays.add("marine");
   const marineBtn = document.querySelector('.mode-btn[data-mode="marine"]');
   if (marineBtn) marineBtn.classList.add("active");
   updateLegend("marine");
-
   obisLayerGroup.clearLayers();
+  setStatus("Loading live OBIS observations...");
 
-  let data = null;
+  let data;
   try {
-    const url = `http://127.0.0.1:8000/api/marine/obis?species=${encodeURIComponent(speciesFilter)}&region=${encodeURIComponent(regionFilter)}`;
-    const resp = await fetch(url);
-    if (resp.ok) data = await resp.json();
-  } catch (err) {
-    console.log("Backend offline or local file mode; using client OBIS dataset engine fallback.");
-  }
-
-  if (!data || data.status !== "success" || !data.observations) {
-    data = generateClientOBISFallback(speciesFilter, regionFilter);
-  }
-
-  // Render Glowing Dominant Marine Organism Regions & Badges
-  const dominantRegions = data.dominant_regions || DOMINANT_MARINE_REGIONS;
-  dominantRegions.forEach(reg => {
-    L.polygon(reg.bounds, {
-      color: reg.color,
-      fillColor: reg.color,
-      fillOpacity: 0.18,
-      weight: 2,
-      dashArray: "6, 6"
-    }).addTo(obisLayerGroup).bindPopup(buildDominantRegionPopupHtml(reg));
-
-    const shortName = (reg.dominant_species.split(' ')[0] || '') + ' ' + (reg.dominant_species.split(' ')[1] || '');
-    let imgHtml = "";
-    if (reg.image) {
-      imgHtml = `<img src="${reg.image}" style="height:56px;width:auto;object-fit:contain;filter:drop-shadow(0 0 10px ${reg.color}) drop-shadow(0 0 18px ${reg.color}aa);transition:transform 0.25s ease;" class="organism-cutout-img" />`;
-    }
-
-    const domIcon = L.divIcon({
-      className: "",
-      html: `
-        <div style="position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer;">
-          ${imgHtml}
-          <div style="display:flex;align-items:center;gap:6px;background:rgba(8,20,30,0.92);backdrop-filter:blur(12px);border:1px solid ${reg.color};padding:3px 10px;border-radius:20px;box-shadow:0 0 16px ${reg.color}66;white-space:nowrap;margin-top:2px;">
-            <span style="width:7px;height:7px;border-radius:50%;background:${reg.color};box-shadow:0 0 8px ${reg.color};animation:pulseDot 2s infinite"></span>
-            <span style="font:700 10px 'DM Mono',monospace;color:#fff">${shortName.toUpperCase()} DOMINANCE (${reg.dominance_pct}%)</span>
-          </div>
-        </div>
-      `,
-      iconSize: [230, 82],
-      iconAnchor: [115, 58]
+    const apiBase = window.SAGAR_API_BASE_URL || "http://127.0.0.1:8000";
+    const params = new URLSearchParams({ species: speciesFilter === "all" ? "" : speciesFilter, region: regionFilter, limit: "500" });
+    const response = await fetch(`${apiBase}/api/marine/obis?${params}`, { signal: AbortSignal.timeout(65000) });
+    if (!response.ok) throw new Error(`OBIS request returned HTTP ${response.status}`);
+    data = await response.json();
+    if (!data || !Array.isArray(data.observations)) throw new Error("Backend returned an invalid OBIS response");
+  } catch (error) {
+    console.error("Marine observations could not be loaded:", error);
+    setStatus("Marine observations are temporarily unavailable");
+    const coords = document.getElementById("obisHotspotCoords");
+    if (coords) coords.textContent = `${error.message}. Check that FastAPI and OBIS are available.`;
+    ["obisMetricTotal", "obisMetricTaxa"].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = "--";
     });
+    const proportions = document.getElementById("obisProportionContainer");
+    if (proportions) proportions.replaceChildren();
+    return;
+  }
 
-    L.marker(reg.center, { icon: domIcon }).addTo(obisLayerGroup).bindPopup(buildDominantRegionPopupHtml(reg));
+  const observations = data.observations.filter(obs => Number.isFinite(Number(obs.lat)) && Number.isFinite(Number(obs.lon)));
+  const proportions = Array.isArray(data.species_proportions) ? data.species_proportions : [];
+  const hotspots = Array.isArray(data.hotspots) ? data.hotspots : [];
+  const regions = observationDominanceRegions(observations, proportions);
+
+  if (!observations.length) {
+    setStatus(data.status === "error" ? "OBIS data source reported an error" : "No observations match this search");
+    const coords = document.getElementById("obisHotspotCoords");
+    if (coords) coords.textContent = data.message || "Try another species or region.";
+  } else {
+    const top = hotspots[0];
+    const title = document.getElementById("obisHotspotTitle");
+    const coords = document.getElementById("obisHotspotCoords");
+    if (title) title.textContent = top ? top.description : "Observation records loaded";
+    if (coords) coords.textContent = top
+      ? `Record density: ${top.density_score} - ${Number(top.lat).toFixed(2)}, ${Number(top.lon).toFixed(2)}`
+      : `${observations.length} occurrence records returned by OBIS`;
+  }
+
+  regions.forEach(reg => {
+    L.rectangle(reg.bounds, { color: reg.color, fillColor: reg.color, fillOpacity: 0.08, weight: 1.5, dashArray: "5 5" })
+      .addTo(obisLayerGroup).bindPopup(buildDominantRegionPopupHtml(reg));
+    const img = organismImage(reg.species);
+    const html = `<div class="obis-dominance-tag" style="--organism-color:${reg.color}">${img ? `<img src="${img}" alt="" onerror="this.remove()">` : ""}<span class="obis-dominance-pill"><i></i><b>${escapeObisHtml(reg.species)}</b><strong>${reg.share}% RECORD SHARE</strong></span></div>`;
+    const icon = L.divIcon({ className: "obis-dominance-icon", html, iconSize: [250, 74], iconAnchor: [125, 58] });
+    L.marker(reg.center, { icon, keyboard: true, title: `${reg.species}: ${reg.share}% record share` })
+      .addTo(obisLayerGroup).bindPopup(buildDominantRegionPopupHtml(reg));
   });
 
-  if (regionFilter && regionFilter !== "indian_ocean") {
-    const targetReg = dominantRegions.find(r => r.id === regionFilter || r.id.includes(regionFilter));
-    if (targetReg && targetReg.bounds) {
-      map.fitBounds(targetReg.bounds, { padding: [40, 40] });
-    }
-  } else {
-    map.fitBounds([[1.0, 60.0], [23.0, 95.0]], { padding: [30, 30] });
+  if (observations.length) {
+    const bounds = L.latLngBounds(observations.map(obs => [Number(obs.lat), Number(obs.lon)]));
+    if (bounds.isValid()) map.flyToBounds(bounds, { padding: [55, 55], duration: 1.1, maxZoom: 7 });
   }
 
-  // Update Summary Metrics
   const metricTotal = document.getElementById("obisMetricTotal");
   const metricTaxa = document.getElementById("obisMetricTaxa");
   const metricDepth = document.getElementById("obisMetricDepth");
-  
-  if (metricTotal) metricTotal.textContent = data.total_records;
-  if (metricTaxa) metricTaxa.textContent = data.species_proportions.length;
-  
-  let topDepthCat = "Surface";
-  const dDist = data.depth_distribution || {};
-  if ((dDist.mid_water || 0) > (dDist.surface || 0) && (dDist.mid_water || 0) > (dDist.deep_sea || 0)) topDepthCat = "Mid-Water";
-  else if ((dDist.deep_sea || 0) > (dDist.surface || 0) && (dDist.deep_sea || 0) > (dDist.mid_water || 0)) topDepthCat = "Deep Sea";
-  if (metricDepth) metricDepth.textContent = topDepthCat;
+  if (metricTotal) metricTotal.textContent = String(observations.length);
+  if (metricTaxa) metricTaxa.textContent = String(proportions.length);
+  const depthCounts = data.depth_distribution || {};
+  const topDepth = Object.entries(depthCounts).sort((a, b) => b[1] - a[1])[0];
+  if (metricDepth) metricDepth.textContent = topDepth && topDepth[1] ? topDepth[0].replace("_", " ") : "Unknown";
 
-  // Update Hotspot Box
-  if (data.hotspots && data.hotspots.length > 0) {
-    const topH = data.hotspots[0];
-    const hsTitle = document.getElementById("obisHotspotTitle");
-    const hsCoords = document.getElementById("obisHotspotCoords");
-    if (hsTitle) hsTitle.textContent = topH.description;
-    if (hsCoords) hsCoords.textContent = `Location: ${topH.lat}°N, ${topH.lon}°E • Density Rating: ${topH.density_score}/100`;
-  }
-
-  // Render Species Proportion Bars
   const container = document.getElementById("obisProportionContainer");
   if (container) {
-    container.innerHTML = "";
-    const barColors = ["#38bdf8", "#34d399", "#f59e0b", "#c084fc", "#f43f5e", "#818cf8", "#2dd4bf"];
-
-    data.species_proportions.forEach((prop, idx) => {
+    container.replaceChildren();
+    proportions.forEach((prop, idx) => {
+      const color = OBIS_PALETTE[idx % OBIS_PALETTE.length];
       const item = document.createElement("div");
       item.className = "species-prop-item";
-      const barColor = barColors[idx % barColors.length];
-
-      item.innerHTML = `
-        <div class="species-prop-header">
-          <span>${prop.species_name}</span>
-          <span style="font-family:'DM Mono',monospace;color:${barColor};font-weight:700">${prop.percentage}% (${prop.count})</span>
-        </div>
-        <div class="species-prop-bar-track">
-          <div class="species-prop-bar-fill" style="width:${prop.percentage}%;background:${barColor};box-shadow:0 0 8px ${barColor}"></div>
-        </div>
-      `;
-      container.appendChild(item);
+      const header = document.createElement("div");
+      header.className = "species-prop-header";
+      const name = document.createElement("span");
+      name.textContent = prop.species_name;
+      const amount = document.createElement("span");
+      amount.style.cssText = `font-family:'DM Mono',monospace;color:${color};font-weight:700`;
+      amount.textContent = `${prop.percentage}% (${prop.count})`;
+      header.append(name, amount);
+      const track = document.createElement("div");
+      track.className = "species-prop-bar-track";
+      const fill = document.createElement("div");
+      fill.className = "species-prop-bar-fill";
+      fill.style.cssText = `width:${Math.max(0, Math.min(100, Number(prop.percentage) || 0))}%;background:${color}`;
+      track.append(fill);
+      item.append(header, track);
+      container.append(item);
     });
   }
 
-  // Plot Organism Markers & Hotspot Star Clusters on Map
-  data.observations.forEach(obs => {
-    let iconColor = obs.depth_color || "#38bdf8";
-    const obsIcon = L.divIcon({
-      className: "",
-      html: `
-        <div style="position:relative;width:14px;height:14px;display:grid;place-items:center;">
-          <div style="width:10px;height:10px;border-radius:50%;background:${iconColor};border:1.5px solid #fff;box-shadow:0 0 10px ${iconColor}"></div>
-        </div>
-      `,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
-    });
-
-    L.marker([obs.lat, obs.lon], { icon: obsIcon })
-      .bindPopup(`
-        <span class="popup-badge">OBIS Marine Biodiversity</span>
-        <div class="popup-title">${obs.species_name}</div>
-        <div class="popup-metrics">
-          <div>Depth: <strong>${obs.depth_m ? obs.depth_m + 'm' : 'Surface'}</strong></div>
-          <div>Zone: <strong>${obs.depth_category || 'Surface'}</strong></div>
-          <div>Observed Date: <strong>${obs.observation_date || obs.season || 'Recent'}</strong></div>
-          <div>Source: <strong>${obs.dataset_name}</strong></div>
-        </div>
-      `)
-      .addTo(obisLayerGroup);
+  observations.forEach(obs => {
+    const color = obs.depth_color || "#94a3b8";
+    const icon = L.divIcon({ className: "", html: `<span style="display:block;width:12px;height:12px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 0 9px ${color}"></span>`, iconSize: [14, 14], iconAnchor: [7, 7] });
+    const popup = `<span class="popup-badge">OBIS - ${escapeObisHtml(obs.dataset_name || "Occurrence")}</span><div class="popup-title">${escapeObisHtml(obs.species_name)}</div><div class="popup-metrics"><div>Depth: <strong>${obs.depth_m == null ? "Unreported" : `${escapeObisHtml(obs.depth_m)} m`}</strong></div><div>Zone: <strong>${escapeObisHtml(obs.depth_category || "unknown")}</strong></div><div>Date: <strong>${escapeObisHtml(obs.observation_date || "Unreported")}</strong></div></div>`;
+    L.marker([Number(obs.lat), Number(obs.lon)], { icon }).bindPopup(popup).addTo(obisLayerGroup);
   });
 
-  // Plot Pulsing Hotspot Markers
-  data.hotspots.forEach(h => {
-    const hsIcon = L.divIcon({
-      className: "",
-      html: `
-        <div style="position:relative;width:24px;height:24px;display:grid;place-items:center;">
-          <div style="position:absolute;inset:0;border-radius:50%;background:rgba(16,185,129,0.3);border:1.5px solid #10b981;animation:argoPulse 2s infinite"></div>
-          <div style="font-size:14px;color:#10b981;z-index:2">★</div>
-        </div>
-      `,
-      iconSize: [24, 24],
-      iconAnchor: [12, 12]
-    });
-
-    L.marker([h.lat, h.lon], { icon: hsIcon })
-      .bindPopup(`
-        <span class="popup-badge" style="color:#10b981">Optimal Marine Biodiversity Hotspot</span>
-        <div class="popup-title">${h.description}</div>
-        <div class="popup-metrics">
-          <div>Latitude: <strong>${h.lat}°N</strong></div>
-          <div>Longitude: <strong>${h.lon}°E</strong></div>
-          <div>Record Density: <strong>High (${h.density_score}/100)</strong></div>
-          <div>Recommendation: <strong>Best Observation Location</strong></div>
-        </div>
-      `)
+  hotspots.forEach(h => {
+    if (!Number.isFinite(Number(h.lat)) || !Number.isFinite(Number(h.lon))) return;
+    L.circleMarker([Number(h.lat), Number(h.lon)], { radius: 8, color: "#10b981", fillColor: "#10b981", fillOpacity: 0.4, weight: 2 })
+      .bindPopup(`<b>${escapeObisHtml(h.description)}</b><br>${escapeObisHtml(h.density_score)} occurrence records`)
       .addTo(obisLayerGroup);
   });
 }
