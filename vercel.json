@@ -1,0 +1,7 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/Sagar-mitra/final_frontend/index.html" },
+    { "source": "/(.*)", "destination": "/Sagar-mitra/final_frontend/$1" }
+  ]
+}
