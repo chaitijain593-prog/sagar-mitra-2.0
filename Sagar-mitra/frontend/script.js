@@ -956,7 +956,9 @@ function initPersonaSwitcher() {
 // -------------------------------------------------------------
 // 11. ORCA ORCHESTRATION & API QUERY
 // -------------------------------------------------------------
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = window.location.origin.includes("127.0.0.1") || window.location.origin.includes("localhost")
+  ? "http://127.0.0.1:8000"
+  : window.location.origin;
 const ORCHESTRATE_TIMEOUT_MS = 45000;
 let sessionId = null;
 try {
