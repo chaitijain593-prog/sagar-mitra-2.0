@@ -6,7 +6,7 @@
 (function initSagarSharedControls() {
   const API_BASE = (window.location.protocol === "file:" || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.port !== "")
     ? "http://127.0.0.1:8000"
-    : window.location.origin;
+    : (window.SAGAR_BACKEND_URL || window.location.origin);
 
   // ------------------------------------------------------------
   // 1. PERSONA ROLES CONFIGURATION (Aligned with LangGraph)
