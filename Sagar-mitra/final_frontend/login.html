@@ -524,7 +524,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <h2>Welcome back</h2>
     <p class="desc">Enter your registered credentials to access Sagar Mitra.</p>
 
-    <div class="auth-alert error" id="loginAlert">
+    <div class="auth-alert" id="loginAlert" style="display:none;">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
       <span id="loginAlertText">Invalid username or password.</span>
     </div>
@@ -551,7 +551,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <h2>Create your account</h2>
     <p class="desc">Enter your account credentials to begin your oceanographic voyage.</p>
 
-    <div class="auth-alert error" id="signupStep1Alert">
+    <div class="auth-alert" id="signupStep1Alert" style="display:none;">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
       <span id="signupStep1AlertText">Please fill in all fields.</span>
     </div>
@@ -1054,6 +1054,11 @@ cards.login.onsubmit = async (e) => {
   hideAlerts();
   const id = document.getElementById("loginUsername").value.trim();
   const pw = document.getElementById("loginPassword").value;
+
+  if(!id || !pw){
+    showAlert("loginAlert", "Please enter both username or email and password.");
+    return;
+  }
 
   const btn = document.getElementById("btnLoginSubmit");
   btn.textContent = "Verifying...";
