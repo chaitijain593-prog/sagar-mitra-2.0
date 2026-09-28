@@ -59,7 +59,7 @@ def _split_chunks(text: str) -> list[str]:
 
 
 def _extract_text(filename: str, content: bytes, suffix: str) -> str:
-    if suffix == ".txt":
+    if suffix in {".txt", ".csv", ".md", ".json", ".log"}:
         return content.decode("utf-8-sig", errors="replace")
     try:
         from pypdf import PdfReader
@@ -91,6 +91,13 @@ def add_source(workspace_id: str, filename: str, content: bytes, suffix: str) ->
         )
     return {"id": source_id, "filename": filename, "workspace_id": workspace_id,
             "chunk_count": len(chunks), "created_at": created_at}
+
+
+def delete_source(source_id: str) -> bool:
+    with _connect() as conn:
+        conn.execute("DELETE FROM research_sources WHERE source_id=?", (source_id,))
+        conn.execute("DELETE FROM research_source_chunks WHERE source_id=?", (source_id,))
+    return True
 
 
 def list_sources(workspace_id: str) -> list[dict]:

@@ -43,7 +43,8 @@ from app.pfz_tool import get_nearest_pfz_details
 from app.chlorophyll_tool import get_chlorophyll_data
 from app.response_formatter import derive_hazard_status
 from app.indobis_service import get_marine_observations
-from app.research_sources import add_source, list_sources, retrieve_context
+from app.research_sources import add_source, list_sources, retrieve_context, delete_source
+from app.scheduler import start_scheduler_service, parse_schedule_query
 
 
 def _orchestration_error_detail(e: Exception) -> str:
@@ -62,6 +63,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def startup_scheduler():
+    start_scheduler_service(app)
 
 # Serves synthesized advisory audio saved under backend/static/audio (see
 # app/voice.py's save_advisory_audio) and Morning Dispatch PDFs/audio saved
@@ -375,8 +380,9 @@ async def upload_research_source(file: UploadFile = File(...), workspace_id: str
         raise HTTPException(status_code=422, detail="workspace_id is required.")
     filename = Path((file.filename or "source").replace("\\", "/")).name
     suffix = Path(filename).suffix.lower()
-    if suffix not in {".pdf", ".txt"}:
-        raise HTTPException(status_code=415, detail="Only PDF and TXT documents are supported.")
+    allowed = {".pdf", ".txt", ".csv", ".md", ".json", ".log"}
+    if suffix not in allowed:
+        raise HTTPException(status_code=415, detail=f"Supported file formats: {', '.join(sorted(allowed))}")
     content = await file.read(20 * 1024 * 1024 + 1)
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Source file exceeds the 20 MB limit.")
@@ -392,6 +398,12 @@ async def upload_research_source(file: UploadFile = File(...), workspace_id: str
 @app.get("/api/research-sources")
 def research_sources(workspace_id: str):
     return {"sources": list_sources(workspace_id)}
+
+
+@app.delete("/api/research-sources/{source_id}")
+def delete_research_source(source_id: str):
+    delete_source(source_id)
+    return {"status": "success", "deleted": source_id}
 
 @app.get("/api/marine-observations")
 async def marine_observations(
@@ -975,6 +987,14 @@ def run_orchestration(request: OrchestrateRequest):
             raise HTTPException(status_code=503, detail=f"Chat model unavailable: {exc}") from exc
         session_store.append_turn(session_id, "user", request.user_message)
         session_store.append_turn(session_id, "assistant", answer)
+        session_store.append_transcript_message(
+            session_id, "user", request.user_message, workspace_id=request.workspace_id
+        )
+        session_store.append_transcript_message(
+            session_id, "assistant", answer,
+            meta={"advisory_source": "general_knowledge_model"},
+            workspace_id=request.workspace_id
+        )
         return {
             "status": "success",
             "advisory_source": "general_knowledge_model",
@@ -1088,6 +1108,22 @@ def run_orchestration(request: OrchestrateRequest):
         or "eez" in str(boundary_report).lower() else "REGULATORY CAUTION"
     )
 
+    hazard_status_val = derive_hazard_status(boundary_report, ocean_report, hazard_report)
+    session_store.append_transcript_message(
+        session_id, "user", request.user_message, workspace_id=request.workspace_id
+    )
+    session_store.append_transcript_message(
+        session_id, "assistant", final_advisory,
+        meta={
+            "advisory_source": "openai_model",
+            "telemetry": telemetry,
+            "hazard_status": hazard_status_val,
+            "marine_status": marine_status,
+            "agents_invoked": result.get("next_steps", [])
+        },
+        workspace_id=request.workspace_id
+    )
+
     return {
         "status": "success",
         "advisory_source": "openai_model",
@@ -1102,7 +1138,7 @@ def run_orchestration(request: OrchestrateRequest):
         "vessel_persona": vessel_persona,
         "stakeholder_role": stakeholder_role,
         "role_permissions": result.get("role_permissions", []),
-        "hazard_status": derive_hazard_status(boundary_report, ocean_report, hazard_report),
+        "hazard_status": hazard_status_val,
         "marine_status": marine_status,
         "boundary_alert": boundary_alert,
         "boundary_status": boundary_status if boundary_alert else None,
@@ -1123,6 +1159,126 @@ def run_orchestration(request: OrchestrateRequest):
             if (day_offset > 0 or target_hour is not None) else None
         ),
     }
+
+
+# ===========================================================================
+# MULTI-DEVICE PERSISTENT SESSIONS & CHAT TRANSCRIPTS (SQLite)
+class CreateWorkspaceRequest(BaseModel):
+    name: str
+    workspace_id: str | None = None
+
+
+@app.get("/api/workspaces")
+def list_workspaces_endpoint():
+    return {"status": "success", "workspaces": session_store.list_workspaces()}
+
+
+@app.post("/api/workspaces")
+def create_workspace_endpoint(payload: CreateWorkspaceRequest):
+    ws = session_store.create_workspace(name=payload.name, workspace_id=payload.workspace_id)
+    return {"status": "success", "workspace": ws}
+
+
+@app.delete("/api/workspaces/{workspace_id}")
+def delete_workspace_endpoint(workspace_id: str):
+    session_store.delete_workspace(workspace_id)
+    return {"status": "success", "workspace_id": workspace_id}
+
+
+@app.get("/api/sessions")
+def list_sessions_endpoint(limit: int = 50, workspace_id: str | None = None):
+    return {"status": "success", "sessions": session_store.list_sessions(limit=limit, workspace_id=workspace_id)}
+
+
+@app.get("/api/sessions/{session_id}")
+def get_session_endpoint(session_id: str):
+    sess = session_store.get_session(session_id)
+    if not sess:
+        return {"status": "not_found", "session_id": session_id, "messages": []}
+    return {"status": "success", **sess}
+
+
+class AppendMessageRequest(BaseModel):
+    role: str
+    text: str
+    meta: dict | None = None
+    title: str | None = None
+    workspace_id: str = "arabian"
+
+
+@app.post("/api/sessions/{session_id}/messages")
+def append_session_message_endpoint(session_id: str, payload: AppendMessageRequest):
+    msg = session_store.append_transcript_message(
+        session_id=session_id,
+        role=payload.role,
+        text=payload.text,
+        meta=payload.meta,
+        title=payload.title,
+        workspace_id=payload.workspace_id
+    )
+    return {"status": "success", "message": msg}
+
+
+@app.delete("/api/sessions/{session_id}")
+def delete_session_endpoint(session_id: str):
+    session_store.delete_session(session_id)
+    return {"status": "success", "session_id": session_id}
+
+
+# ===========================================================================
+# SCHEDULED TASKS & BACKGROUND NOTIFICATION ENDPOINTS (/schedule)
+# ===========================================================================
+class ScheduleTaskRequest(BaseModel):
+    prompt: str
+    session_id: str
+    raw_command: str | None = None
+    coordinates: list[float] = [18.922, 72.833]
+    workspace_id: str = "arabian"
+    persona: str = "others"
+
+
+@app.post("/api/schedule")
+def create_schedule_endpoint(payload: ScheduleTaskRequest):
+    start_scheduler_service(app)
+    parsed = parse_schedule_query(payload.raw_command or payload.prompt)
+    task_id = f"sched_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+    session_store.add_scheduled_task(
+        task_id=task_id,
+        session_id=payload.session_id,
+        prompt=parsed["clean_prompt"],
+        schedule_type=parsed["schedule_type"],
+        run_at=parsed["run_at"],
+        interval_seconds=parsed["interval_seconds"],
+        coordinates=payload.coordinates,
+        persona=payload.persona,
+        workspace_id=payload.workspace_id
+    )
+    return {
+        "status": "success",
+        "task_id": task_id,
+        "schedule_type": parsed["schedule_type"],
+        "run_at": parsed["run_at"],
+        "interval_seconds": parsed["interval_seconds"],
+        "prompt": parsed["clean_prompt"],
+        "display_desc": parsed["display_desc"]
+    }
+
+
+@app.get("/api/schedule/tasks")
+def list_schedule_tasks_endpoint(session_id: str | None = None):
+    return {"status": "success", "tasks": session_store.list_scheduled_tasks(session_id)}
+
+
+@app.delete("/api/schedule/tasks/{task_id}")
+def cancel_schedule_task_endpoint(task_id: str):
+    ok = session_store.cancel_scheduled_task(task_id)
+    return {"status": "success" if ok else "not_found", "task_id": task_id}
+
+
+@app.get("/api/schedule/events")
+def get_schedule_events_endpoint(since: str | None = None):
+    return {"status": "success", "events": session_store.get_task_events(since)}
+
 
 @app.post("/api/voice/orchestrate")
 async def run_voice_orchestration(

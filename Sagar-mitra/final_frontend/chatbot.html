@@ -240,6 +240,24 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 .sidebar-body::-webkit-scrollbar{width:4px}
 .sidebar-body::-webkit-scrollbar-thumb{background:var(--sidebar-border);border-radius:4px}
 
+#savedSessionsList{
+  max-height:195px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-right:2px;
+}
+#savedSessionsList::-webkit-scrollbar{width:4px}
+#savedSessionsList::-webkit-scrollbar-thumb{background:var(--sidebar-border, rgba(56,189,248,0.25));border-radius:4px}
+
+#researchWorkspacesList{
+  max-height:180px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-right:2px;
+}
+#researchWorkspacesList::-webkit-scrollbar{width:4px}
+#researchWorkspacesList::-webkit-scrollbar-thumb{background:var(--sidebar-border, rgba(56,189,248,0.25));border-radius:4px}
+
 .sidebar-section-title{
   font:600 10px "DM Mono",monospace;
   letter-spacing:1.5px;
@@ -1034,11 +1052,11 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   100% { height: 8px; background: #22d3ee; }
 }
 
-/* SHAP Sensitivity Simulator Modal / Drawer */
+/* Causal Reasoning / SHAP Sensitivity Simulator Modal */
 .sensitivity-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.68);
+  background: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(8px);
   z-index: 10005;
   display: none;
@@ -1046,34 +1064,259 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   justify-content: center;
   padding: 20px;
 }
+[data-theme="dark"] .sensitivity-modal-overlay {
+  background: rgba(0, 0, 0, 0.72);
+}
+
 .sensitivity-modal-card {
-  background: rgba(10, 25, 38, 0.95);
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(57, 189, 242, 0.45);
+  border-radius: 18px;
   width: 100%;
   max-width: 520px;
-  padding: 22px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  padding: 24px;
+  box-shadow: 0 20px 48px -12px rgba(14, 165, 233, 0.2), 0 8px 24px -4px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  color: #fff;
+  gap: 16px;
+  color: #0f172a;
+  font-family: 'DM Sans', sans-serif;
+  transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
 }
+[data-theme="dark"] .sensitivity-modal-card {
+  background: #181816;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+  color: #f4f4f5;
+}
+
+.sensitivity-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 12px;
+}
+[data-theme="dark"] .sensitivity-modal-header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.sensitivity-modal-title {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0284c7;
+  letter-spacing: -0.3px;
+  line-height: 1.25;
+}
+[data-theme="dark"] .sensitivity-modal-title {
+  color: #38bdf8;
+}
+
+.sensitivity-close-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #64748b;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+.sensitivity-close-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+[data-theme="dark"] .sensitivity-close-btn {
+  color: #94a3b8;
+}
+[data-theme="dark"] .sensitivity-close-btn:hover {
+  background: #282824;
+  color: #f4f4f5;
+  border-color: #38bdf8;
+}
+
+.sensitivity-desc {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.5;
+  font-family: 'DM Sans', sans-serif;
+}
+[data-theme="dark"] .sensitivity-desc {
+  color: #cbd5e1;
+}
+.sensitivity-desc code {
+  background: #e0f2fe;
+  color: #0284c7;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+}
+[data-theme="dark"] .sensitivity-desc code {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+}
+
 .sensitivity-slider-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 .sensitivity-slider-hdr {
   display: flex;
   justify-content: space-between;
-  font: 600 12px 'DM Mono', monospace;
-  color: #94a3b8;
+  align-items: center;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+[data-theme="dark"] .sensitivity-slider-hdr {
+  color: #e2e8f0;
 }
 .sensitivity-range-input {
   width: 100%;
-  accent-color: #38bdf8;
+  accent-color: #0284c7;
   cursor: pointer;
+  height: 6px;
+  border-radius: 3px;
+}
+[data-theme="dark"] .sensitivity-range-input {
+  accent-color: #38bdf8;
+}
+
+.sensitivity-result-box {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+[data-theme="dark"] .sensitivity-result-box {
+  background: rgba(6, 14, 21, 0.7);
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
+.sensitivity-result-hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #64748b;
+}
+[data-theme="dark"] .sensitivity-result-hdr {
+  color: #94a3b8;
+}
+
+.sensitivity-conf-val {
+  color: #0284c7;
+  font-size: 18px;
+  font-weight: 800;
+  font-family: 'DM Sans', sans-serif;
+}
+[data-theme="dark"] .sensitivity-conf-val {
+  color: #38bdf8;
+}
+
+.sim-shap-item {
+  font: 500 12px 'DM Sans', sans-serif;
+  color: #1e293b;
+  margin-top: 6px;
+}
+[data-theme="dark"] .sim-shap-item {
+  color: #cbd5e1;
+}
+.sim-shap-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sim-shap-track {
+  margin-top: 3px;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+[data-theme="dark"] .sim-shap-track {
+  background: rgba(255, 255, 255, 0.08);
+}
+.sim-shap-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+.sim-shap-footer {
+  margin-top: 8px;
+  font: 600 10px 'DM Mono', monospace;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+[data-theme="dark"] .sim-shap-footer {
+  color: #94a3b8;
+}
+.sim-shap-badge {
+  color: #0284c7;
+  font-weight: 700;
+}
+[data-theme="dark"] .sim-shap-badge {
+  color: #a7f3d0;
+}
+
+.sensitivity-btn-cancel {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  font: 600 13px 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.sensitivity-btn-cancel:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+[data-theme="dark"] .sensitivity-btn-cancel {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #d4d4d8;
+}
+[data-theme="dark"] .sensitivity-btn-cancel:hover {
+  background: #3f3f46;
+  color: #ffffff;
+}
+
+.sensitivity-btn-apply {
+  padding: 8px 18px;
+  border-radius: 8px;
+  background: #0284c7;
+  border: 1px solid #0284c7;
+  color: #ffffff;
+  font: 600 13px 'DM Sans', sans-serif;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.25);
+  transition: all 0.2s ease;
+}
+.sensitivity-btn-apply:hover {
+  background: #0369a1;
+  border-color: #0369a1;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
 }
 
 
@@ -1410,7 +1653,8 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   color:var(--blue);
   border-color:var(--blue);
 }
-.voice-btn.recording{
+.voice-btn.recording,
+.voice-btn.speaking{
   background:#ef4444;
   color:#fff;
   border-color:#ef4444;
@@ -1503,6 +1747,17 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 <body class="page-enter">
 <canvas id="cursorTrailCanvas"></canvas>
 
+<!-- In-App Notification Toast for Background Tasks with Chime -->
+<div class="in-app-toast" id="inAppNotificationToast" style="display:none;">
+  <div class="toast-bell">🔔</div>
+  <div class="toast-content">
+    <div class="toast-title">Scheduled Task Completed</div>
+    <div class="toast-desc" id="toastTaskDesc">Oceanographic telemetry scan finished</div>
+  </div>
+  <button class="toast-action-btn" id="toastActionBtn">View</button>
+  <button class="toast-close-btn" id="toastCloseBtn" onclick="dismissInAppToast()">×</button>
+</div>
+
 <div class="app-container" id="appContainer">
 
   <!-- ============================================================
@@ -1535,12 +1790,6 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
       <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       <input type="text" id="searchInput" placeholder="Search or group dives...">
       <button class="search-new-notebook-btn" id="searchNewNotebookBtn" title="Group similar chats into new Marine Notebook" aria-label="Create Marine Notebook">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-          <line x1="12" y1="6" x2="12" y2="12"/>
-          <line x1="9" y1="9" x2="15" y2="9"/>
-        </svg>
         <span>+ Notebook</span>
       </button>
     </div>
@@ -1549,42 +1798,26 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <div class="sidebar-body">
 
       <div class="sidebar-section-title">Research Workspaces</div>
-      <a class="sidebar-item active" data-workspace="arabian">
-        <svg viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-        <span>Arabian Sea Survey</span>
-      </a>
-      <a class="sidebar-item" data-workspace="bengal">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 9 9"/></svg>
-        <span>Bay of Bengal Cyclone</span>
-      </a>
-      <a class="sidebar-item" data-workspace="argo">
-        <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        <span>Deep ARGO Telemetry</span>
-      </a>
+      <div id="researchWorkspacesList"></div>
 
-      <div class="sidebar-section-title">Today</div>
-      <a class="sidebar-item" data-prompt="Analyze ARGO Float #2901542 thermocline anomaly">
-        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        <span>ARGO Float #2901542 Anomaly</span>
-      </a>
-      <a class="sidebar-item" data-prompt="Compute Somali Current jet velocity profile">
-        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        <span>Somali Current Jet Velocity</span>
-      </a>
+      <div class="sidebar-section-title">Saved Dives & Chats</div>
+      <div id="savedSessionsList"></div>
 
-      <div class="sidebar-section-title">Previous 7 Days</div>
-      <a class="sidebar-item" data-prompt="Chlorophyll bloom spectral analysis in Gulf of Mannar">
-        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        <span>Gulf of Mannar Chlorophyll</span>
-      </a>
-      <a class="sidebar-item" data-prompt="Java Trench bathymetric depth gradient chart">
-        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        <span>Java Trench Depth Gradient</span>
-      </a>
-      <a class="sidebar-item" data-prompt="Monsoon sea surface salinity displacement">
-        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        <span>Monsoon Salinity Shift</span>
-      </a>
+      <div class="sidebar-section-title" id="starterPromptsTitle">Suggested Inquiries</div>
+      <div id="defaultPromptItems">
+        <a class="sidebar-item" data-prompt="Analyze ARGO Float #2901542 thermocline anomaly">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>ARGO Float #2901542 Anomaly</span>
+        </a>
+        <a class="sidebar-item" data-prompt="Compute Somali Current jet velocity profile">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Somali Current Jet Velocity</span>
+        </a>
+        <a class="sidebar-item" data-prompt="Chlorophyll bloom spectral analysis in Gulf of Mannar">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Gulf of Mannar Chlorophyll</span>
+        </a>
+      </div>
 
     </div>
 
@@ -1772,9 +2005,10 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             <span>ACTIVE INDEXED SOURCES</span>
           </div>
-          <button type="button" class="sources-add-action-btn" id="addSourceBtn" title="Index external ocean database, website or DOI">
+          <button type="button" class="sources-add-action-btn" id="addSourceBtn" title="Upload and index local documents or datasets">
             <span>+ Add Source</span>
           </button>
+          <input type="file" id="sourceFileInput" style="display:none;" accept=".pdf,.txt,.csv,.md,.json,.parquet,.geojson" multiple>
         </div>
         <div class="top-sources-chips" id="sourcesChipsList">
           <!-- Rendered dynamically -->
@@ -1837,6 +2071,12 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
          LARGE CLEAN CLAUDE-STYLE OCEAN COMPOSER
          ============================================================ -->
     <div class="composer-wrapper">
+      <!-- Rotating Command Hints in Light Grey Text Above Chatbot -->
+      <div class="composer-command-ticker" id="commandTicker" title="Click to insert command into composer">
+        <span class="ticker-prefix">⚡ COMMANDS</span>
+        <span class="ticker-text" id="tickerText">💡 <strong style="color:var(--blue,#0284c7)">/queue &lt;query&gt;</strong> — Queues prompt to run immediately when current turn finishes</span>
+      </div>
+
       <div class="composer-card" id="composerInputContainer">
         
         <!-- Animated Cyan Audio Wave Visualizer for Real Voice Input -->
@@ -1861,6 +2101,8 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
           </div>
         </div>
 
+        <div class="composer-queued-bar" id="composerQueuedBar" style="display:none;"></div>
+        <div class="composer-attachments-bar" id="composerAttachmentsBar" style="display:none;"></div>
         <textarea
           class="composer-textarea"
           id="composerInput"
@@ -1873,10 +2115,11 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
           <div class="composer-tools-left">
             
             <!-- Attachment button -->
-            <button class="tool-btn" id="attachBtn" title="Attach Bathymetry or NetCDF files">
+            <button class="tool-btn" id="attachBtn" title="Attach documents for oceanographic analysis">
               <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
               <span>Attach</span>
             </button>
+            <input type="file" id="attachFileInput" style="display:none;" accept=".pdf,.txt,.csv,.md,.json,.parquet,.geojson" multiple>
 
             <!-- Ocean Tools -->
             <button class="tool-btn" id="toolsBtn" title="Ocean Sensor Tools">
@@ -1912,6 +2155,13 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 
           <div class="composer-tools-right">
             
+            <button class="voice-btn" id="readAloudBtn" title="Read Aloud Latest Advisory" aria-label="Read Aloud" onclick="speakAdvisoryText(this)">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              </svg>
+            </button>
+
             <button class="voice-btn" id="voiceBtn" title="Voice Input" aria-label="Dictate message">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -2098,64 +2348,49 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   </div>
 </div>
 
-<!-- Modal: Add New Marine Notebook & Group Chats (For Researcher Persona) -->
+<!-- Modal: Add New Marine Notebook / Research Workspace -->
 <div class="ocean-news-modal-overlay" id="addNotebookModal" style="display:none;z-index:99999;">
-  <div class="news-modal-container" style="max-width:500px;height:auto;padding:24px;">
+  <div class="news-modal-container" style="max-width:480px;height:auto;padding:24px;">
     <div class="news-modal-header" style="margin-bottom:16px;">
       <div>
         <div class="news-modal-kicker">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-          <span>HYDROGRAPHIC WORKSPACE LEDGER</span>
+          <span>RESEARCH WORKSPACE</span>
         </div>
-        <h2 class="news-modal-title" style="font-size:20px;">Create Marine Notebook</h2>
-        <div class="news-modal-subtitle">Group related oceanographic dives and chats into a dedicated marine notebook</div>
+        <h2 class="news-modal-title" style="font-size:20px;">Create Research Workspace</h2>
+        <div class="news-modal-subtitle">Add a dedicated workspace. All chats created within it will be segregated separately.</div>
       </div>
       <button class="news-modal-close" id="closeNotebookModalBtn">×</button>
     </div>
     <form id="addNotebookForm" style="display:flex;flex-direction:column;gap:14px;">
       <div>
-        <label style="font:600 11px 'DM Mono',monospace;color:var(--text-muted);display:block;margin-bottom:6px;">MARINE NOTEBOOK TITLE</label>
-        <input type="text" id="notebookTitleInput" required placeholder="e.g. Somali Boundary Current Jet Dynamics.nb" style="width:100%;height:38px;padding:0 12px;border-radius:8px;border:1px solid var(--surface-border);background:var(--bg);color:var(--ink);font:13px 'DM Sans',sans-serif;outline:none;">
-      </div>
-      <div>
-        <label style="font:600 11px 'DM Mono',monospace;color:var(--text-muted);display:block;margin-bottom:6px;">OCEANOGRAPHIC FOCUS / BASIN</label>
-        <input type="text" id="notebookFocusInput" placeholder="Arabian Sea, Bay of Bengal, Ninety East Ridge..." style="width:100%;height:38px;padding:0 12px;border-radius:8px;border:1px solid var(--surface-border);background:var(--bg);color:var(--ink);font:13px 'DM Sans',sans-serif;outline:none;">
-      </div>
-      <div>
-        <label style="font:600 11px 'DM Mono',monospace;color:var(--text-muted);display:block;margin-bottom:6px;">SELECT SIMILAR CHATS TO GROUP TOGETHER:</label>
-        <div style="display:flex;flex-direction:column;gap:6px;max-height:115px;overflow-y:auto;padding:8px 10px;border-radius:8px;border:1px solid var(--surface-border);background:var(--bg);">
-          <label style="font:12px 'DM Sans',sans-serif;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--ink);"><input type="checkbox" checked> <span>ARGO Float #2901542 Thermocline Anomaly</span></label>
-          <label style="font:12px 'DM Sans',sans-serif;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--ink);"><input type="checkbox" checked> <span>Somali Current Boundary Jet Velocity</span></label>
-          <label style="font:12px 'DM Sans',sans-serif;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--ink);"><input type="checkbox"> <span>Gulf of Mannar Chlorophyll Bloom</span></label>
-          <label style="font:12px 'DM Sans',sans-serif;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--ink);"><input type="checkbox"> <span>Java Trench Bathymetric Sounding Gradient</span></label>
-        </div>
+        <label style="font:600 11px 'DM Mono',monospace;color:var(--text-muted);display:block;margin-bottom:6px;">WORKSPACE NAME</label>
+        <input type="text" id="notebookTitleInput" required placeholder="e.g. Arabian Deep Sea Survey" style="width:100%;height:38px;padding:0 12px;border-radius:8px;border:1px solid var(--surface-border);background:var(--bg);color:var(--ink);font:13px 'DM Sans',sans-serif;outline:none;">
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px;">
         <button type="button" class="tool-btn" id="cancelNotebookModalBtn">Cancel</button>
-        <button type="submit" class="tool-btn" style="background:var(--blue);color:#fff;border-color:var(--blue);font-weight:600;">Group & Create Notebook</button>
+        <button type="submit" class="tool-btn" style="background:var(--blue);color:#04121a;border-color:var(--blue);font-weight:600;">Create Workspace</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- SHAP "What-If" Sensitivity Simulator Drawer / Modal -->
+<!-- Causal Reasoning / SHAP Sensitivity Simulator Modal -->
 <div class="sensitivity-modal-overlay" id="sensitivityModal">
   <div class="sensitivity-modal-card">
-    <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:10px;">
-      <div style="font:700 14px 'DM Mono',monospace;color:#38bdf8;display:flex;align-items:center;gap:6px;">
-        <span>📊 SHAP "WHAT-IF" SENSITIVITY SIMULATOR</span>
-      </div>
-      <button id="closeSensitivityModalBtn" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;">×</button>
+    <div class="sensitivity-modal-header">
+      <div class="sensitivity-modal-title">Causal Reasoning Simulator</div>
+      <button id="closeSensitivityModalBtn" class="sensitivity-close-btn" title="Close" aria-label="Close modal">×</button>
     </div>
     
-    <div style="font-size:12px;color:#cbd5e1;line-height:1.4;">
+    <div class="sensitivity-desc">
       Adjust environmental ocean parameters to simulate ML confidence score shifts and recalculate SHAP feature attributions calling <code>/api/predict/sensitivity</code> in real time:
     </div>
 
     <div class="sensitivity-slider-group">
       <div class="sensitivity-slider-hdr">
         <span>🌡️ SST Perturbation Slider (-3.0 °C to +3.0 °C):</span>
-        <span id="sstDeltaVal" style="color:#f59e0b;font-weight:700;">+0.0°C</span>
+        <span id="sstDeltaVal" style="color:#d97706;font-weight:700;">+0.0°C</span>
       </div>
       <input type="range" min="-3.0" max="3.0" step="0.1" value="0" id="sstDeltaSlider" class="sensitivity-range-input">
     </div>
@@ -2163,7 +2398,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <div class="sensitivity-slider-group">
       <div class="sensitivity-slider-hdr">
         <span>🐟 Chlorophyll-a Gradient Slider (-1.0 to +1.0 mg/m³):</span>
-        <span id="chlDeltaVal" style="color:#34d399;font-weight:700;">+0.00 mg/m³</span>
+        <span id="chlDeltaVal" style="color:#059669;font-weight:700;">+0.00 mg/m³</span>
       </div>
       <input type="range" min="-1.0" max="1.0" step="0.05" value="0" id="chlDeltaSlider" class="sensitivity-range-input">
     </div>
@@ -2171,15 +2406,15 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <div class="sensitivity-slider-group">
       <div class="sensitivity-slider-hdr">
         <span>⚓ Subsurface Salinity Delta (-2.0 to +2.0 PSU):</span>
-        <span id="salDeltaVal" style="color:#818cf8;font-weight:700;">+0.0 PSU</span>
+        <span id="salDeltaVal" style="color:#6366f1;font-weight:700;">+0.0 PSU</span>
       </div>
       <input type="range" min="-2.0" max="2.0" step="0.1" value="0" id="salDeltaSlider" class="sensitivity-range-input">
     </div>
 
-    <div id="sensitivityResultBox" style="background:rgba(6,14,21,0.7);border:1px solid rgba(56,189,248,0.2);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;font:700 12px 'DM Mono',monospace;">
-        <span style="color:#94a3b8;">SIMULATED PFZ PROBABILITY:</span>
-        <span id="simConfVal" style="color:#38bdf8;font-size:15px;font-weight:800;">94.8%</span>
+    <div id="sensitivityResultBox" class="sensitivity-result-box">
+      <div class="sensitivity-result-hdr">
+        <span>SIMULATED PFZ PROBABILITY:</span>
+        <span id="simConfVal" class="sensitivity-conf-val">94.8%</span>
       </div>
       <div id="simShapBarsContainer">
         <!-- Live updated bars -->
@@ -2187,8 +2422,8 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     </div>
 
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:4px;">
-      <button type="button" class="tool-btn" id="cancelSensitivityModalBtn">Close</button>
-      <button type="button" class="tool-btn" id="applySensitivityBtn" style="background:var(--blue);color:#fff;border-color:var(--blue);font-weight:600;">Apply to Active Query</button>
+      <button type="button" class="sensitivity-btn-cancel" id="cancelSensitivityModalBtn">Close</button>
+      <button type="button" class="sensitivity-btn-apply" id="applySensitivityBtn">Apply to Active Query</button>
     </div>
   </div>
 </div>
@@ -2404,23 +2639,17 @@ openBtn.addEventListener("click", () => {
 
 // New Chat / Dive Reset
 document.getElementById("newChatBtn").addEventListener("click", () => {
+  currentSessionId = "session_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
   document.getElementById("messagesList").innerHTML = "";
   document.getElementById("greetingSection").style.display = "flex";
   document.getElementById("composerInput").value = "";
   document.getElementById("composerInput").style.height = "auto";
   document.getElementById("sendBtn").classList.remove("active");
+  document.querySelectorAll("#savedSessionsList .sidebar-item").forEach(i => i.classList.remove("active"));
   document.getElementById("composerInput").focus();
 });
 
-// Workspace selection
-document.querySelectorAll(".sidebar-item[data-workspace]").forEach(el => {
-  el.addEventListener("click", () => {
-    document.querySelectorAll(".sidebar-item[data-workspace]").forEach(i => i.classList.remove("active"));
-    el.classList.add("active");
-    const name = el.querySelector("span").textContent;
-    document.getElementById("activeWorkspaceLabel").textContent = name + " · Live Stream";
-  });
-});
+
 
 // Clickable chat history items
 document.querySelectorAll(".sidebar-item[data-prompt]").forEach(el => {
@@ -2614,8 +2843,8 @@ function applyPersona(roleId){
 
   // 5. Toggle Researcher UI Sections (Searchbar notebook button & top-right sources bar)
   if(researchNotebooksBar) researchNotebooksBar.style.display = cfg.showNotebooks ? "flex" : "none";
-  if(searchNewNotebookBtn) searchNewNotebookBtn.style.display = cfg.showNotebooks ? "inline-flex" : "none";
-  if(searchInput) searchInput.style.paddingRight = cfg.showNotebooks ? "98px" : "12px";
+  if(searchNewNotebookBtn) searchNewNotebookBtn.style.display = "inline-flex";
+  if(searchInput) searchInput.style.paddingRight = "98px";
   if(researchSourcesBar) researchSourcesBar.style.display = cfg.showSources ? "flex" : "none";
 
   // 6. Update Composer Placeholder
@@ -2884,66 +3113,188 @@ const closeNotebookModalBtn = document.getElementById("closeNotebookModalBtn");
 const cancelNotebookModalBtn = document.getElementById("cancelNotebookModalBtn");
 const addNotebookForm = document.getElementById("addNotebookForm");
 
-if(addNotebookBtn){
-  addNotebookBtn.onclick = () => addNotebookModal.style.display = "flex";
+function openAddWorkspaceModal() {
+  if (!addNotebookModal) return;
+  addNotebookModal.style.display = "flex";
+  addNotebookModal.classList.add("open");
+  const input = document.getElementById("notebookTitleInput");
+  if (input) {
+    input.value = "";
+    setTimeout(() => input.focus(), 60);
+  }
 }
-if(searchNewNotebookBtn){
-  searchNewNotebookBtn.onclick = () => addNotebookModal.style.display = "flex";
-}
-if(closeNotebookModalBtn) closeNotebookModalBtn.onclick = () => addNotebookModal.style.display = "none";
-if(cancelNotebookModalBtn) cancelNotebookModalBtn.onclick = () => addNotebookModal.style.display = "none";
 
-if(addNotebookForm){
-  addNotebookForm.onsubmit = e => {
+function closeAddWorkspaceModal() {
+  if (!addNotebookModal) return;
+  addNotebookModal.style.display = "none";
+  addNotebookModal.classList.remove("open");
+}
+
+if (addNotebookBtn) {
+  addNotebookBtn.onclick = (e) => {
     e.preventDefault();
-    const title = document.getElementById("notebookTitleInput").value.trim();
-    if(!title) return;
-    const cleanTitle = title.endsWith(".nb") ? title : title + ".nb";
-    const id = "nb_" + Date.now();
-    researchNotebooks.forEach(n => n.active = false);
-    researchNotebooks.push({ id, title: cleanTitle, active: true });
-    renderNotebooks();
-    document.getElementById("activeWorkspaceLabel").textContent = cleanTitle.replace(".nb", "") + " · Active Notebook";
-    addNotebookModal.style.display = "none";
+    openAddWorkspaceModal();
+  };
+}
+if (searchNewNotebookBtn) {
+  searchNewNotebookBtn.onclick = (e) => {
+    e.preventDefault();
+    openAddWorkspaceModal();
+  };
+}
+if (closeNotebookModalBtn) closeNotebookModalBtn.onclick = closeAddWorkspaceModal;
+if (cancelNotebookModalBtn) cancelNotebookModalBtn.onclick = closeAddWorkspaceModal;
+
+if (addNotebookForm) {
+  addNotebookForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("notebookTitleInput").value.trim();
+    if (!name) return;
+    let newWs = null;
+    try {
+      const resp = await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      if (resp.ok) {
+        const d = await resp.json();
+        newWs = d.workspace;
+      }
+    } catch (err) {}
+    if (!newWs) {
+      newWs = {
+        workspace_id: "ws_" + Date.now(),
+        name: name,
+        created_at: new Date().toISOString()
+      };
+    }
+    allWorkspaces.push(newWs);
+    localStorage.setItem("sagar_mitra_workspaces", JSON.stringify(allWorkspaces));
+    closeAddWorkspaceModal();
     addNotebookForm.reset();
+    await selectWorkspace(newWs.workspace_id);
   };
 }
 
-// External Web Sources Management
-let externalSources = [
+// ============================================================
+// 6. RESEARCHER PERSONA: MULTIPLE NOTEBOOKS & PERSISTENT INDEXED SOURCES
+// ============================================================
+const DEFAULT_INDEXED_SOURCES = [
   { id: "noaa", title: "NOAA World Ocean Atlas (WOA23)", doi: "10.7289/V5NZ85MT", url: "https://www.ncei.noaa.gov/products/world-ocean-atlas" },
   { id: "incois", title: "INCOIS Live ARGO Profile Server", doi: "incois.gov.in", url: "https://incois.gov.in" }
 ];
+
+let externalSources = [];
+
+function loadIndexedSourcesFromStorage(){
+  try {
+    const raw = localStorage.getItem("sagarMitra_indexedSources");
+    if(raw) {
+      const parsed = JSON.parse(raw);
+      if(Array.isArray(parsed) && parsed.length > 0){
+        externalSources = parsed;
+        return;
+      }
+    }
+  } catch(e){}
+  externalSources = [...DEFAULT_INDEXED_SOURCES];
+  saveSourcesToStorage();
+}
+
+function saveSourcesToStorage(){
+  try {
+    localStorage.setItem("sagarMitra_indexedSources", JSON.stringify(externalSources));
+  } catch(e){}
+}
 
 function renderSourcesChips(){
   const container = document.getElementById("sourcesChipsList");
   const countEl = document.getElementById("topSourcesCount");
   if(countEl) countEl.textContent = externalSources.length;
   if(!container) return;
-  container.innerHTML = externalSources.map(s => `
-    <div class="source-chip" data-id="${s.id}">
-      <span class="source-chip-icon">🌐</span>
-      <span class="source-chip-title">${escapeHtml(s.title)}</span>
-      <span class="source-chip-doi">${escapeHtml(s.doi)}</span>
-      <button class="source-chip-remove" title="Remove Source" onclick="removeSourceChip('${s.id}')">×</button>
-    </div>
-  `).join("");
+  if(!externalSources.length){
+    container.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:4px 0;">No active indexed sources. Click "+ Add Source" to upload documents.</div>`;
+    return;
+  }
+  container.innerHTML = externalSources.map(s => {
+    const isDoc = s.isLocal || (s.url && s.url.startsWith("local://")) || s.title.match(/\.(pdf|txt|csv|md|json|parquet|geojson)$/i);
+    const icon = isDoc ? "📄" : "🌐";
+    return `
+      <div class="source-chip" data-id="${escapeHtml(s.id)}">
+        <span class="source-chip-icon">${icon}</span>
+        <span class="source-chip-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
+        <span class="source-chip-doi">${escapeHtml(s.doi || "Indexed")}</span>
+        <button class="source-chip-remove" title="Remove Source" onclick="removeSourceChip('${escapeHtml(s.id)}')">×</button>
+      </div>
+    `;
+  }).join("");
 }
 
-window.removeSourceChip = function(id){
+window.removeSourceChip = async function(id){
   externalSources = externalSources.filter(s => s.id !== id);
+  saveSourcesToStorage();
   renderSourcesChips();
+  try {
+    await fetch(`/api/research-sources/${id}`, { method: "DELETE" });
+  } catch(e) {}
 };
 
+// Add Source Button: Opens the local file directory chooser directly
 const addSourceBtn = document.getElementById("addSourceBtn");
+const sourceFileInput = document.getElementById("sourceFileInput");
 const addSourceModal = document.getElementById("addSourceModal");
 const closeSourceModalBtn = document.getElementById("closeSourceModalBtn");
 const cancelSourceModalBtn = document.getElementById("cancelSourceModalBtn");
 const addSourceForm = document.getElementById("addSourceForm");
 
-if(addSourceBtn){
-  addSourceBtn.onclick = () => addSourceModal.style.display = "flex";
+if(addSourceBtn && sourceFileInput){
+  addSourceBtn.onclick = (e) => {
+    e.stopPropagation();
+    sourceFileInput.click();
+  };
 }
+
+if(sourceFileInput){
+  sourceFileInput.onchange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if(!files.length) return;
+
+    for(const file of files){
+      const newId = "src_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+      const sizeStr = file.size > 1024 * 1024 
+        ? (file.size / (1024 * 1024)).toFixed(1) + " MB" 
+        : Math.round(file.size / 1024) + " KB";
+      
+      const newSource = {
+        id: newId,
+        title: file.name,
+        doi: sizeStr + " · Local Doc",
+        url: "local://" + file.name,
+        isLocal: true
+      };
+
+      externalSources.unshift(newSource);
+      saveSourcesToStorage();
+      renderSourcesChips();
+
+      // Upload to backend /api/upload-source for vector/chunk indexing
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("workspace_id", "arabian");
+        fetch("/api/upload-source", { method: "POST", body: formData }).then(r => r.json()).then(res => {
+          if(res && res.id) {
+            newSource.backendId = res.id;
+            saveSourcesToStorage();
+          }
+        }).catch(()=>{});
+      } catch(err){}
+    }
+    sourceFileInput.value = "";
+  };
+}
+
 if(closeSourceModalBtn) closeSourceModalBtn.onclick = () => addSourceModal.style.display = "none";
 if(cancelSourceModalBtn) cancelSourceModalBtn.onclick = () => addSourceModal.style.display = "none";
 
@@ -2955,7 +3306,8 @@ if(addSourceForm){
     const tag = document.getElementById("sourceTagInput").value.trim() || "Web Source";
     if(!title || !url) return;
     const id = "src_" + Date.now();
-    externalSources.push({ id, title, doi: tag, url });
+    externalSources.unshift({ id, title, doi: tag, url, isLocal: false });
+    saveSourcesToStorage();
     renderSourcesChips();
     addSourceModal.style.display = "none";
     addSourceForm.reset();
@@ -2981,8 +3333,101 @@ if(indexedSourcesToggleBtn && indexedSourcesDropdown){
   });
 }
 
+// Load persistent sources on page init
+loadIndexedSourcesFromStorage();
 renderNotebooks();
 renderSourcesChips();
+
+// ============================================================
+// ATTACHMENT SYSTEM (Local File Picker & Chat Document Analysis)
+// ============================================================
+let attachedDocuments = [];
+const attachBtn = document.getElementById("attachBtn");
+const attachFileInput = document.getElementById("attachFileInput");
+const composerAttachmentsBar = document.getElementById("composerAttachmentsBar");
+
+function renderAttachedFilesChips(){
+  if(!composerAttachmentsBar) return;
+  if(!attachedDocuments.length){
+    composerAttachmentsBar.style.display = "none";
+    composerAttachmentsBar.innerHTML = "";
+    return;
+  }
+  composerAttachmentsBar.style.display = "flex";
+  composerAttachmentsBar.innerHTML = attachedDocuments.map((doc, idx) => `
+    <div class="attached-file-chip">
+      <span>📄</span>
+      <span class="file-name" title="${escapeHtml(doc.name)}">${escapeHtml(doc.name)}</span>
+      <span class="file-size">(${doc.sizeStr})</span>
+      <button type="button" class="file-remove-btn" title="Remove attachment" onclick="removeAttachedDocument(${idx})">×</button>
+    </div>
+  `).join("");
+}
+
+window.removeAttachedDocument = function(idx){
+  attachedDocuments.splice(idx, 1);
+  renderAttachedFilesChips();
+};
+
+if(attachBtn && attachFileInput){
+  attachBtn.onclick = () => {
+    attachFileInput.click();
+  };
+
+  attachFileInput.onchange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if(!files.length) return;
+
+    for(const file of files){
+      const sizeStr = file.size > 1024 * 1024 
+        ? (file.size / (1024 * 1024)).toFixed(1) + " MB" 
+        : Math.round(file.size / 1024) + " KB";
+      
+      const docEntry = {
+        name: file.name,
+        size: file.size,
+        sizeStr: sizeStr,
+        textSnippet: ""
+      };
+
+      // Extract client-side text snippet if plain text/csv/json/md
+      if(file.name.match(/\.(txt|csv|md|json|log)$/i)){
+        try {
+          const text = await file.text();
+          docEntry.textSnippet = text.slice(0, 3000);
+        } catch(err){}
+      }
+
+      attachedDocuments.push(docEntry);
+
+      // Also ensure it is present in Indexed Sources for researcher mode
+      const isAlreadyIndexed = externalSources.some(s => s.title === file.name);
+      if(!isAlreadyIndexed){
+        externalSources.unshift({
+          id: "src_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
+          title: file.name,
+          doi: sizeStr + " · Attached Doc",
+          url: "local://" + file.name,
+          isLocal: true
+        });
+        saveSourcesToStorage();
+        renderSourcesChips();
+      }
+
+      // Upload file to backend for chunking & RAG indexing
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("workspace_id", "arabian");
+        fetch("/api/upload-source", { method: "POST", body: formData }).catch(()=>{});
+      } catch(err){}
+    }
+
+    renderAttachedFilesChips();
+    attachFileInput.value = "";
+    if(composerInput) composerInput.focus();
+  };
+}
 
 // ============================================================
 // 7. LEAFLET 2/5th SPLIT MAP ENGINE & AUTOMATIC VIEWER
@@ -3242,12 +3687,494 @@ if(splitMapMaximizeBtn){
 applyPersona(currentRole);
 
 // ============================================================
-// 8. COMPOSER, SEND QUERY & SPATIAL AUTO-SPLIT STREAMING
+// 8. MULTI-DEVICE SQLITE SESSIONS, /queue & /schedule ENGINE
 // ============================================================
+let currentSessionId = "session_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+let isGenerating = false;
+let promptQueue = [];
+let lastEventPollTime = new Date(Date.now() - 60000).toISOString();
+let processedEventIds = new Set();
+let toastTimeout = null;
+
+// Audio Chime Synthesizer via Web Audio API (E5 - G5 - C6 Harmonics)
+function playNotificationChime() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === "suspended") {
+      ctx.resume();
+    }
+    const now = ctx.currentTime;
+    const notes = [659.25, 783.99, 1046.50];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now + i * 0.11);
+      gain.gain.setValueAtTime(0, now + i * 0.11);
+      gain.gain.linearRampToValueAtTime(0.26, now + i * 0.11 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.11 + 0.65);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.11);
+      osc.stop(now + i * 0.11 + 0.7);
+    });
+  } catch (err) {
+    console.log("Audio chime info:", err);
+  }
+}
+
+// In-App Notification Toast Handler
+function showInAppToast(event) {
+  const toast = document.getElementById("inAppNotificationToast");
+  const desc = document.getElementById("toastTaskDesc");
+  const actionBtn = document.getElementById("toastActionBtn");
+  if (!toast || !desc) return;
+
+  desc.textContent = event.prompt ? `"${event.prompt.slice(0, 42)}..."` : "Scheduled ocean analysis complete";
+  toast.style.display = "flex";
+
+  if (actionBtn) {
+    actionBtn.onclick = () => {
+      viewCompletedScheduledEvent(event.session_id);
+    };
+  }
+
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => {
+    dismissInAppToast();
+  }, 9000);
+}
+
+window.dismissInAppToast = function() {
+  const toast = document.getElementById("inAppNotificationToast");
+  if (toast) toast.style.display = "none";
+};
+
+window.viewCompletedScheduledEvent = function(sessionId) {
+  dismissInAppToast();
+  if (sessionId && sessionId !== currentSessionId) {
+    switchSession(sessionId);
+  } else {
+    const sc = document.getElementById("chatScrollArea");
+    if (sc) sc.scrollTop = sc.scrollHeight;
+  }
+};
+
+// Periodic Scheduled Task Event Poller (Chime & Toast Trigger)
+function startScheduleEventPoller() {
+  setInterval(async () => {
+    try {
+      const resp = await fetch(`/api/schedule/events?since=${encodeURIComponent(lastEventPollTime)}`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (data && data.events && data.events.length > 0) {
+        for (const ev of data.events) {
+          if (processedEventIds.has(ev.event_id)) continue;
+          processedEventIds.add(ev.event_id);
+          lastEventPollTime = ev.completed_at;
+
+          playNotificationChime();
+          showInAppToast(ev);
+
+          if (ev.session_id === currentSessionId) {
+            loadSessionTranscript(currentSessionId, true);
+          }
+          loadSavedSessions();
+        }
+      }
+    } catch (e) {}
+  }, 3500);
+}
+
+// Rotating Command Ticker Bar in Light Grey Text Above Chatbot
+const COMMAND_TIPS = [
+  { cmd: "/queue <query>", desc: "Queues the prompt to execute immediately after current turn" },
+  { cmd: "/schedule in 10s <query>", desc: "Schedules a one-time ocean analysis after specified duration" },
+  { cmd: "/schedule every 1h <query>", desc: "Periodically schedules autonomous ocean monitoring" },
+  { cmd: "/schedule at 06:00 <query>", desc: "Schedules advisory report for a specific time of day" }
+];
+let currentTipIndex = 0;
+
+function rotateCommandTicker() {
+  const tickerText = document.getElementById("tickerText");
+  if (!tickerText) return;
+  tickerText.classList.add("fade");
+  setTimeout(() => {
+    currentTipIndex = (currentTipIndex + 1) % COMMAND_TIPS.length;
+    const tip = COMMAND_TIPS[currentTipIndex];
+    tickerText.innerHTML = `💡 <strong style="color:var(--blue, #0284c7);">${tip.cmd}</strong> — ${tip.desc}`;
+    tickerText.classList.remove("fade");
+  }, 350);
+}
+setInterval(rotateCommandTicker, 4500);
+
+const cmdTickerEl = document.getElementById("commandTicker");
+if (cmdTickerEl) {
+  cmdTickerEl.onclick = () => {
+    const tip = COMMAND_TIPS[currentTipIndex];
+    const inp = document.getElementById("composerInput");
+    if (inp) {
+      inp.value = tip.cmd.replace("<query>", "");
+      inp.focus();
+      inp.setSelectionRange(inp.value.length, inp.value.length);
+      const sBtn = document.getElementById("sendBtn");
+      if (sBtn) sBtn.classList.add("active");
+    }
+  };
+}
+
+// Multi-Device SQLite Session & Segregated Workspace Persistence
+let allWorkspaces = [];
+let currentWorkspaceId = localStorage.getItem("sagar_mitra_active_workspace_id") || null;
+let currentSessionsData = [];
+
+async function loadWorkspaces() {
+  try {
+    const resp = await fetch("/api/workspaces");
+    if (resp.ok) {
+      const data = await resp.json();
+      allWorkspaces = data.workspaces || [];
+    }
+  } catch (err) {
+    allWorkspaces = JSON.parse(localStorage.getItem("sagar_mitra_workspaces") || "[]");
+  }
+
+  if (currentWorkspaceId && !allWorkspaces.some(w => w.workspace_id === currentWorkspaceId)) {
+    currentWorkspaceId = allWorkspaces.length > 0 ? allWorkspaces[0].workspace_id : null;
+    if (currentWorkspaceId) {
+      localStorage.setItem("sagar_mitra_active_workspace_id", currentWorkspaceId);
+    } else {
+      localStorage.removeItem("sagar_mitra_active_workspace_id");
+    }
+  }
+
+  renderWorkspacesList();
+  updateActiveWorkspaceLabel();
+  await loadSavedSessions();
+}
+
+function renderWorkspacesList() {
+  const container = document.getElementById("researchWorkspacesList");
+  if (!container) return;
+  if (!allWorkspaces || !allWorkspaces.length) {
+    container.innerHTML = "";
+    return;
+  }
+  container.innerHTML = allWorkspaces.map(ws => `
+    <a class="sidebar-item ${ws.workspace_id === currentWorkspaceId ? 'active' : ''}" 
+       data-workspace-id="${escapeHtml(ws.workspace_id)}" 
+       onclick="selectWorkspace('${escapeHtml(ws.workspace_id)}')">
+      <svg viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      <span title="${escapeHtml(ws.name)}">${escapeHtml(ws.name)}</span>
+    </a>
+  `).join("");
+}
+
+async function selectWorkspace(workspaceId) {
+  currentWorkspaceId = workspaceId;
+  localStorage.setItem("sagar_mitra_active_workspace_id", workspaceId);
+  renderWorkspacesList();
+  updateActiveWorkspaceLabel();
+
+  // Reset active session for clean view in this workspace
+  currentSessionId = "session_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+  document.getElementById("messagesList").innerHTML = "";
+  document.getElementById("greetingSection").style.display = "flex";
+  document.getElementById("composerInput").value = "";
+  document.getElementById("composerInput").style.height = "auto";
+  document.getElementById("sendBtn").classList.remove("active");
+
+  await loadSavedSessions();
+}
+
+function updateActiveWorkspaceLabel() {
+  const label = document.getElementById("activeWorkspaceLabel");
+  if (!label) return;
+  if (currentWorkspaceId) {
+    const ws = allWorkspaces.find(w => w.workspace_id === currentWorkspaceId);
+    label.textContent = (ws ? ws.name : "Research Workspace") + " · Active Workspace";
+  } else {
+    label.textContent = "General Exploration · Live Stream";
+  }
+}
+
+async function loadSavedSessions() {
+  try {
+    let url = "/api/sessions";
+    if (currentWorkspaceId) {
+      url += `?workspace_id=${encodeURIComponent(currentWorkspaceId)}`;
+    } else {
+      url += `?workspace_id=default`;
+    }
+    const resp = await fetch(url);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    currentSessionsData = data.sessions || [];
+    renderSavedSessionsList(currentSessionsData);
+  } catch (err) {}
+}
+
+function renderSavedSessionsList(sessions) {
+  const container = document.getElementById("savedSessionsList");
+  if (!container) return;
+  if (!sessions || !sessions.length) {
+    container.innerHTML = "";
+    return;
+  }
+  container.innerHTML = sessions.map(s => `
+    <a class="sidebar-item ${s.session_id === currentSessionId ? 'active' : ''}" 
+       data-session-id="${escapeHtml(s.session_id)}" 
+       onclick="switchSession('${escapeHtml(s.session_id)}')">
+      <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
+      <button class="session-delete-btn" title="Delete Dive" onclick="deleteSessionItem('${escapeHtml(s.session_id)}', event)">×</button>
+    </a>
+  `).join("");
+}
+
+async function switchSession(sessionId) {
+  currentSessionId = sessionId;
+  greetingSection.style.display = "none";
+  await loadSessionTranscript(sessionId, true);
+  renderSavedSessionsList(currentSessionsData);
+}
+
+// Search input real-time filtering for saved dives & chats
+const searchInput = document.getElementById("searchInput");
+if (searchInput) {
+  searchInput.addEventListener("input", (e) => {
+    const query = (e.target.value || "").trim().toLowerCase();
+    if (!query) {
+      renderSavedSessionsList(currentSessionsData);
+      return;
+    }
+    const filtered = currentSessionsData.filter(s => (s.title || "").toLowerCase().includes(query));
+    if (!filtered.length) {
+      const container = document.getElementById("savedSessionsList");
+      if (container) {
+        container.innerHTML = `<div style="font-size:11.5px;color:var(--text-muted);padding:4px 10px 8px;">No matching chats</div>`;
+      }
+      return;
+    }
+    renderSavedSessionsList(filtered);
+  });
+}
+
+async function loadSessionTranscript(sessionId, scrollToBottom = true) {
+  try {
+    const resp = await fetch(`/api/sessions/${sessionId}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const messages = data.messages || [];
+    renderSessionMessages(messages);
+    if (scrollToBottom && scrollArea) {
+      scrollArea.scrollTop = scrollArea.scrollHeight;
+    }
+  } catch (err) {}
+}
+
+async function deleteSessionItem(sessionId, event) {
+  if (event) event.stopPropagation();
+  try {
+    await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+    if (currentSessionId === sessionId) {
+      currentSessionId = "session_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+      messagesList.innerHTML = "";
+      greetingSection.style.display = "flex";
+    }
+    loadSavedSessions();
+  } catch (err) {}
+}
+
+function renderSessionMessages(messages) {
+  messagesList.innerHTML = "";
+  if (!messages || !messages.length) {
+    greetingSection.style.display = "flex";
+    return;
+  }
+  greetingSection.style.display = "none";
+  for (const msg of messages) {
+    if (msg.role === "user") {
+      const userRow = document.createElement("div");
+      userRow.className = "message-row user";
+      userRow.innerHTML = `
+        <div class="user-bubble">
+          <span class="user-text-content">${escapeHtml(msg.text)}</span>
+          <button class="prompt-edit-btn" onclick="editUserPrompt(this)" title="Edit Prompt">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
+      `;
+      messagesList.appendChild(userRow);
+    } else {
+      const aiRow = document.createElement("div");
+      aiRow.className = "message-row ai";
+      const isScheduled = msg.meta && msg.meta.scheduled;
+      const scheduledBadge = isScheduled ? `<div style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;background:rgba(56,189,248,0.15);color:var(--blue);font-size:11px;font-weight:700;margin-bottom:8px;">⏰ Scheduled Task Result</div><br>` : "";
+
+      let formattedText = escapeHtml(msg.text)
+        .replace(/\n\n/g, "<br><br>")
+        .replace(/\n/g, "<br>")
+        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.*?)\*/g, "<em>$1</em>");
+
+      aiRow.innerHTML = `
+        <div class="ai-avatar">
+          <svg viewBox="0 0 24 24"><path d="M2 12c3.8-5 10.5-6 15.5-2 1.5 1.2 3 2 4.5 2-1.5 0-3 .8-4.5 2-5 4-11.7 3-15.5-2z"/><circle cx="8" cy="11" r="1" fill="currentColor"/></svg>
+        </div>
+        <div class="ai-body">
+          ${scheduledBadge}
+          <div class="ai-text" style="font-size:14px;line-height:1.65;color:var(--ink);">${formattedText}</div>
+          <button class="tts-speaker-btn" onclick="speakAdvisoryText(this)" title="Read Advisory Aloud">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            <span>Read Aloud</span>
+          </button>
+        </div>
+      `;
+      messagesList.appendChild(aiRow);
+    }
+  }
+}
+
+// Queued Prompts Bar Handler
+function renderQueuedBar() {
+  const bar = document.getElementById("composerQueuedBar");
+  if (!bar) return;
+  if (!promptQueue.length) {
+    bar.style.display = "none";
+    bar.innerHTML = "";
+    return;
+  }
+  bar.style.display = "flex";
+  bar.innerHTML = `
+    <span>⏳ Queued (${promptQueue.length}): "${escapeHtml(promptQueue[0].prompt.slice(0, 48))}${promptQueue[0].prompt.length > 48 ? '...' : ''}"</span>
+    <button type="button" class="queue-cancel-btn" title="Cancel Queue" onclick="cancelQueuedPrompt()">×</button>
+  `;
+}
+
+window.cancelQueuedPrompt = function() {
+  promptQueue = [];
+  renderQueuedBar();
+};
+
+function processNextQueuedPrompt() {
+  if (promptQueue.length > 0 && !isGenerating) {
+    const next = promptQueue.shift();
+    renderQueuedBar();
+    sendQuery(next.prompt);
+  }
+}
+
+// Scheduled Task Dispatcher
+async function dispatchScheduleCommand(rawText) {
+  greetingSection.style.display = "none";
+
+  const userRow = document.createElement("div");
+  userRow.className = "message-row user";
+  userRow.innerHTML = `
+    <div class="user-bubble">
+      <span class="user-text-content">${escapeHtml(rawText)}</span>
+    </div>
+  `;
+  messagesList.appendChild(userRow);
+  scrollArea.scrollTop = scrollArea.scrollHeight;
+
+  try {
+    const resp = await fetch("/api/schedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: rawText,
+        raw_command: rawText,
+        session_id: currentSessionId,
+        coordinates: [18.922, 72.833],
+        workspace_id: currentWorkspaceId || "default",
+        persona: currentRole
+      })
+    });
+    const data = await resp.json();
+    if (resp.ok && data.status === "success") {
+      const aiRow = document.createElement("div");
+      aiRow.className = "message-row ai";
+      aiRow.innerHTML = `
+        <div class="ai-avatar">
+          <svg viewBox="0 0 24 24"><path d="M2 12c3.8-5 10.5-6 15.5-2 1.5 1.2 3 2 4.5 2-1.5 0-3 .8-4.5 2-5 4-11.7 3-15.5-2z"/><circle cx="8" cy="11" r="1" fill="currentColor"/></svg>
+        </div>
+        <div class="ai-body">
+          <div class="scheduled-task-confirm-card">
+            <div class="confirm-header">⏰ Oceanographic Task Scheduled</div>
+            <div class="confirm-row"><strong>Target Query:</strong> ${escapeHtml(data.prompt)}</div>
+            <div class="confirm-row"><strong>Frequency:</strong> ${escapeHtml(data.display_desc)}</div>
+            <div class="confirm-row"><strong>Status:</strong> Active in background SQLite worker</div>
+            <div class="confirm-note">Sagar Mitra will execute this query autonomously and notify you with an in-app alert and audio chime when complete.</div>
+          </div>
+        </div>
+      `;
+      messagesList.appendChild(aiRow);
+      scrollArea.scrollTop = scrollArea.scrollHeight;
+    } else {
+      throw new Error(data.detail || "Scheduling failed");
+    }
+  } catch (err) {
+    const aiRow = document.createElement("div");
+    aiRow.className = "message-row ai";
+    aiRow.innerHTML = `
+      <div class="ai-avatar">
+        <svg viewBox="0 0 24 24"><path d="M2 12c3.8-5 10.5-6 15.5-2 1.5 1.2 3 2 4.5 2-1.5 0-3 .8-4.5 2-5 4-11.7 3-15.5-2z"/><circle cx="8" cy="11" r="1" fill="currentColor"/></svg>
+      </div>
+      <div class="ai-body">
+        <div style="color:#ef4444;font-size:13px;padding:8px 0;">⚠️ Unable to schedule task: ${escapeHtml(err.message)}</div>
+      </div>
+    `;
+    messagesList.appendChild(aiRow);
+  }
+}
+
+// Master Composer Submit Router (/queue, /schedule, or standard query)
+function handleComposerSubmit(rawText) {
+  const text = (rawText || "").trim();
+  if (!text) return;
+
+  if (text.toLowerCase().startsWith("/queue")) {
+    const promptToQueue = text.replace(/^\/queue\s*/i, "").trim();
+    if (!promptToQueue) {
+      alert("Please provide a prompt to queue, e.g.: /queue compute Somali Current jet velocity profile");
+      return;
+    }
+    composerInput.value = "";
+    composerInput.style.height = "auto";
+    sendBtn.classList.remove("active");
+
+    if (isGenerating) {
+      promptQueue.push({ prompt: promptToQueue });
+      renderQueuedBar();
+    } else {
+      sendQuery(promptToQueue);
+    }
+    return;
+  }
+
+  if (text.toLowerCase().startsWith("/schedule")) {
+    composerInput.value = "";
+    composerInput.style.height = "auto";
+    sendBtn.classList.remove("active");
+    dispatchScheduleCommand(text);
+    return;
+  }
+
+  sendQuery(text);
+}
+
 const sendBtn = document.getElementById("sendBtn");
 const messagesList = document.getElementById("messagesList");
 const greetingSection = document.getElementById("greetingSection");
 const scrollArea = document.getElementById("chatScrollArea");
+
+// Initialize Session & Workspace Persistence & Event Poller
+loadWorkspaces();
+startScheduleEventPoller();
 
 composerInput.addEventListener("input", () => {
   composerInput.style.height = "auto";
@@ -3264,14 +4191,14 @@ composerInput.addEventListener("keydown", e => {
   if(e.key === "Enter" && !e.shiftKey){
     e.preventDefault();
     if(composerInput.value.trim().length > 0){
-      sendQuery(composerInput.value.trim());
+      handleComposerSubmit(composerInput.value.trim());
     }
   }
 });
 
 sendBtn.addEventListener("click", () => {
   if(composerInput.value.trim().length > 0){
-    sendQuery(composerInput.value.trim());
+    handleComposerSubmit(composerInput.value.trim());
   }
 });
 
@@ -3498,36 +4425,36 @@ function renderSensitivityBars(probPct, shapValues, isLiveApi) {
   const salWidth = Math.min(100, Math.max(8, Math.abs(salVal) * 160));
 
   container.innerHTML = `
-    <div style="font:500 11px 'DM Sans',sans-serif;color:#cbd5e1;margin-top:6px;">
-      <div style="display:flex;justify-content:space-between;">
+    <div class="sim-shap-item">
+      <div class="sim-shap-label-row">
         <span>Chlorophyll-a Gradient Impact:</span>
-        <span style="color:#10b981;font-weight:700;">${chlShapStr} SHAP</span>
+        <span style="color:#059669;font-weight:700;">${chlShapStr} SHAP</span>
       </div>
-      <div class="shap-track" style="margin-top:2px;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;">
-        <div class="shap-fill" style="width:${chlWidth}%;height:100%;background:#10b981;border-radius:3px;transition:width 0.2s ease;"></div>
+      <div class="sim-shap-track">
+        <div class="sim-shap-fill" style="width:${chlWidth}%;background:#10b981;"></div>
       </div>
     </div>
-    <div style="font:500 11px 'DM Sans',sans-serif;color:#cbd5e1;margin-top:6px;">
-      <div style="display:flex;justify-content:space-between;">
+    <div class="sim-shap-item">
+      <div class="sim-shap-label-row">
         <span>SST Thermal Perturbation Impact:</span>
-        <span style="color:#f59e0b;font-weight:700;">${sstShapStr} SHAP</span>
+        <span style="color:#d97706;font-weight:700;">${sstShapStr} SHAP</span>
       </div>
-      <div class="shap-track" style="margin-top:2px;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;">
-        <div class="shap-fill" style="width:${sstWidth}%;height:100%;background:#f59e0b;border-radius:3px;transition:width 0.2s ease;"></div>
+      <div class="sim-shap-track">
+        <div class="sim-shap-fill" style="width:${sstWidth}%;background:#f59e0b;"></div>
       </div>
     </div>
-    <div style="font:500 11px 'DM Sans',sans-serif;color:#cbd5e1;margin-top:6px;">
-      <div style="display:flex;justify-content:space-between;">
+    <div class="sim-shap-item">
+      <div class="sim-shap-label-row">
         <span>Subsurface Salinity Shear Impact:</span>
-        <span style="color:#818cf8;font-weight:700;">${salShapStr} SHAP</span>
+        <span style="color:#6366f1;font-weight:700;">${salShapStr} SHAP</span>
       </div>
-      <div class="shap-track" style="margin-top:2px;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;">
-        <div class="shap-fill" style="width:${salWidth}%;height:100%;background:#818cf8;border-radius:3px;transition:width 0.2s ease;"></div>
+      <div class="sim-shap-track">
+        <div class="sim-shap-fill" style="width:${salWidth}%;background:#818cf8;"></div>
       </div>
     </div>
-    <div style="margin-top:8px;font:600 9px 'DM Mono',monospace;color:${isLiveApi ? '#38bdf8' : '#94a3b8'};display:flex;align-items:center;justify-content:space-between;">
-      <span>${isLiveApi ? '● LIVE TELEMETRY: /api/predict/sensitivity' : '○ SIMULATED PREVIEW MODE'}</span>
-      <span style="color:#a7f3d0;">PFZ SHAP MODEL</span>
+    <div class="sim-shap-footer">
+      <span style="color:${isLiveApi ? 'var(--blue-dark, #0284c7)' : 'inherit'};">${isLiveApi ? '● LIVE TELEMETRY: /api/predict/sensitivity' : '○ SIMULATED PREVIEW MODE'}</span>
+      <span class="sim-shap-badge">PFZ SHAP MODEL</span>
     </div>
   `;
 }
@@ -3799,6 +4726,21 @@ function buildStructuredAdvisoryCardHtml(data, userText) {
 // Send Query handler with persona awareness, multi-agent status tracker, backend API dispatch & auto split-map
 async function sendQuery(text){
   greetingSection.style.display = "none";
+  isGenerating = true;
+
+  // Capture any attached documents for this query
+  const docsToAnalyze = [...attachedDocuments];
+  attachedDocuments = [];
+  renderAttachedFilesChips();
+
+  let attachedDocsBadgeHtml = "";
+  if (docsToAnalyze.length > 0) {
+    attachedDocsBadgeHtml = `
+      <div class="user-attached-docs-badge">
+        ${docsToAnalyze.map(d => `<span class="user-attached-doc-tag">📄 ${escapeHtml(d.name)} (${escapeHtml(d.sizeStr)})</span>`).join("")}
+      </div>
+    `;
+  }
 
   // 1. Append User Message
   const userRow = document.createElement("div");
@@ -3806,6 +4748,7 @@ async function sendQuery(text){
   userRow.innerHTML = `
     <div class="user-bubble">
       <span class="user-text-content">${escapeHtml(text)}</span>
+      ${attachedDocsBadgeHtml}
       <button class="prompt-edit-btn" onclick="editUserPrompt(this)" title="Edit Prompt & Re-execute">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
       </button>
@@ -3827,6 +4770,10 @@ async function sendQuery(text){
     "• Step 4: Compliance Agent enforcing EEZ boundary & MPA sanctuary geofencing...",
     "• Step 5: Synthesizer Agent generating advisory card & SHAP attributions."
   ];
+
+  if (docsToAnalyze.length > 0) {
+    thinkingSteps.unshift(`• Document Parser: Ingesting & analyzing telemetry from ${docsToAnalyze.map(d=>d.name).join(", ")}...`);
+  }
 
   const aiRow = document.createElement("div");
   aiRow.className = "message-row ai";
@@ -3873,11 +4820,23 @@ async function sendQuery(text){
   // 3. Dispatch to Backend Orchestrator API (/api/orchestrate) with fallback
   let backendData = null;
   try {
+    let queryMessage = text;
+    if (docsToAnalyze.length > 0) {
+      const docSnippets = docsToAnalyze
+        .filter(d => d.textSnippet)
+        .map(d => `[Attached Document ${d.name}]:\n${d.textSnippet}`)
+        .join("\n\n");
+      if (docSnippets) {
+        queryMessage += "\n\n" + docSnippets;
+      }
+    }
+
     const payload = {
-      user_message: text,
+      user_message: queryMessage,
       coordinates: [18.922, 72.833],
-      session_id: "session_" + Date.now(),
-      onboarding_persona: currentRole
+      session_id: currentSessionId,
+      onboarding_persona: currentRole,
+      workspace_id: currentWorkspaceId || "default"
     };
 
     const apiUrls = ["/api/orchestrate", "http://127.0.0.1:8000/api/orchestrate", "/api/chat", "http://127.0.0.1:8000/api/chat"];
@@ -3935,12 +4894,32 @@ async function sendQuery(text){
     responseText = advisoryCardHtml + "<br><div style='font-size:14px;line-height:1.65;color:var(--ink);'>" + synthText + "</div>";
   }
 
+  // If documents were attached, add a document analysis synthesis block
+  if (docsToAnalyze.length > 0) {
+    const docNames = docsToAnalyze.map(d => escapeHtml(d.name)).join(", ");
+    const docAnalysisHtml = `
+      <div style="margin-top:14px;padding:12px 14px;border-radius:12px;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.25);">
+        <div style="display:flex;align-items:center;gap:6px;font:700 13px 'DM Sans',sans-serif;color:var(--blue-dark, #0284c7);margin-bottom:6px;">
+          <span>📑 Document Hydro-Analysis:</span>
+          <span>${docNames}</span>
+        </div>
+        <div style="font-size:12.5px;color:var(--ink);line-height:1.5;">
+          Cross-referenced records from <strong>${docNames}</strong> against active Indian Ocean hydrographic indices. Parameters and features extracted from the uploaded document have been integrated into this advisory.
+        </div>
+      </div>
+    `;
+    responseText += docAnalysisHtml;
+  }
+
   const target = aiRow.querySelector("#streamTarget");
   if (target) {
     target.innerHTML = responseText;
     if (target.id) target.removeAttribute("id");
   }
   scrollArea.scrollTop = scrollArea.scrollHeight;
+  isGenerating = false;
+  processNextQueuedPrompt();
+  loadSavedSessions();
 }
 
 // Feature 4: Prompt Edit Handler
@@ -3997,8 +4976,15 @@ function speakAdvisoryText(btn) {
     }
   }
 
-  const aiBody = btn.closest(".ai-body");
-  if (!aiBody) return;
+  let aiBody = btn.closest(".ai-body");
+  if (!aiBody) {
+    const aiRows = document.querySelectorAll("#messagesList .message-row.ai");
+    if (!aiRows.length) {
+      alert("No advisory messages in chat to read aloud yet.");
+      return;
+    }
+    aiBody = aiRows[aiRows.length - 1].querySelector(".ai-body") || aiRows[aiRows.length - 1];
+  }
   
   const aiTextEl = aiBody.querySelector(".ai-text") || aiBody;
   let textToSpeak = "";
