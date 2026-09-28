@@ -83,84 +83,91 @@
   // ------------------------------------------------------------
   let NEWS_DOMAINS = [
     { id: "all", label: "All Domains", emoji: "🌐" },
-    { id: "satellite", label: "Satellite Oceanography", emoji: "🛰️" },
-    { id: "ecology", label: "Marine Ecology & Corals", emoji: "🌊" },
-    { id: "ports", label: "Ports & Maritime Logistics", emoji: "⚓" },
-    { id: "fisheries", label: "Fisheries & Aquaculture", emoji: "🐟" },
-    { id: "weather", label: "Cyclones & Weather Alerts", emoji: "🌪️" },
-    { id: "deepsea", label: "Deep-Sea Exploration", emoji: "🔬" },
-    { id: "buoys", label: "Autonomous Buoys & ARGO", emoji: "🤖" },
-    { id: "energy", label: "Blue Economy & Energy", emoji: "⚡" }
+    { id: "climate", label: "Climate", emoji: "🌡️" },
+    { id: "marine-life", label: "Marine Life", emoji: "🐬" },
+    { id: "weather-hazards", label: "Weather Hazards", emoji: "🌪️" },
+    { id: "pollution", label: "Pollution", emoji: "🛢️" },
+    { id: "research", label: "Research", emoji: "🔬" }
   ];
 
   let FALLBACK_ARTICLES = [
     {
       id: 1,
-      domains: ["satellite", "ecology"],
-      domainLabel: "🛰️ Satellite Oceanography",
-      time: "2 hours ago",
-      title: "ISRO & INCOIS Deploy OceanSat-3 Thermal Radiometers to Track Indian Ocean Marine Heatwaves",
-      excerpt: "High-resolution thermal infrared bands are now transmitting sub-surface thermal gradients across the Bay of Bengal, providing 6-hour interval boundary current telemetry to coastal researchers.",
-      source: "INCOIS Remote Sensing Lab",
+      domains: ["climate", "research"],
+      domainLabel: "🌡️ Climate",
+      time: "Today · 11:20 AM",
+      title: "ISRO OceanSat-3 Thermal Sensors Track Rapid Marine Heatwave Build-Up in Central Arabian Sea",
+      excerpt: "Sub-surface thermal infrared radiometers transmitted anomalous water temperature profiles reaching +2.1°C above historical baseline, influencing regional monsoonal convection and thermocline depth.",
+      source: "ISRO Space Applications Centre",
       link: "#"
     },
     {
       id: 2,
-      domains: ["buoys", "deepsea"],
-      domainLabel: "🤖 ARGO Float Telemetry",
-      time: "3 hours ago",
-      title: "Central Arabian Sea ARGO Array Detects Salinity Intrusion at 1,200m Depth",
-      excerpt: "Profilers #290145 and #290148 recorded an anomalous pulse of high-salinity Persian Gulf outflow water, modulating sound velocity profiles and mesopelagic sonic layer acoustics.",
-      source: "Global ARGO Data Repository",
+      domains: ["research", "climate"],
+      domainLabel: "🔬 Research",
+      time: "2 days ago",
+      title: "Central Arabian Sea ARGO Buoy Array Detects Mesopelagic Salinity Outflow",
+      excerpt: "Profiling floats recorded a deep pulse of high-salinity Persian Gulf outflow water at 1,200m depth, altering sound velocity channels and subsurface acoustic propagation for oceanographic research.",
+      source: "Global ARGO Telemetry Repository",
       link: "#"
     },
     {
       id: 3,
-      domains: ["fisheries", "satellite"],
-      domainLabel: "🐟 Fisheries Intelligence",
-      time: "5 hours ago",
+      domains: ["marine-life", "research"],
+      domainLabel: "🐬 Marine Life",
+      time: "Today · 06:45 AM",
       title: "Real-Time Potential Fishing Zone (PFZ) Advisories Released for Konkan & Gujarat Fleets",
-      excerpt: "Composite chlorophyll and ocean temperature front analyses highlight massive pelagic fish aggregations off the continental shelf break, cutting fleet fuel consumption by an estimated 28%.",
-      source: "National Marine Fisheries Advisory",
+      excerpt: "Chlorophyll-a front imagery merged with sea surface temperature gradients identifies high-density pelagic tuna and sardine aggregation clusters along the continental shelf edge.",
+      source: "INCOIS Marine Fisheries Division",
       link: "#"
     },
     {
       id: 4,
-      domains: ["ecology", "buoys"],
-      domainLabel: "🌊 Marine Ecology",
-      time: "Yesterday",
-      title: "Lakshadweep Coral Bleaching Recovery Rate Increases 18% Following Deep Cold Upwelling",
-      excerpt: "Autonomous glider surveys at Kadmat and Kavaratti atolls indicate stabilized zooxanthellae density after southwest monsoon currents pumped cooler mesopelagic water onto shallow reef flats.",
-      source: "Marine Biodiversity Research Centre",
+      domains: ["marine-life", "climate"],
+      domainLabel: "🐬 Marine Life",
+      time: "Yesterday · 02:30 PM",
+      title: "Lakshadweep Coral Reef Atolls Show Rapid Resurgence Following Deep Cold Upwelling Surge",
+      excerpt: "Autonomous glider surveys at Kadmat and Kavaratti confirm an 18% increase in live coral coverage as southwest monsoon currents pump nutrient-dense cooler water onto shallow lagoon platforms.",
+      source: "Marine Biodiversity Research Institute",
       link: "#"
     },
     {
       id: 5,
-      domains: ["weather", "ports"],
-      domainLabel: "🌪️ Extreme Coastal Weather",
-      time: "Yesterday",
-      title: "Deep Depression Over South Andaman Sea Intensifying; Coastal Swell Surge Alert Active",
-      excerpt: "Wave rider buoys report significant wave heights climbing to 4.2 meters off Tamil Nadu and Andhra coasts. Automated safety dispatches have been transmitted to port authorities and regional rescue cells.",
-      source: "Regional Meteorological Centre",
+      domains: ["weather-hazards"],
+      domainLabel: "🌪️ Weather Hazards",
+      time: "Today · 08:00 AM",
+      title: "Deep Depression Over South Andaman Sea Intensifying; Coastal Swell Surge Warning Issued",
+      excerpt: "Wave rider buoys report wave heights exceeding 4.2 meters and gale force winds off Andaman and Tamil Nadu coasts. Automated high-risk navigation advisories have been broadcast to all fishing harbors.",
+      source: "India Meteorological Department (IMD)",
       link: "#"
     },
     {
       id: 6,
-      domains: ["ports", "energy"],
-      domainLabel: "⚓ Maritime Ports & Logistics",
-      time: "2 days ago",
-      title: "JNPT Mumbai Inaugurates AI-Optimized Green Shipping Corridor to Singapore",
-      excerpt: "Dynamic voyage planning integrating real-time ocean surface currents, bathymetric waypoints, and wind vectors is projected to reduce bunker fuel emissions by 14% on the Malacca Strait route.",
-      source: "International Maritime Organization",
+      domains: ["pollution", "weather-hazards"],
+      domainLabel: "🛢️ Pollution",
+      time: "Today · 09:30 AM",
+      title: "Coast Guard Neutralizes Offshore Chemical & Oil Slick Near Mumbai Harbor Approach",
+      excerpt: "Rapid deployment of containment booms by specialized pollution response vessels successfully isolated a localized chemical contaminant spill 18 nautical miles off JNPT, safeguarding sensitive estuarine nursery zones.",
+      source: "Indian Coast Guard / INCOIS",
       link: "#"
     },
     {
       id: 7,
-      domains: ["deepsea", "buoys"],
-      domainLabel: "🔬 Deep-Sea Exploration",
+      domains: ["pollution", "marine-life"],
+      domainLabel: "🛢️ Pollution",
+      time: "Yesterday · 04:15 PM",
+      title: "Bay of Bengal Microplastic & Marine Debris Survey Maps Coastal River Plume Runoff",
+      excerpt: "Extensive surface trawl sampling across the Sundarbans delta and Mahanadi plumes reveals microplastic concentration gradients, leading to targeted port cleanup and estuarine containment protocols.",
+      source: "Marine Environmental Pollution Monitoring Cell",
+      link: "#"
+    },
+    {
+      id: 8,
+      domains: ["research"],
+      domainLabel: "🔬 Research",
       time: "3 days ago",
-      title: "Samudrayaan Mission: Manned Submersible 'Matsya 6000' Completes 6,000m Pressure Validation",
-      excerpt: "Engineered to explore polymetallic nodules and hydrothermal vent ecosystems in the Central Indian Ocean Basin, the titanium pressure hull successfully cleared rigorous hydrostatic chamber qualification.",
+      title: "Samudrayaan Mission: Manned Submersible 'Matsya 6000' Clears 6,000m Pressure Validation",
+      excerpt: "Designed to investigate deep abyssal trenches, polymetallic nodules, and hydrothermal vents in the Central Indian Ocean Basin, the titanium sphere cleared rigorous hydrostatic testing.",
       source: "National Institute of Ocean Technology",
       link: "#"
     }
@@ -174,21 +181,42 @@
     if (Array.isArray(savedTopics) && savedTopics.length > 0) {
       selectedDomains.clear();
       const topicMap = {
-        "Satellite & Remote Sensing": "satellite",
-        "Marine Ecology & Corals": "ecology",
-        "Ports, Harbors & Shipping": "ports",
-        "Pelagic Fisheries & PFZ": "fisheries",
-        "Cyclone & Meteorology": "weather",
-        "Deep-Sea Sonar & Trenches": "deepsea",
-        "ARGO Telemetry & Ocean Buoys": "buoys",
-        "Offshore Renewable Energy": "energy"
+        "Satellite & Remote Sensing": "research",
+        "Marine Ecology & Corals": "marine-life",
+        "Ports, Harbors & Shipping": "weather-hazards",
+        "Pelagic Fisheries & PFZ": "marine-life",
+        "Cyclone & Meteorology": "weather-hazards",
+        "Deep-Sea Sonar & Trenches": "research",
+        "ARGO Telemetry & Ocean Buoys": "research",
+        "Offshore Renewable Energy": "climate",
+        "climate": "climate",
+        "marine-life": "marine-life",
+        "weather-hazards": "weather-hazards",
+        "pollution": "pollution",
+        "research": "research",
+        "satellite": "research",
+        "ecology": "marine-life",
+        "ports": "weather-hazards",
+        "fisheries": "marine-life",
+        "weather": "weather-hazards",
+        "deepsea": "research",
+        "buoys": "research",
+        "energy": "climate"
       };
       savedTopics.forEach(t => {
         if (topicMap[t]) selectedDomains.add(topicMap[t]);
       });
-      if (selectedDomains.size === 0) selectedDomains.add("all");
+      // Safety: always ensure selectedDomains has at least one valid domain or 'all'
+      const validIds = new Set(NEWS_DOMAINS.map(nd => nd.id));
+      const hasValid = [...selectedDomains].some(id => validIds.has(id));
+      if (!hasValid || selectedDomains.size === 0) {
+        selectedDomains.clear();
+        selectedDomains.add("all");
+      }
     }
-  } catch(e) {}
+  } catch(e) {
+    selectedDomains = new Set(["all"]);
+  }
 
   // ------------------------------------------------------------
   // 3. TOAST NOTIFICATION
@@ -694,8 +722,20 @@
         if (Array.isArray(dData.domains) && dData.domains.length > 0) {
           const liveDomains = [{ id: "all", label: "All Domains", emoji: "🌐" }];
           const emojiMap = {
-            "satellite": "🛰️", "ecology": "🌊", "ports": "⚓", "fisheries": "🐟",
-            "weather": "🌪️", "deepsea": "🔬", "buoys": "🤖", "energy": "⚡", "ocean": "🌊"
+            "climate": "🌡️",
+            "marinelife": "🐬",
+            "weatherhazards": "🌪️",
+            "pollution": "🛢️",
+            "research": "🔬",
+            "satellite": "🛰️",
+            "ecology": "🌿",
+            "ports": "⚓",
+            "fisheries": "🐟",
+            "weather": "🌪️",
+            "deepsea": "🗻",
+            "buoys": "🤖",
+            "energy": "⚡",
+            "ocean": "🌊"
           };
           dData.domains.forEach(d => {
             const key = d.toLowerCase().replace(/[^a-z]/g, "");
@@ -706,6 +746,14 @@
             });
           });
           NEWS_DOMAINS = liveDomains;
+
+          // Validate that selectedDomains has valid IDs; if not, reset to 'all'
+          const validIds = new Set(NEWS_DOMAINS.map(nd => nd.id));
+          const hasValid = [...selectedDomains].some(id => validIds.has(id));
+          if (!hasValid) {
+            selectedDomains.clear();
+            selectedDomains.add("all");
+          }
           renderDomainChips();
         }
       }
@@ -715,16 +763,48 @@
       if (aRes.ok) {
         const aData = await aRes.json();
         if (Array.isArray(aData.articles) && aData.articles.length > 0) {
-          currentNewsArticles = aData.articles.map((art, idx) => ({
-            id: idx + 1,
-            domains: art.domain ? [art.domain.toLowerCase()] : ["ocean"],
-            domainLabel: art.domain ? `🌊 ${art.domain}` : "🌐 Ocean Intelligence",
-            time: art.published ? new Date(art.published).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Recently updated",
-            title: art.title || "Marine Observation Bulletin",
-            excerpt: art.summary || art.description || "Live oceanographic dispatch from Indian Ocean coastal sensors.",
-            source: art.source || "INCOIS / Sagar Mitra Feed",
-            link: art.link || "#"
-          }));
+          const domainLabelMap = {
+            "climate": "🌡️ Climate",
+            "marine-life": "🐬 Marine Life",
+            "weather-hazards": "🌪️ Weather Hazards",
+            "pollution": "🛢️ Pollution",
+            "research": "🔬 Research"
+          };
+
+          currentNewsArticles = aData.articles.map((art, idx) => {
+            let articleDomains = [];
+            if (Array.isArray(art.domains) && art.domains.length > 0) {
+              articleDomains = art.domains.map(d => d.toLowerCase().trim());
+            } else if (art.domain) {
+              articleDomains = [art.domain.toLowerCase().trim()];
+            } else {
+              articleDomains = ["research"];
+            }
+
+            const primaryDomain = articleDomains[0] || "research";
+            const dLabel = domainLabelMap[primaryDomain] || (art.domain ? `🌊 ${art.domain}` : "🌐 Ocean Intelligence");
+
+            let timeStr = "Recently updated";
+            if (art.published) {
+              const d = new Date(art.published);
+              if (!isNaN(d.getTime())) {
+                timeStr = d.toLocaleDateString([], { month: "short", day: "numeric" }) + " · " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+              } else {
+                timeStr = art.published;
+              }
+            }
+
+            return {
+              id: idx + 1,
+              domains: articleDomains,
+              domainLabel: dLabel,
+              time: timeStr,
+              title: art.title || "Marine Observation Bulletin",
+              excerpt: art.summary || art.description || "Live oceanographic dispatch from Indian Ocean coastal sensors.",
+              source: art.source || "INCOIS / ScienceDaily Feed",
+              link: art.link || "#"
+            };
+          });
           renderNewsArticles();
         }
       }

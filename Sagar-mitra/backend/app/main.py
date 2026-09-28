@@ -642,7 +642,7 @@ def get_hazard_mesh_endpoint(ttl_hours: float = 24.0, limit: int = 1000):
 
 @app.get("/api/news")
 def get_news(domain: str | None = None):
-    return {"articles": get_oceanography_news(limit=5, domain=domain)}
+    return {"articles": get_oceanography_news(limit=40, domain=domain)}
 
 @app.get("/api/news/domains")
 def get_news_domains():
