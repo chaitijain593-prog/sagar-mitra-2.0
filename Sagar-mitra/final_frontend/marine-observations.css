@@ -1,0 +1,29 @@
+.marine-live-controls{display:grid;gap:8px;margin:10px 0 14px;padding:10px;border:1px solid rgba(57,189,242,.22);border-radius:10px;background:rgba(12,24,34,.54)}
+.obis-hotspot-box[hidden]{display:none!important}
+.marine-live-controls label{display:grid;gap:4px;color:#b9c8d6;font:600 10px 'DM Mono',monospace}
+.marine-live-controls input,.marine-live-controls select{width:100%;min-height:32px;padding:6px 8px;border:1px solid rgba(148,163,184,.35);border-radius:7px;background:#102331;color:#f1f5f9;font:500 11px 'DM Sans',sans-serif}
+.marine-live-dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.marine-live-toggle{display:flex!important;grid-template-columns:auto 1fr;align-items:center;gap:7px!important;font:500 11px 'DM Sans',sans-serif!important}
+.marine-live-toggle input{width:14px;min-height:14px;margin:0;accent-color:#39bdf2}
+.marine-live-toggle input:disabled{opacity:.45;cursor:not-allowed}
+.marine-path-hint{padding:6px 8px;border-left:2px solid #22d3ee;background:rgba(34,211,238,.07);color:#b9c8d6;font:500 9px/1.4 'DM Sans',sans-serif}
+.marine-live-actions{display:flex;gap:8px}
+.marine-live-actions button{flex:1;min-height:32px;border:0;border-radius:7px;background:#0da9df;color:#061827;font:700 11px 'DM Sans',sans-serif;cursor:pointer}
+.marine-live-actions button:last-child{background:rgba(148,163,184,.18);color:#e2e8f0}
+.marine-live-status{min-height:15px;color:#b9c8d6;font:500 10px/1.4 'DM Sans',sans-serif}
+.marine-depth-legend{display:grid;gap:5px;color:#b9c8d6;font:500 9px 'DM Sans',sans-serif}
+.marine-depth-gradient{height:8px;border-radius:6px;background:linear-gradient(90deg,#87cefa,#1e88e5,#001b44)}
+.marine-depth-legend-row{display:flex;justify-content:space-between}
+.marine-path-key{display:flex;flex-wrap:wrap;gap:5px 10px;color:#dbeafe;font:500 9px 'DM Sans',sans-serif}
+.marine-path-key span{display:inline-flex;align-items:center;gap:4px}
+.marine-path-key i{width:10px;height:3px;background:var(--path-color);border-radius:3px}
+.marine-live-observation-marker{width:13px;height:13px;border:2px solid #e0f2fe;border-radius:50%;box-shadow:0 0 6px currentColor}
+.marine-live-observation-marker.depth-surface{box-shadow:none}
+.marine-live-observation-marker.depth-deep_sea{box-shadow:0 0 8px #22d3ee,0 0 16px #22d3ee88;animation:marineDeepGlow 2s ease-in-out infinite alternate}
+@keyframes marineDeepGlow{to{filter:brightness(1.45);box-shadow:0 0 12px #22d3ee,0 0 22px #22d3eeaa}}
+.marine-migration-path{stroke-dasharray:9 7;animation:marinePathFlow 1.4s linear infinite}
+@keyframes marinePathFlow{to{stroke-dashoffset:-32}}
+.marine-observation-popup{min-width:180px;color:#14212b;font:500 11px/1.45 'DM Sans',sans-serif}
+.marine-observation-popup strong{font-size:12px}
+.marine-observation-popup a{display:inline-block;margin-top:5px;color:#087eaf}
+.marine-live-error{color:#fca5a5}

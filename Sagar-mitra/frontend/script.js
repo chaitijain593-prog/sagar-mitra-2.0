@@ -2249,6 +2249,9 @@ let marineObservationStatus = "";
 let marineTrackInfo = { available: false };
 const marinePathSpeciesColors = new Map();
 let marinePathGradientUpdateScheduled = false;
+let marineIsolatedPathSpecies = null;
+let marineHoveredPathSpecies = null;
+const marinePathSpeciesLayers = new Map();
 let marineFilterContainer = null;
 let marineFilterDebounceTimer = null;
 let marineMarkerRenderGeneration = 0;
@@ -2713,15 +2716,38 @@ function isMigratoryMarineTaxon(speciesName) {
 }
 
 function speciesPathColor(speciesName) {
-  const name = String(speciesName || "Unknown species").trim().toLocaleLowerCase();
-  if (marinePathSpeciesColors.has(name)) return marinePathSpeciesColors.get(name);
-  const colors = ["#22d3ee", "#f472b6", "#a3e635", "#fb923c", "#c084fc", "#f87171", "#60a5fa", "#facc15"];
-  // Stable hashing gives a species the same color after filters and redraws.
-  let hash = 2166136261;
-  for (const character of name) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-  const color = colors[(hash >>> 0) % colors.length];
-  marinePathSpeciesColors.set(name, color);
-  return color;
+  const key = String(speciesName || "Unknown species").trim().toLocaleLowerCase();
+  return marinePathSpeciesColors.get(key) || "#4b75e6";
+}
+
+function assignMarineSpeciesPathColors(speciesNames) {
+  // Tableau-inspired categorical colors, ordered around the wheel with at
+  // least 30 degrees between hues so neighboring taxon names stay distinct.
+  const palette = ["#d94141", "#dfb020", "#739933", "#2b9952", "#1aa6a6", "#4b75e6", "#995cd6", "#d941a6"];
+  marinePathSpeciesColors.clear();
+  [...new Set(speciesNames.map((name) => String(name || "Unknown species").trim()))]
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+    .forEach((name, index) => marinePathSpeciesColors.set(name.toLocaleLowerCase(), palette[index % palette.length]));
+}
+
+function applyMarinePathFocus() {
+  const focusKey = marineHoveredPathSpecies || marineIsolatedPathSpecies;
+  for (const [speciesKey, visuals] of marinePathSpeciesLayers) {
+    const isFocused = !focusKey || speciesKey === focusKey;
+    for (const visual of visuals) {
+      visual.layer.setStyle({
+        opacity: isFocused ? visual.opacity : 0.12,
+        fillOpacity: isFocused ? visual.fillOpacity : 0.12,
+        weight: visual.weight + (marineHoveredPathSpecies === speciesKey ? 2 : 0),
+      });
+      const element = visual.layer.getElement?.();
+      const gradientId = element?.getAttribute("data-gradient-id");
+      if (gradientId) {
+        setPathGradient({ getElement: () => element }, gradientId,
+          element.getAttribute("data-muted-color"), element.getAttribute("data-vivid-color"));
+      }
+    }
+  }
 }
 
 function mixPathColor(color, neutral = "#94a3b8", neutralWeight = 0.72) {
@@ -2743,6 +2769,8 @@ function greatCircleArc(start, end, steps = 16) {
   const b = vector(end);
   const dot = Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]));
   const angle = Math.acos(dot);
+  const arcHeightMultiplier = 0.08;
+  const maxArcBowDegrees = 0.12;
   let longitudeEnd = end.lng;
   while (longitudeEnd - start.lng > 180) longitudeEnd -= 360;
   while (longitudeEnd - start.lng < -180) longitudeEnd += 360;
@@ -2764,8 +2792,18 @@ function greatCircleArc(start, end, steps = 16) {
       const scaleB = Math.sin(fraction * angle) / Math.sin(angle);
       xyz = a.map((value, axis) => value * scaleA + b[axis] * scaleB);
     }
-    const latitude = degrees(Math.atan2(xyz[2], Math.hypot(xyz[0], xyz[1])));
+    const sphericalLatitude = degrees(Math.atan2(xyz[2], Math.hypot(xyz[0], xyz[1])));
     let longitude = degrees(Math.atan2(xyz[1], xyz[0]));
+    while (longitude - start.lng > 180) longitude -= 360;
+    while (longitude - start.lng < -180) longitude += 360;
+    const straightLatitude = start.lat + (end.lat - start.lat) * fraction;
+    const straightLongitude = start.lng + (longitudeEnd - start.lng) * fraction;
+    const latitudeOffset = sphericalLatitude - straightLatitude;
+    const longitudeOffset = (longitude - straightLongitude) * Math.cos(radians(straightLatitude));
+    const rawBow = Math.hypot(latitudeOffset, longitudeOffset);
+    const bowScale = rawBow ? Math.min(rawBow * arcHeightMultiplier, maxArcBowDegrees) / rawBow : 0;
+    const latitude = straightLatitude + latitudeOffset * bowScale;
+    longitude = straightLongitude + (longitude - straightLongitude) * bowScale;
     if (points.length) {
       while (longitude - points[points.length - 1].lng > 180) longitude -= 360;
       while (longitude - points[points.length - 1].lng < -180) longitude += 360;
@@ -2836,12 +2874,32 @@ function updateMarinePathLegend(entries) {
     return;
   }
   legend.hidden = false;
+  const clearIsolation = document.createElement("button");
+  clearIsolation.type = "button";
+  clearIsolation.className = "marine-path-isolation-clear";
+  clearIsolation.textContent = "× Show all";
+  clearIsolation.hidden = !marineIsolatedPathSpecies;
+  clearIsolation.addEventListener("click", () => {
+    marineIsolatedPathSpecies = null;
+    updateMarinePathLegend(entries);
+    applyMarinePathFocus();
+  });
+  legend.appendChild(clearIsolation);
   for (const entry of entries) {
-    const item = document.createElement("span");
+    const key = String(entry.name || "Unknown species").trim().toLocaleLowerCase();
+    const item = document.createElement("button");
+    item.type = "button";
     item.className = "marine-path-legend-item";
+    item.setAttribute("aria-pressed", String(marineIsolatedPathSpecies === key));
+    item.title = marineIsolatedPathSpecies === key ? "Show all species paths" : `Isolate ${entry.name}`;
     const density = entry.count >= 20 ? "dense" : entry.count >= 8 ? "medium" : "sparse";
     const dashStyle = density === "dense" ? "solid" : density === "medium" ? "dashed" : "dotted";
     item.innerHTML = `<i style="--path-color:${entry.color};--path-style:${dashStyle}"></i>${escapeHtml(entry.name)} <small>${entry.count} records · ${density}</small>`;
+    item.addEventListener("click", () => {
+      marineIsolatedPathSpecies = marineIsolatedPathSpecies === key ? null : key;
+      updateMarinePathLegend(entries);
+      applyMarinePathFocus();
+    });
     legend.appendChild(item);
   }
 }
@@ -2856,7 +2914,7 @@ function renderMarineObservationLayer() {
     && Boolean(document.querySelector("#marine-species-filter")?.value.trim());
   const pathsBySpecies = new Map();
   const pathLegendEntries = [];
-  const pathVisuals = [];
+  marinePathSpeciesLayers.clear();
   const wantedMarkerKeys = new Set();
   const activeBounds = marineSelectedBounds;
   let depthBandMatchCount = 0;
@@ -2947,6 +3005,10 @@ function renderMarineObservationLayer() {
   }
   marineDepthBandMatchCount = depthBandMatchCount;
 
+  assignMarineSpeciesPathColors([...pathsBySpecies.values()].map(({ name }) => name));
+  if (marineIsolatedPathSpecies && !pathsBySpecies.has(marineIsolatedPathSpecies)) {
+    marineIsolatedPathSpecies = null;
+  }
   for (const { name, records } of pathsBySpecies.values()) {
     records.sort((a, b) => a.timestamp - b.timestamp);
     if (records.length < 2) continue;
@@ -3020,27 +3082,17 @@ function renderMarineObservationLayer() {
       .addTo(marineOverlay);
     pathParts.push(liveMarker);
 
+    const speciesKey = name.trim().toLocaleLowerCase();
+    const speciesVisuals = pathParts.map((layer) => ({
+      layer,
+      opacity: layer.options.opacity ?? 1,
+      fillOpacity: layer.options.fillOpacity ?? 0,
+      weight: layer.options.weight ?? 1,
+    })).filter((visual) => typeof visual.layer.setStyle === "function");
+    marinePathSpeciesLayers.set(speciesKey, speciesVisuals);
     const setDimState = (active) => {
-      for (const visual of pathVisuals) {
-        const isOwnPath = pathParts.includes(visual.layer);
-        visual.layer.setStyle({
-          opacity: active ? (isOwnPath ? visual.opacity : 0.2) : visual.opacity,
-          fillOpacity: active ? (isOwnPath ? visual.fillOpacity : 0.08) : visual.fillOpacity,
-        });
-        const element = visual.layer.getElement?.();
-        const gradientIdForLayer = element?.getAttribute("data-gradient-id");
-        if (gradientIdForLayer) {
-          setPathGradient({ getElement: () => element }, gradientIdForLayer,
-            element.getAttribute("data-muted-color"), element.getAttribute("data-vivid-color"));
-        }
-      }
-      if (active) {
-        baseLine.setStyle({ weight: 6 });
-        flowLine.setStyle({ weight: 3 });
-      } else {
-        baseLine.setStyle({ weight: 4 });
-        flowLine.setStyle({ weight: 2 });
-      }
+      marineHoveredPathSpecies = active ? speciesKey : null;
+      applyMarinePathFocus();
       applyGradient();
     };
     for (const line of [baseLine, flowLine]) {
@@ -3052,12 +3104,6 @@ function renderMarineObservationLayer() {
       });
     }
     liveMarker.on("click", () => map.flyToBounds(bounds, { padding: [36, 36], maxZoom: 8, duration: 1, easeLinearity: 0.2 }));
-    pathParts.forEach((layer) => pathVisuals.push({
-      layer,
-      opacity: layer.options.opacity ?? 1,
-      fillOpacity: layer.options.fillOpacity ?? 0,
-    }));
-
     if (incomplete) {
       const middle = fullTrack[Math.floor(fullTrack.length / 2)];
       const badge = L.marker(middle, {
@@ -3075,6 +3121,7 @@ function renderMarineObservationLayer() {
     pathLegendEntries.push({ name, color: speciesColor, count: records.length });
   }
   updateMarinePathLegend(pathLegendEntries);
+  applyMarinePathFocus();
   scheduleMarinePathGradientUpdate();
   const filterStatus = marineFilterContainer?.querySelector(".marine-filter-status");
   if (filterStatus && (activeBounds || marineActiveDepthBand)) {

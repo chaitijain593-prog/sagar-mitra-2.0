@@ -680,7 +680,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   margin-top: 6px;
   cursor: pointer;
 }
-}
+i
 
 /* ============================================================
    MULTI-AGENT PIPELINE FLOWCHART TRACKER & STRUCTURED ADVISORY CARDS
@@ -751,6 +751,11 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   color: #34d399;
   border-color: #34d399;
   background: rgba(52, 211, 153, 0.15);
+}
+.agent-node.failed {
+  color: #fb7185;
+  border-color: #fb7185;
+  background: rgba(251, 113, 133, 0.12);
 }
 
 /* Translucent Connecting Lines with Flashing Scan Beam */
@@ -1317,6 +1322,15 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   cursor:pointer;
   transition:.2s;
 }
+.tool-btn:disabled{
+  cursor:not-allowed;
+  opacity:.55;
+}
+.tool-btn:disabled:hover{
+  background:var(--surface-card);
+  color:var(--text-muted);
+  border-color:var(--surface-border);
+}
 .tool-btn:hover{
   background:rgba(57,189,242,0.12);
   color:var(--blue-dark);
@@ -1691,7 +1705,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
             <div class="role-dropdown-item" data-role="primary_student">
               <span class="role-item-emoji">🐬</span>
               <div class="role-item-details">
-                <div class="role-item-title">Primary Grade Student</div>
+                <div class="role-item-title">Primary Grade / General Public</div>
                 <div class="role-item-caption">Creative, child-like & curious ocean buddy</div>
               </div>
               <span class="role-item-check">✓</span>
@@ -1715,7 +1729,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
             <div class="role-dropdown-item" data-role="coastal_community">
               <span class="role-item-emoji">⚓</span>
               <div class="role-item-details">
-                <div class="role-item-title">Coastal Community Resident</div>
+                <div class="role-item-title">Fisherman / Coastal Operator</div>
                 <div class="role-item-caption">Local swell, PFZ fishing zones & safety</div>
               </div>
               <span class="role-item-check">✓</span>
@@ -1723,7 +1737,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
             <div class="role-dropdown-item" data-role="others">
               <span class="role-item-emoji">🌐</span>
               <div class="role-item-details">
-                <div class="role-item-title">Others / General Explorer</div>
+                <div class="role-item-title">General Public / Explorer</div>
                 <div class="role-item-caption">Versatile Claude-inspired ocean assistant</div>
               </div>
               <span class="role-item-check">✓</span>
@@ -1875,7 +1889,12 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
             <!-- Attachment button -->
             <button class="tool-btn" id="attachBtn" title="Attach Bathymetry or NetCDF files">
               <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-              <span>Attach</span>
+              <span id="attachBtnLabel">Attach</span>
+            </button>
+            <input id="researchSourceFile" type="file" accept=".pdf,.txt,application/pdf,text/plain" hidden>
+            <button class="tool-btn" id="generateImageBtn" title="Generate an image from your prompt. Requires a Hugging Face token in the backend configuration." aria-label="Generate an image">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+              <span>Image</span>
             </button>
 
             <!-- Ocean Tools -->
@@ -2533,6 +2552,15 @@ const PERSONA_CONFIGS = {
 };
 
 let currentRole = localStorage.getItem("sagarMitraRole") || "researcher";
+// One browser conversation keeps one backend history when the user changes
+// persona. Persona affects response style, while session_id preserves context.
+const chatSessionStorageKey = "sagarMitraChatSessionId";
+let chatSessionId = localStorage.getItem(chatSessionStorageKey);
+if (!chatSessionId) {
+  chatSessionId = "session_" + (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`);
+  localStorage.setItem(chatSessionStorageKey, chatSessionId);
+}
+let uploadedResearchSources = [];
 let activeDepth = "deep"; // "surface" | "deep" | "abyss"
 const appContainer = document.getElementById("appContainer");
 const thinkingPill = document.getElementById("thinkingPill");
@@ -2617,6 +2645,14 @@ function applyPersona(roleId){
   if(searchNewNotebookBtn) searchNewNotebookBtn.style.display = cfg.showNotebooks ? "inline-flex" : "none";
   if(searchInput) searchInput.style.paddingRight = cfg.showNotebooks ? "98px" : "12px";
   if(researchSourcesBar) researchSourcesBar.style.display = cfg.showSources ? "flex" : "none";
+  const attachBtn = document.getElementById("attachBtn");
+  const attachLabel = document.getElementById("attachBtnLabel");
+  if(attachBtn){
+    attachBtn.style.display = currentRole === "researcher" ? "inline-flex" : "none";
+    attachBtn.title = "Add PDF or text sources to this research notebook";
+  }
+  if(attachLabel) attachLabel.textContent = currentRole === "researcher" ? "Add Sources" : "Attach";
+  loadResearchSources();
 
   // 6. Update Composer Placeholder
   if(composerInput) composerInput.placeholder = cfg.placeholder;
@@ -2840,6 +2876,23 @@ let researchNotebooks = [
   { id: "argo", title: "ARGO Array #2901542 Salinity.nb", active: false }
 ];
 
+function getActiveResearchWorkspace(){
+  const notebook = researchNotebooks.find(item => item.active);
+  if(currentRole === "researcher" && notebook) return `notebook:${notebook.id}`;
+  return `workspace:${document.querySelector(".sidebar-item[data-workspace].active")?.dataset.workspace || "arabian"}`;
+}
+
+async function loadResearchSources(){
+  if(currentRole !== "researcher") return;
+  try{
+    const response = await fetch(`http://127.0.0.1:8000/api/research-sources?workspace_id=${encodeURIComponent(getActiveResearchWorkspace())}`);
+    if(!response.ok) return;
+    const result = await response.json();
+    uploadedResearchSources = result.sources || [];
+    renderSourcesChips();
+  }catch(error){ console.warn("Could not load indexed research sources:", error.message); }
+}
+
 function renderNotebooks(){
   const list = document.getElementById("researchNotebooksList");
   if(!list) return;
@@ -2859,6 +2912,7 @@ function renderNotebooks(){
       const activeNb = researchNotebooks.find(n => n.id === id);
       if(activeNb){
         document.getElementById("activeWorkspaceLabel").textContent = activeNb.title.replace(".nb", "") + " · Active Notebook";
+        loadResearchSources();
       }
     });
   });
@@ -2875,6 +2929,7 @@ function closeNotebook(id, event){
     researchNotebooks[0].active = true;
   }
   renderNotebooks();
+  loadResearchSources();
 }
 
 // Notebook Modal
@@ -2903,6 +2958,7 @@ if(addNotebookForm){
     researchNotebooks.forEach(n => n.active = false);
     researchNotebooks.push({ id, title: cleanTitle, active: true });
     renderNotebooks();
+    loadResearchSources();
     document.getElementById("activeWorkspaceLabel").textContent = cleanTitle.replace(".nb", "") + " · Active Notebook";
     addNotebookModal.style.display = "none";
     addNotebookForm.reset();
@@ -2918,7 +2974,7 @@ let externalSources = [
 function renderSourcesChips(){
   const container = document.getElementById("sourcesChipsList");
   const countEl = document.getElementById("topSourcesCount");
-  if(countEl) countEl.textContent = externalSources.length;
+  if(countEl) countEl.textContent = externalSources.length + uploadedResearchSources.length;
   if(!container) return;
   container.innerHTML = externalSources.map(s => `
     <div class="source-chip" data-id="${s.id}">
@@ -2927,6 +2983,12 @@ function renderSourcesChips(){
       <span class="source-chip-doi">${escapeHtml(s.doi)}</span>
       <button class="source-chip-remove" title="Remove Source" onclick="removeSourceChip('${s.id}')">×</button>
     </div>
+  `).join("") + uploadedResearchSources.map(s => `
+    <div class="source-chip" data-id="${escapeHtml(s.id)}">
+      <span class="source-chip-icon">📄</span>
+      <span class="source-chip-title">${escapeHtml(s.filename)}</span>
+      <span class="source-chip-doi">${Number(s.chunk_count || 0)} indexed chunks</span>
+    </div>
   `).join("");
 }
 
@@ -2934,6 +2996,30 @@ window.removeSourceChip = function(id){
   externalSources = externalSources.filter(s => s.id !== id);
   renderSourcesChips();
 };
+
+const attachBtn = document.getElementById("attachBtn");
+const researchSourceFile = document.getElementById("researchSourceFile");
+if(attachBtn && researchSourceFile){
+  attachBtn.addEventListener("click", () => { if(currentRole === "researcher") researchSourceFile.click(); });
+  researchSourceFile.addEventListener("change", async () => {
+    const file = researchSourceFile.files?.[0];
+    if(!file) return;
+    const form = new FormData();
+    form.append("file", file);
+    form.append("workspace_id", getActiveResearchWorkspace());
+    attachBtn.disabled = true;
+    try{
+      const response = await fetch("http://127.0.0.1:8000/api/upload-source", {method:"POST", body:form});
+      const result = await response.json();
+      if(!response.ok) throw new Error(result.detail || "Upload failed.");
+      await loadResearchSources();
+      alert(`${file.name} indexed (${result.chunk_count} chunks) for this workspace.`);
+    }catch(error){
+      console.error("Research source upload error:", error.message);
+      alert(`Could not add source: ${error.message}`);
+    }finally{ attachBtn.disabled = false; researchSourceFile.value = ""; }
+  });
+}
 
 const addSourceBtn = document.getElementById("addSourceBtn");
 const addSourceModal = document.getElementById("addSourceModal");
@@ -3615,7 +3701,7 @@ function buildMultiAgentTrackerHtml() {
     <div class="multi-agent-pipeline-container">
       <div class="pipeline-header-lbl">
         <span>⚡ Multi-Agent Pipeline Status Tracker</span>
-        <span style="margin-left:auto;font-size:9px;background:rgba(56,189,248,0.18);padding:2px 7px;border-radius:4px;color:#38bdf8;">LIVE PIPELINE TELEMETRY</span>
+        <span class="pipeline-status-label" style="margin-left:auto;font-size:9px;background:rgba(56,189,248,0.18);padding:2px 7px;border-radius:4px;color:#38bdf8;">WAITING FOR BACKEND</span>
       </div>
       <div class="pipeline-flowchart">
         <div class="agent-node" id="nodePlanner">${plannerContent}</div>
@@ -3632,168 +3718,52 @@ function buildMultiAgentTrackerHtml() {
   `;
 }
 
-// Animate Multi-Agent Nodes sequentially
+// Keep the tracker honest: only mark stages complete after the backend replies.
 function animateMultiAgentTracker(containerEl) {
-  const nodePlanner = containerEl.querySelector("#nodePlanner");
-  const nodeFishing = containerEl.querySelector("#nodeFishing");
-  const nodeNavigation = containerEl.querySelector("#nodeNavigation");
-  const nodeCompliance = containerEl.querySelector("#nodeCompliance");
-  const nodeSynthesizer = containerEl.querySelector("#nodeSynthesizer");
+  containerEl.querySelectorAll(".agent-node, .pipeline-connector-line, .pipeline-arrow")
+    .forEach(node => node.classList.remove("active", "completed", "failed"));
+  containerEl.querySelector("#nodePlanner")?.classList.add("active");
+}
 
-  const arr1 = containerEl.querySelector("#arr1");
-  const arr2 = containerEl.querySelector("#arr2");
-  const arr3 = containerEl.querySelector("#arr3");
-  const arr4 = containerEl.querySelector("#arr4");
-
-  if (nodePlanner) nodePlanner.classList.add("active");
-
-  setTimeout(() => {
-    if (nodePlanner) { nodePlanner.classList.remove("active"); nodePlanner.classList.add("completed"); }
-    if (arr1) arr1.classList.add("active");
-    if (nodeFishing) nodeFishing.classList.add("active");
-  }, 280);
-
-  setTimeout(() => {
-    if (nodeFishing) { nodeFishing.classList.remove("active"); nodeFishing.classList.add("completed"); }
-    if (arr1) { arr1.classList.remove("active"); arr1.classList.add("completed"); }
-    if (arr2) arr2.classList.add("active");
-    if (nodeNavigation) nodeNavigation.classList.add("active");
-  }, 560);
-
-  setTimeout(() => {
-    if (nodeNavigation) { nodeNavigation.classList.remove("active"); nodeNavigation.classList.add("completed"); }
-    if (arr2) { arr2.classList.remove("active"); arr2.classList.add("completed"); }
-    if (arr3) arr3.classList.add("active");
-    if (nodeCompliance) nodeCompliance.classList.add("active");
-  }, 840);
-
-  setTimeout(() => {
-    if (nodeCompliance) { nodeCompliance.classList.remove("active"); nodeCompliance.classList.add("completed"); }
-    if (arr3) { arr3.classList.remove("active"); arr3.classList.add("completed"); }
-    if (arr4) arr4.classList.add("active");
-    if (nodeSynthesizer) nodeSynthesizer.classList.add("active");
-  }, 1120);
-
-  setTimeout(() => {
-    if (nodeSynthesizer) { nodeSynthesizer.classList.remove("active"); nodeSynthesizer.classList.add("completed"); }
-    if (arr4) { arr4.classList.remove("active"); arr4.classList.add("completed"); }
-  }, 1400);
+function finishMultiAgentTracker(containerEl, backendData) {
+  const status = containerEl.querySelector(".pipeline-status-label");
+  const nodes = {
+    planner: "#nodePlanner", fishing: "#nodeFishing", navigation: "#nodeNavigation",
+    compliance: "#nodeCompliance", synthesizer: "#nodeSynthesizer"
+  };
+  if (!backendData?.advisory) {
+    containerEl.querySelector("#nodePlanner")?.classList.remove("active");
+    containerEl.querySelector("#nodePlanner")?.classList.add("failed");
+    if (status) status.textContent = "REQUEST FAILED";
+    return;
+  }
+  containerEl.querySelector("#nodePlanner")?.classList.remove("active");
+  containerEl.querySelector("#nodePlanner")?.classList.add("completed");
+  const completed = new Set(["planner", "synthesizer", ...(backendData.agents_invoked || [])]);
+  for (const [agent, selector] of Object.entries(nodes)) {
+    if (completed.has(agent)) containerEl.querySelector(selector)?.classList.add("completed");
+  }
+  if (status) status.textContent = "RESPONSE READY";
 }
 
 // Build Structured Advisory Card with Status Badges & Mini SHAP Feature Importance Bar Charts
-function buildStructuredAdvisoryCardHtml(data, userText) {
-  let statusBadgeClass = "badge-safe";
-  let statusText = "SAFE";
-  
-  if (data && data.safety_and_routing && data.safety_and_routing.route_status) {
-    const s = String(data.safety_and_routing.route_status).toUpperCase();
-    if (s.includes("HAZARD")) { statusBadgeClass = "badge-hazardous"; statusText = "HAZARDOUS"; }
-    else if (s.includes("CAUTION") || s.includes("WARN")) { statusBadgeClass = "badge-caution"; statusText = "CAUTION"; }
-  }
-
-  const sst = data?.pfz_advisory?.sea_surface_temp_c ?? 28.4;
-  const chloro = data?.pfz_advisory?.chlorophyll_density_mg_m3 ?? 1.82;
-  const wave = data?.safety_and_routing?.wave_height_m ?? 1.6;
-  const pfzHeading = data?.pfz_advisory?.heading ?? "245° WSW";
-  const pfzDist = data?.pfz_advisory?.distance_nm ?? 14.2;
-  const conf = data?.ml_confidence_pct ?? 94.8;
-
-  const eez = data?.safety_and_routing?.eez_status ?? "Clear (100% within Indian EEZ Boundary)";
-  const mpa = data?.safety_and_routing?.mpa_alert ?? "Clear (0 MPA Sanctuary Geofence Violations)";
-
-  let shapItems = [
-    { feature: "Chlorophyll-a Density", pct: 42.5, color: "#10b981" },
-    { feature: "Sea Surface Temperature (SST)", pct: 28.4, color: "#38bdf8" },
-    { feature: "Thermal Front Convergence", pct: 16.8, color: "#f59e0b" },
-    { feature: "Subsurface Current Shear", pct: 12.3, color: "#818cf8" }
-  ];
-
-  if (data?.shap_attributions) {
-    if (Array.isArray(data.shap_attributions)) {
-      const colors = ["#10b981", "#38bdf8", "#f59e0b", "#818cf8", "#c084fc"];
-      shapItems = data.shap_attributions.map((s, idx) => ({
-        feature: s.feature || s.name || `Feature ${idx + 1}`,
-        pct: typeof s.importance_pct === 'number' ? s.importance_pct : (parseFloat(s.importance_pct) || 20),
-        color: colors[idx % colors.length]
-      }));
-    } else if (typeof data.shap_attributions === "object") {
-      const colors = ["#10b981", "#38bdf8", "#f59e0b", "#818cf8", "#c084fc"];
-      shapItems = Object.entries(data.shap_attributions).map(([feat, val], idx) => ({
-        feature: feat,
-        pct: typeof val === "number" ? val : parseFloat(val) || 20,
-        color: colors[idx % colors.length]
-      }));
-    }
-  }
-
-  const shapBarsHtml = shapItems.map(item => `
-    <div class="shap-row">
-      <div class="shap-label-row">
-        <span>${escapeHtml(item.feature)}</span>
-        <span class="shap-val" style="color:${item.color}">${item.pct.toFixed(1)}%</span>
-      </div>
-      <div class="shap-track">
-        <div class="shap-fill" style="width:${Math.min(100, Math.max(5, item.pct))}%;background:${item.color};"></div>
-      </div>
-    </div>
-  `).join("");
-
-  return `
-    <div class="structured-advisory-card">
-      <div class="advisory-card-header">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="advisory-badge ${statusBadgeClass}">STATUS: ${statusText}</span>
-          <span style="font:600 11px 'DM Mono',monospace;color:#38bdf8;">ML MODEL CONFIDENCE: ${conf.toFixed(1)}%</span>
-        </div>
-        <span class="advisory-time">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} IST</span>
-      </div>
-
-      <div class="advisory-title">🌊 Key Marine Telemetry & Operational Advisory</div>
-
-      <div class="advisory-grid">
-        <div class="adv-metric-box">
-          <span class="adv-lbl">🌊 Wave Height</span>
-          <span class="adv-val" style="color:#38bdf8">${wave} m</span>
-        </div>
-        <div class="adv-metric-box">
-          <span class="adv-lbl">🌡️ Sea Temp (SST)</span>
-          <span class="adv-val" style="color:#f59e0b">${sst}°C</span>
-        </div>
-        <div class="adv-metric-box">
-          <span class="adv-lbl">🐟 Chlorophyll-a</span>
-          <span class="adv-val" style="color:#34d399">${chloro} mg/m³</span>
-        </div>
-        <div class="adv-metric-box">
-          <span class="adv-lbl">🧭 PFZ Heading</span>
-          <span class="adv-val" style="color:#e0f2fe">${pfzHeading}</span>
-        </div>
-        <div class="adv-metric-box">
-          <span class="adv-lbl">📏 PFZ Distance</span>
-          <span class="adv-val" style="color:#e0f2fe">${pfzDist} NM</span>
-        </div>
-        <div class="adv-metric-box">
-          <span class="adv-lbl">⚓ Subsurface Current</span>
-          <span class="adv-val" style="color:#818cf8">0.8 m/s NW</span>
-        </div>
-      </div>
-
-      <div class="regulatory-note-box">
-        <div class="reg-note-header">⚖️ Regulatory Clearance & Marine Geofencing</div>
-        <div class="reg-note-body">
-          • <strong>EEZ Boundary Clearance:</strong> ${escapeHtml(eez)}<br>
-          • <strong>MPA Sanctuary Clearance:</strong> ${escapeHtml(mpa)}
-        </div>
-      </div>
-
-      <div class="shap-container">
-        <div class="shap-header">
-          <span>📊 Mini SHAP Feature Importance Attributions</span>
-          <span style="font-size:9px;color:#94a3b8;">XAI EXPLAINABILITY</span>
-        </div>
-        ${shapBarsHtml}
-      </div>
-    </div>
-  `;
+function buildStructuredAdvisoryCardHtml(data) {
+  if (!data) return "";
+  const status = data.hazard_status || data.marine_status || "Status unavailable";
+  const telemetry = data.telemetry || {};
+  const labels = {
+    sst_anomaly_pct: "SST anomaly",
+    chlorophyll_gradient_pct: "Chlorophyll signal",
+    salinity_anomaly_pct: "Salinity anomaly",
+    ml_confidence_pct: "Model confidence"
+  };
+  const entries = Object.entries(labels).filter(([key]) => telemetry[key] != null || (key === "ml_confidence_pct" && data[key] != null));
+  if (!entries.length && !data.route && !data.boundary) return "";
+  const valueFor = key => {
+    const value = key === "ml_confidence_pct" ? data[key] ?? telemetry[key] : telemetry[key];
+    return value == null ? "Unavailable" : `${escapeHtml(value)}${String(key).endsWith("_pct") ? "%" : ""}`;
+  };
+  return `<section class="structured-advisory-card"><div class="advisory-card-header"><span class="advisory-badge">STATUS: ${escapeHtml(status)}</span><span class="advisory-time">Live response</span></div>${entries.length ? `<div class="advisory-grid">${entries.map(([key,label]) => `<div class="adv-metric-box"><span class="adv-lbl">${label}</span><span class="adv-val">${valueFor(key)}</span></div>`).join("")}</div>` : ""}</section>`;
 }
 
 // Send Query handler with persona awareness, multi-agent status tracker, backend API dispatch & auto split-map
@@ -3870,69 +3840,62 @@ async function sendQuery(text){
   // Animate the multi-agent nodes dynamically
   animateMultiAgentTracker(aiRow);
 
-  // 3. Dispatch to Backend Orchestrator API (/api/orchestrate) with fallback
+  // Send every prompt to the model-backed backend. Do not substitute canned
+  // sample answers when the model is unavailable: that made unrelated
+  // questions appear to receive the same generated response.
   let backendData = null;
+  let backendError = "Backend did not return an answer.";
+  const responseTarget = aiRow.querySelector("#streamTarget");
+  if (responseTarget) responseTarget.textContent = "Preparing your persona-aware answer…";
+  const payload = {
+    user_message: text,
+    coordinates: [18.922, 72.833],
+    session_id: chatSessionId,
+    onboarding_persona: currentRole,
+    response_persona: currentRole === "coastal_community" ? "fisherman" : currentRole === "researcher" ? "researcher" : ["primary_student", "high_school"].includes(currentRole) ? "student" : "general",
+    workspace_id: getActiveResearchWorkspace()
+  };
+  const requestController = new AbortController();
+  const requestTimeout = setTimeout(() => requestController.abort(), 70000);
   try {
-    const payload = {
-      user_message: text,
-      coordinates: [18.922, 72.833],
-      session_id: "session_" + Date.now(),
-      onboarding_persona: currentRole
-    };
-
-    const apiUrls = ["/api/orchestrate", "http://127.0.0.1:8000/api/orchestrate", "/api/chat", "http://127.0.0.1:8000/api/chat"];
-    for (const url of apiUrls) {
+    for (const url of ["/api/orchestrate", "http://127.0.0.1:8000/api/orchestrate"]) {
       try {
         const resp = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: requestController.signal
         });
-        if (resp.ok) {
-          backendData = await resp.json();
+        let body = {};
+        try { body = await resp.json(); } catch (_) {}
+        if (resp.ok && body.advisory) {
+          backendData = body;
           break;
         }
+        backendError = body.detail || body.message || `Chat request failed (HTTP ${resp.status}).`;
+        // A 404 on the same-origin route means static frontend hosting; try FastAPI.
+        if (resp.status !== 404) break;
       } catch (err) {
-        // Try next URL or fallback
+        backendError = err.name === "AbortError"
+          ? "The chat request took too long. The model provider or live data source may be busy; please try again."
+          : err.message || "Could not connect to the Sagar Mitra backend.";
+        if (err.name === "AbortError") break;
       }
     }
-  } catch (e) {
-    console.log("Backend API offline, using rich synthesis fallback.");
+  } finally {
+    clearTimeout(requestTimeout);
   }
 
-  // 4. Synthesize Response & Structured Advisory Cards
-  const analysis = synthesizeOceanResponse(text, activeDepth, currentRole);
-  const advisoryCardHtml = buildStructuredAdvisoryCardHtml(backendData, text);
-  
-  let responseText = "";
-  const liveAdvisory = backendData ? (backendData.advisory || backendData.reply || backendData.output || backendData.message) : null;
-
-  if (liveAdvisory && typeof liveAdvisory === "string" && liveAdvisory.trim()) {
-    let formattedAdvisory = escapeHtml(liveAdvisory)
-      .replace(/\n\n/g, "<br><br>")
-      .replace(/\n/g, "<br>")
-      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.*?)\*/g, "<em>$1</em>");
-
-    let mapPreviewCardHtml = "";
-    if (analysis && analysis.spatial) {
-      const sp = analysis.spatial;
-      mapPreviewCardHtml = `
-        <br>
-        <div class="map-preview-card" onclick="window.triggerSplitMap(${sp.lat}, ${sp.lng}, '${escapeHtml(sp.title)}', '${escapeHtml(sp.details)}', '${sp.mode}')">
-          <div class="map-preview-meta">
-            <div class="map-preview-title">📍 ${escapeHtml(sp.title)}</div>
-            <div class="map-preview-coords">${sp.lat.toFixed(2)}°N, ${sp.lng.toFixed(2)}°E · ${sp.mode.toUpperCase()} OVERLAY</div>
-          </div>
-          <button class="map-preview-action">Expand on Map →</button>
-        </div>
-      `;
-    }
-
-    responseText = advisoryCardHtml + "<br><div style='font-size:14px;line-height:1.65;color:var(--ink);'>" + formattedAdvisory + "</div>" + mapPreviewCardHtml;
+  finishMultiAgentTracker(aiRow, backendData);
+  const advisoryCardHtml = buildStructuredAdvisoryCardHtml(backendData);
+  const liveAdvisory = backendData?.advisory;
+  let responseText;
+  if (typeof liveAdvisory === "string" && liveAdvisory.trim()) {
+    const formattedAdvisory = renderChatMarkdown(liveAdvisory);
+    responseText = advisoryCardHtml + `<div style="font-size:14px;line-height:1.65;color:var(--ink);">${formattedAdvisory}</div>`;
   } else {
-    let synthText = (typeof analysis === "object" && analysis.html) ? analysis.html : String(analysis);
-    responseText = advisoryCardHtml + "<br><div style='font-size:14px;line-height:1.65;color:var(--ink);'>" + synthText + "</div>";
+    console.error("Chat request failed:", backendError);
+    responseText = `<div role="alert" style="font-size:14px;line-height:1.65;color:var(--ink);"><strong>I couldn't generate a response.</strong><br>${escapeHtml(backendError)}<br><br>If this continues, check the backend terminal for the upstream service error.</div>`;
   }
 
   const target = aiRow.querySelector("#streamTarget");
@@ -3941,6 +3904,67 @@ async function sendQuery(text){
     if (target.id) target.removeAttribute("id");
   }
   scrollArea.scrollTop = scrollArea.scrollHeight;
+}
+
+function renderChatMarkdown(markdown){
+  const charts = [];
+  const tagged = String(markdown || "").replace(/\[(GRAPH|PIECHART)\]/g, (_, kind) => {
+    const token = `@@CHART_${charts.length}@@`;
+    charts.push(`<div class="chat-chart-placeholder"><strong>${kind === "GRAPH" ? "Graph" : "Pie chart"}</strong><span>Visualization requested; no structured chart data was supplied.</span></div>`);
+    return token;
+  });
+  const inline = value => escapeHtml(value)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+  const lines = tagged.split(/\r?\n/);
+  let html = "", list = "";
+  const closeList = () => { if(list){ html += `</${list}>`; list = ""; } };
+  for(const raw of lines){
+    const line = raw.trim();
+    if(!line){ closeList(); continue; }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    const bullet = line.match(/^[-*]\s+(.+)$/);
+    const numbered = line.match(/^\d+[.)]\s+(.+)$/);
+    const chart = line.match(/^@@CHART_(\d+)@@$/);
+    if(heading){ closeList(); const level = heading[1].length; html += `<h${level}>${inline(heading[2])}</h${level}>`; }
+    else if(bullet || numbered){ const kind = bullet ? "ul" : "ol"; if(list !== kind){ closeList(); list = kind; html += `<${list}>`; } html += `<li>${inline((bullet || numbered)[1])}</li>`; }
+    else { closeList(); html += chart ? charts[Number(chart[1])] : `<p>${inline(line)}</p>`; }
+  }
+  closeList();
+  return html;
+}
+
+const generateImageBtn = document.getElementById("generateImageBtn");
+if(generateImageBtn){
+  generateImageBtn.addEventListener("click", async () => {
+    const prompt = composerInput.value.trim() || window.prompt("Describe the map, heatmap, or illustration:");
+    if(!prompt?.trim()) return;
+    generateImageBtn.disabled = true;
+    const row = document.createElement("div");
+    row.className = "message-row ai";
+    row.innerHTML = `<div class="ai-body"><div class="ai-text">Generating image…</div></div>`;
+    messagesList.appendChild(row);
+    try{
+      let response;
+      for(const url of ["/api/generate-image", "http://127.0.0.1:8000/api/generate-image"]){
+        try {
+          response = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({prompt:prompt.trim()})});
+          if(response.status === 404 && url.startsWith("/")) continue;
+          break;
+        }
+        catch(error){ if(url.startsWith("http")) throw error; }
+      }
+      const result = await response.json();
+      if(!response.ok) throw new Error(result.detail || "Image generation failed.");
+      const src = result.image_data ? `data:${result.mime_type || "image/png"};base64,${result.image_data}` : result.image_url;
+      if(!src || !(src.startsWith("https://") || src.startsWith("data:image/"))) throw new Error("The image provider returned an invalid URL.");
+      row.querySelector(".ai-text").innerHTML = `<p>${escapeHtml(prompt)}</p><img src="${escapeHtml(src)}" alt="Generated ocean visualization" style="display:block;max-width:min(100%,560px);height:auto;border-radius:10px;margin-top:10px;">`;
+    }catch(error){
+      console.error("Image generation error:", error.message);
+      row.querySelector(".ai-text").textContent = error.message;
+    }finally{ generateImageBtn.disabled = false; scrollArea.scrollTop = scrollArea.scrollHeight; }
+  });
 }
 
 // Feature 4: Prompt Edit Handler
