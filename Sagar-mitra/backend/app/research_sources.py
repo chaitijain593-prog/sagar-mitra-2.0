@@ -10,7 +10,12 @@ import re
 import sqlite3
 import uuid
 
-DB_PATH = os.environ.get("SAGAR_MITRA_STORE_DB_PATH", "./data/sagar_mitra_store.db")
+DEFAULT_STORE_DB_PATH = (
+    os.path.join(os.path.expanduser("~"), ".sagar_mitra", "data", "sagar_mitra_store.db")
+    if os.name == "nt"
+    else "./data/sagar_mitra_store.db"
+)
+DB_PATH = os.environ.get("SAGAR_MITRA_STORE_DB_PATH", DEFAULT_STORE_DB_PATH)
 CHUNK_SIZE = 1400
 CHUNK_OVERLAP = 180
 

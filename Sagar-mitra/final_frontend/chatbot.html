@@ -2269,7 +2269,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
               </svg>
             </button>
 
-            <button class="send-btn" id="sendBtn" title="Send query" aria-label="Send message">
+            <button class="send-btn" id="sendBtn" type="button" title="Send query" aria-label="Send message">
               <svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
             </button>
 
@@ -4030,7 +4030,10 @@ function saveSessionLocally(session_id, role, text, title, workspace_id) {
       }
     }
     if (text) {
-      sess.messages.push({ role, text, timestamp: nowIso });
+      const lastMsg = sess.messages[sess.messages.length - 1];
+      if (!lastMsg || lastMsg.role !== role || (lastMsg.text || "").trim() !== (text || "").trim()) {
+        sess.messages.push({ role, text, timestamp: nowIso });
+      }
     }
     localStorage.setItem(wsKey, JSON.stringify(list));
     return sess;
@@ -4065,17 +4068,6 @@ function ensureActiveChatSaved() {
   }
 
   saveSessionLocally(currentSessionId, "user", "", heading, wsId);
-
-  callApi(`/api/sessions/${currentSessionId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      role: "user",
-      text: firstUserText,
-      title: heading,
-      workspace_id: wsId
-    })
-  }).catch(() => {});
 }
 
 // Create New Dive / Chat
@@ -4325,7 +4317,17 @@ function renderSessionMessages(messages) {
     return;
   }
   greetingSection.style.display = "none";
+
+  const cleanMessages = [];
   for (const msg of messages) {
+    const last = cleanMessages[cleanMessages.length - 1];
+    if (last && last.role === msg.role && (last.text || "").trim() === (msg.text || "").trim()) {
+      continue;
+    }
+    cleanMessages.push(msg);
+  }
+
+  for (const msg of cleanMessages) {
     if (msg.role === "user") {
       const userRow = document.createElement("div");
       userRow.className = "message-row user";
@@ -4523,7 +4525,8 @@ composerInput.addEventListener("keydown", e => {
   }
 });
 
-sendBtn.addEventListener("click", () => {
+sendBtn.addEventListener("click", (e) => {
+  if (e) e.preventDefault();
   if(composerInput.value.trim().length > 0){
     handleComposerSubmit(composerInput.value.trim());
   }
@@ -5126,17 +5129,6 @@ async function sendQuery(text){
   saveSessionLocally(currentSessionId, "user", text, activeHeading, wsId);
   renderSavedSessionsList(currentSessionsData);
 
-  callApi(`/api/sessions/${currentSessionId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      role: "user",
-      text: text,
-      title: activeHeading,
-      workspace_id: wsId
-    })
-  }).catch(() => {});
-
   // Capture any attached documents for this query
   const docsToAnalyze = [...attachedDocuments];
   attachedDocuments = [];
@@ -5321,18 +5313,33 @@ async function sendQuery(text){
     if (target.id) target.removeAttribute("id");
   }
 
-  // Save assistant response to active session
+  // Save assistant response to active session locally
   const finalReplyText = (typeof liveAdvisory === "string" && liveAdvisory.trim()) ? liveAdvisory : responseText;
   saveSessionLocally(currentSessionId, "assistant", finalReplyText, null, currentWorkspaceId || "default");
-  callApi(`/api/sessions/${currentSessionId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      role: "assistant",
-      text: finalReplyText,
-      workspace_id: currentWorkspaceId || "default"
-    })
-  }).catch(() => {});
+  
+  // If backend orchestrator was offline/failed, save user & assistant turns via fallback API
+  if (!backendData) {
+    callApi(`/api/sessions/${currentSessionId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        role: "user",
+        text: text,
+        title: activeHeading,
+        workspace_id: wsId
+      })
+    }).catch(() => {});
+
+    callApi(`/api/sessions/${currentSessionId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        role: "assistant",
+        text: finalReplyText,
+        workspace_id: currentWorkspaceId || "default"
+      })
+    }).catch(() => {});
+  }
 
   scrollArea.scrollTop = scrollArea.scrollHeight;
   isGenerating = false;

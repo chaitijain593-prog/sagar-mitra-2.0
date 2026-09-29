@@ -33,8 +33,12 @@ import pandas as pd
 # Same relative-path convention app/data.py's DATA_PATH uses -- both assume
 # the process is started from the backend/ directory (see README: `uvicorn
 # app.main:app ...` run from backend/), overridable via env var for anyone
-# running from elsewhere.
-DB_PATH = os.environ.get("SAGAR_MITRA_DB_PATH", "./data/sagar_mitra.db")
+DEFAULT_DB_PATH = (
+    os.path.join(os.path.expanduser("~"), ".sagar_mitra", "data", "sagar_mitra.db")
+    if os.name == "nt"
+    else "./data/sagar_mitra.db"
+)
+DB_PATH = os.environ.get("SAGAR_MITRA_DB_PATH", DEFAULT_DB_PATH)
 PARQUET_PATH = os.environ.get("SAGAR_MITRA_DATA_PATH", "./data/final_dataset.parquet")
 
 ARGO_TABLE = "argo_readings"

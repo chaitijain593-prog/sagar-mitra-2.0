@@ -21,7 +21,12 @@ from functools import wraps
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
-DB_PATH = os.environ.get("SAGAR_MITRA_STORE_DB_PATH", "./data/sagar_mitra_store.db")
+DEFAULT_STORE_DB_PATH = (
+    os.path.join(os.path.expanduser("~"), ".sagar_mitra", "data", "sagar_mitra_store.db")
+    if os.name == "nt"
+    else "./data/sagar_mitra_store.db"
+)
+DB_PATH = os.environ.get("SAGAR_MITRA_STORE_DB_PATH", DEFAULT_STORE_DB_PATH)
 MAX_TURNS_KEPT = 8  # last 8 (user+assistant) messages is plenty of context
 HAZARD_MESH_TTL_HOURS = 24.0  # Feature 7: crowdsourced hazard reports expire after this many hours
 
@@ -162,6 +167,8 @@ class SessionStore:
             return
         row = self._load_row(session_id)
         turns = json.loads(row["history"]) if row else []
+        if turns and turns[-1].get("role") == role and (turns[-1].get("text") or "").strip() == (text or "").strip():
+            return
         turns.append({"role": role, "text": text})
         del turns[:-MAX_TURNS_KEPT]
         last_context = row["last_context"] if row else None
@@ -313,11 +320,19 @@ class SessionStore:
             "timestamp": now_iso,
             "meta": meta or {}
         }
-        existing_transcript.append(msg_entry)
+        is_duplicate = False
+        if existing_transcript:
+            last = existing_transcript[-1]
+            if last.get("role") == role and (last.get("text") or "").strip() == (text or "").strip():
+                is_duplicate = True
+                if meta and not last.get("meta"):
+                    last["meta"] = meta
 
-        # Synchronize multi-turn history window
-        existing_history.append({"role": role, "text": text})
-        del existing_history[:-MAX_TURNS_KEPT]
+        if not is_duplicate:
+            existing_transcript.append(msg_entry)
+            # Synchronize multi-turn history window
+            existing_history.append({"role": role, "text": text})
+            del existing_history[:-MAX_TURNS_KEPT]
 
         if not existing_title:
             if title:
