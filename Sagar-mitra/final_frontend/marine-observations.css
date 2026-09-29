@@ -1,5 +1,6 @@
-.marine-live-controls{display:grid;gap:8px;margin:10px 0 14px;padding:10px;border:1px solid rgba(57,189,242,.22);border-radius:10px;background:rgba(12,24,34,.54)}
-.obis-hotspot-box[hidden]{display:none!important}
+.obis-controls-grid{display:block!important;width:100%!important;box-sizing:border-box!important}
+.marine-live-controls{display:grid;gap:8px;width:100%;min-width:0;box-sizing:border-box;margin:0;padding:0;border:0;background:transparent}
+.obis-hotspot-box[hidden],.species-prop-container:empty,#obisProportionContainer[hidden]{display:none!important}
 .marine-live-controls label{display:grid;gap:4px;color:#b9c8d6;font:600 10px 'DM Mono',monospace}
 .marine-live-controls input,.marine-live-controls select{width:100%;min-height:32px;padding:6px 8px;border:1px solid rgba(148,163,184,.35);border-radius:7px;background:#102331;color:#f1f5f9;font:500 11px 'DM Sans',sans-serif}
 .marine-live-dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}

@@ -1859,6 +1859,11 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.obis-controls-grid:has(.marine-live-controls) {
+  display: block;
 }
 
 .obis-select {
@@ -2444,23 +2449,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     </div>
   </button>
 
-  <!-- 7. MARINE (Thematic Overlay) -->
-  <button class="mode-btn" id="btnModeMarine" data-mode="marine" aria-label="Marine Biophysics Overlay">
-    <!-- Custom SVG: Stylized pelagic fish with acoustic telemetry buoy transmission arcs -->
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M2 12c3.8-5 10.5-6 15.5-2 1.5 1.2 3 2 4.5 2-1.5 0-3 .8-4.5 2-5 4-11.7 3-15.5-2z"/>
-      <path d="M19 12l3-3v6l-3-3z"/>
-      <circle cx="8" cy="11" r="1" fill="currentColor"/>
-      <path d="M12 9c.5 1 1 2 2 3"/>
-      <path d="M11 4a8 8 0 0 1 5 3"/>
-    </svg>
-    <div class="mode-tooltip">
-      <span class="badge-tag badge-overlay">COMPOSITE</span>
-      <span>Marine Biophysics Composite</span>
-    </div>
-  </button>
-
-  <!-- 8. PFZ (Potential Fishing Zones) -->
+  <!-- 7. PFZ (Potential Fishing Zones - First Fish Icon) -->
   <button class="mode-btn" id="btnModePfz" data-mode="pfz" aria-label="Potential Fishing Zones (PFZ)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M2 12c3.8-5 10.5-6 15.5-2 1.5 1.2 3 2 4.5 2-1.5 0-3 .8-4.5 2-5 4-11.7 3-15.5-2z"/>
@@ -2470,6 +2459,22 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <div class="mode-tooltip">
       <span class="badge-tag badge-overlay" style="background:rgba(16,185,129,0.25);color:#10b981">PFZ</span>
       <span>Potential Fishing Zones (INCOIS)</span>
+    </div>
+  </button>
+
+  <!-- 8. OBIS MARINE BIODIVERSITY (Second Fish Icon) -->
+  <button class="mode-btn" id="btnModeMarine" data-mode="marine" aria-label="OBIS Marine Biodiversity">
+    <!-- Custom SVG: Stylized pelagic fish with acoustic telemetry buoy transmission arcs -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 12c3.8-5 10.5-6 15.5-2 1.5 1.2 3 2 4.5 2-1.5 0-3 .8-4.5 2-5 4-11.7 3-15.5-2z"/>
+      <path d="M19 12l3-3v6l-3-3z"/>
+      <circle cx="8" cy="11" r="1" fill="currentColor"/>
+      <path d="M12 9c.5 1 1 2 2 3"/>
+      <path d="M11 4a8 8 0 0 1 5 3"/>
+    </svg>
+    <div class="mode-tooltip">
+      <span class="badge-tag badge-overlay" style="background:rgba(56,189,248,0.25);color:#38bdf8">OBIS</span>
+      <span>OBIS Marine Biodiversity</span>
     </div>
   </button>
 
@@ -3432,8 +3437,8 @@ const pfzLayerGroup = L.layerGroup();
 const argoLayerGroup = L.layerGroup();
 const obisLayerGroup = L.layerGroup();
 const ecosystemLayerGroup = L.layerGroup();
-const marineOverlay = L.layerGroup([pfzLayerGroup, argoLayerGroup, obisLayerGroup, ecosystemLayerGroup]);
 const speciesReferenceLayer = L.layerGroup();
+const marineOverlay = L.layerGroup([obisLayerGroup]);
 pfzLayerGroup.addLayer(speciesReferenceLayer);
 [
   {species:"Thunnus albacares", common:"Yellowfin tuna", image:"yellowfin_tuna.png", position:[15.8,70.2], color:"#38bdf8"},
@@ -3670,14 +3675,13 @@ const legendConfigs = {
     ]
   },
   marine: {
-    title: "MARINE BIOPHYSICS & ARGO FLOATS",
-    subtitle: "Sea surface temperature (°C), chlorophyll density & potential fishing zones",
-    scaleGradient: "linear-gradient(90deg, #3b82f6 0%, #06b6d4 30%, #10b981 60%, #f59e0b 85%, #ef4444 100%)",
-    ticks: ["22°C (Upwelling)", "25°C", "28°C", "30°C", "32°C (Warm Pool)"],
+    title: "OBIS MARINE BIODIVERSITY",
+    subtitle: "Species occurrence records, depth profiles & biodiversity references",
+    scaleGradient: "linear-gradient(90deg, #87cefa 0%, #1e88e5 50%, #001b44 100%)",
+    ticks: ["Surface (0-50m)", "Mid-water (50-1000m)", "Deep-sea (>1000m)"],
     keys: [
-      { type: "dot", color: "#39bdf2", label: "Active ARGO Subsurface Float" },
-      { type: "line", color: "#10b981", label: "Potential Fishing Zone (PFZ) Polygon" },
-      { type: "line", color: "#39bdf2", dash: true, label: "EEZ Boundary" }
+      { type: "dot", color: "#38bdf8", label: "Marine Biodiversity Observation" },
+      { type: "dot", color: "#f59e0b", label: "Species Reference Taxon" }
     ]
   },
   pfz: {

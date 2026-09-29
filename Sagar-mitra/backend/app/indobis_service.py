@@ -39,6 +39,8 @@ UNKNOWN_DEPTH = {"category": "unknown", "color": "#94A3B8"}
 COMMON_NAME_TAXA = {
     "coral": "Scleractinia",
     "corals": "Scleractinia",
+    "anthozoa": "Anthozoa",
+    "coral reef": "Scleractinia",
     "tuna": "Thunnus",
     "tunas": "Thunnus",
     "turtle": "Chelonioidea",
@@ -56,6 +58,10 @@ COMMON_NAME_TAXA = {
     "swordfish": "Xiphias gladius",
     "manta ray": "Mobula",
     "manta rays": "Mobula",
+    "dugong": "Dugong dugon",
+    "dugongs": "Dugong dugon",
+    "crab": "Brachyura",
+    "crabs": "Brachyura",
 }
 MIGRATORY_TAXON_HINTS = (
     "thunnus", "scombridae", "xiphias", "istiophoridae", "chelonioidea",
