@@ -281,6 +281,13 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   gap:12px;
 }
 
+.modes-toggle-wrapper{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+
 .modes-bar-header{
   font:600 9px "DM Mono",monospace;
   letter-spacing:2px;
@@ -290,8 +297,142 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   padding:4px 8px;
   border-radius:6px;
   border:1px solid rgba(57,189,242,.25);
-  pointer-events:none;
   margin-bottom:2px;
+}
+
+.modes-toggle-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  cursor:pointer;
+  pointer-events:auto !important;
+  outline:none;
+  user-select:none;
+  transition:all .2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow:0 2px 8px rgba(0,0,0,.3);
+}
+
+.modes-toggle-btn:hover{
+  background:rgba(20,41,57,.92);
+  color:#fff;
+  border-color:var(--blue);
+  transform:scale(1.06);
+  box-shadow:0 0 14px rgba(57,189,242,.4);
+}
+
+.modes-toggle-btn.open,
+.modes-toggle-btn.active{
+  background:linear-gradient(135deg, rgba(57,189,242,0.35) 0%, rgba(13,169,223,0.2) 100%), rgba(12,24,34,0.95);
+  border-color:#39bdf2;
+  color:#fff;
+  box-shadow:0 0 14px rgba(57,189,242,.5);
+}
+
+.modes-toggle-btn .modes-chevron{
+  display:inline-block;
+  stroke:currentColor;
+  transition:transform .22s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink:0;
+  pointer-events:none;
+}
+
+.modes-toggle-btn.open .modes-chevron{
+  transform:rotate(-90deg);
+}
+
+/* Flyout / Dropdown to the LEFT of the MODES button */
+.modes-flyout-menu{
+  position:absolute;
+  right:calc(100% + 14px);
+  top:0;
+  transform:translateX(10px) scale(0.95);
+  background:rgba(10,22,34,0.94);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(57,189,242,0.35);
+  border-radius:18px;
+  padding:8px 10px;
+  box-shadow:0 12px 36px rgba(0,0,0,0.65), 0 0 20px rgba(57,189,242,0.2);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transition:opacity .2s ease, transform .22s cubic-bezier(0.16, 1, 0.3, 1), visibility .2s;
+  z-index:100;
+  white-space:nowrap;
+}
+
+.modes-flyout-menu::after{
+  content:"";
+  position:absolute;
+  left:100%;
+  top:11px;
+  transform:translateY(-50%);
+  border-width:6px 0 6px 7px;
+  border-style:solid;
+  border-color:transparent transparent transparent rgba(57,189,242,0.4);
+}
+
+.modes-flyout-menu.open{
+  opacity:1;
+  visibility:visible;
+  pointer-events:auto;
+  transform:translateX(0) scale(1);
+}
+
+.modes-flyout-label{
+  font:600 8.5px "DM Mono",monospace;
+  letter-spacing:1.5px;
+  color:var(--blue);
+  text-transform:uppercase;
+  opacity:0.85;
+}
+
+.modes-flyout-items{
+  display:flex;
+  flex-direction:row;
+  align-items:center;
+  gap:10px;
+}
+
+.modes-flyout-items .mode-btn{
+  width:46px;
+  height:46px;
+  box-shadow:0 4px 14px rgba(0,0,0,.45);
+}
+
+.modes-flyout-items .mode-btn svg{
+  width:22px;
+  height:22px;
+}
+
+/* Tooltip adjustment inside flyout to pop below instead of left */
+.modes-flyout-items .mode-tooltip{
+  top:calc(100% + 10px);
+  bottom:auto;
+  left:50%;
+  right:auto;
+  transform:translateX(-50%) translateY(-4px);
+}
+
+.modes-flyout-items .mode-btn:hover .mode-tooltip{
+  opacity:1;
+  visibility:visible;
+  transform:translateX(-50%) translateY(0);
+}
+
+/* Active indicator for buttons in flyout row */
+.modes-flyout-items .mode-btn.active::before{
+  top:-6px;
+  bottom:auto;
+  left:50%;
+  transform:translateX(-50%);
+  width:16px;
+  height:3px;
 }
 
 .mode-btn{
@@ -531,19 +672,19 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
    ============================================================ */
 .hud-coordinates{
   position:fixed;
-  top:27px;
+  top:33px;
   left:280px;
   right:480px;
-  height:48px;
+  height:36px;
   z-index:40;
   background:var(--ctrl-bg);
   backdrop-filter:blur(14px);
   -webkit-backdrop-filter:blur(14px);
   border:1px solid var(--ctrl-border);
-  border-radius:24px;
+  border-radius:18px;
   box-shadow:0 4px 15px rgba(0,0,0,.3);
-  padding:0 18px;
-  font:500 11.5px/1 "DM Mono",monospace;
+  padding:0 16px;
+  font:500 11px/1 "DM Mono",monospace;
   letter-spacing:0.8px;
   color:#82cff0;
   display:flex;
@@ -563,8 +704,12 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   gap:6px;
   align-items:center;
   flex-shrink:0;
+  line-height:1;
 }
 .hud-sep{
+  display:inline-flex;
+  align-items:center;
+  line-height:1;
   color:rgba(57,189,242,0.35);
   user-select:none;
 }
@@ -573,25 +718,30 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 .map-nav-controls{
   position:fixed;
   left:28px;
-  top:100px;
+  top:96px;
   z-index:35;
   display:flex;
   flex-direction:column;
-  gap:8px;
+  gap:6px;
 }
 .map-ctrl-btn{
-  width:42px;
-  height:42px;
+  width:40px;
+  height:40px;
   border-radius:10px;
   background:var(--panel-bg);
   backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
   border:1px solid var(--panel-border);
   color:#fff;
-  font:600 18px "DM Mono",monospace;
+  font:600 17px "DM Mono",monospace;
   display:grid;
   place-items:center;
   box-shadow:0 4px 15px rgba(0,0,0,.3);
   transition:all .2s ease;
+}
+.map-ctrl-btn svg{
+  width:20px;
+  height:20px;
 }
 .map-ctrl-btn:hover{
   background:#142939;
@@ -606,34 +756,40 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 .safety-dock-wrapper{
   position:fixed;
   left:28px;
-  top:248px;
+  top:332px;
   z-index:35;
   display:flex;
   flex-direction:column;
   align-items:center;
-  gap:10px;
+  gap:8px;
+  width:40px;
 }
 
 .safety-dock-header{
-  font:600 9px "DM Mono",monospace;
-  letter-spacing:2px;
+  font:600 8.5px "DM Mono",monospace;
+  letter-spacing:1.5px;
   color:var(--blue);
   text-transform:uppercase;
   background:rgba(12,24,34,0.85);
-  padding:3px 8px;
-  border-radius:6px;
+  padding:3px 6px;
+  border-radius:5px;
   border:1px solid rgba(57,189,242,0.3);
   pointer-events:none;
   margin-bottom:2px;
+  white-space:nowrap;
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
 
 .safety-btn{
   position:relative;
-  width:44px;
-  height:44px;
+  width:40px;
+  height:40px;
   border-radius:50%;
   background:var(--panel-bg);
   backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
   border:1.5px solid var(--panel-border);
   color:#b8dbeb;
   display:grid;
@@ -641,11 +797,12 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   box-shadow:0 4px 16px rgba(0,0,0,0.35);
   cursor:pointer;
   transition:all 0.22s cubic-bezier(0.2, 0.9, 0.4, 1);
+  flex-shrink:0;
 }
 
 .safety-btn svg{
-  width:20px;
-  height:20px;
+  width:19px;
+  height:19px;
   stroke:currentColor;
   transition:transform 0.2s ease, stroke 0.2s ease;
 }
@@ -692,7 +849,7 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 /* Tooltip appearing to the right */
 .safety-tooltip{
   position:absolute;
-  left:56px;
+  left:52px;
   top:50%;
   transform:translateY(-50%) translateX(-6px);
   background:rgba(10,22,32,0.96);
@@ -1634,10 +1791,41 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   }
   .hud-coordinates{display:none}
   .modes-bar-wrapper{right:16px;top:80px}
+  .map-nav-controls{left:16px;top:80px}
+  .safety-dock-wrapper{left:16px;top:316px}
   .arrows{right:16px;bottom:16px}
   .route-panel-wrapper{left:16px;width:calc(100vw - 32px);top:80px}
   .reasoning-drawer-wrapper{left:16px;width:calc(100vw - 32px);top:auto;bottom:120px;max-height:45vh}
   .obis-panel-wrapper{left:16px;width:calc(100vw - 32px);top:80px;max-height:50vh}
+}
+
+@media(max-height:680px){
+  .map-nav-controls{
+    top:84px;
+    gap:4px;
+  }
+  .map-ctrl-btn{
+    width:34px;
+    height:34px;
+    font-size:15px;
+  }
+  .map-ctrl-btn svg{
+    width:17px;
+    height:17px;
+  }
+  .safety-dock-wrapper{
+    top:284px;
+    gap:6px;
+    width:34px;
+  }
+  .safety-btn{
+    width:34px;
+    height:34px;
+  }
+  .safety-btn svg{
+    width:16px;
+    height:16px;
+  }
 }
 </style>
 </head>
@@ -1936,74 +2124,85 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
      All custom inline SVGs; No emojis / icon fonts / text icons
      ============================================================ -->
 <div class="modes-bar-wrapper">
-  <div class="modes-bar-header">MODES</div>
+  <div class="modes-toggle-wrapper" id="modesToggleWrapper">
+    <button type="button" class="modes-bar-header modes-toggle-btn" id="modesToggleBtn" aria-label="Toggle Basemap Modes" aria-expanded="false" title="Basemap Modes">
+      <span>MODES</span>
+      <svg class="modes-chevron" viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 18l-6-6 6-6"/>
+      </svg>
+    </button>
 
-  <!-- 1. OCEAN (Basemap) -->
-  <button class="mode-btn active" id="btnModeOcean" data-mode="ocean" aria-label="Ocean Mode">
-    <!-- Custom SVG: Undulating ocean wave crests & horizon -->
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M2 6c3.2-2 6.8-2 10 0s6.8 2 10 0"/>
-      <path d="M2 12c3.2-2.5 6.8-2.5 10 0s6.8 2.5 10 0"/>
-      <path d="M2 18c3.2-2.5 6.8-2.5 10 0s6.8 2.5 10 0"/>
-    </svg>
-    <div class="mode-tooltip">
-      <span class="badge-tag badge-base">BASEMAP</span>
-      <span>Ocean Bathymetry</span>
+    <!-- Hidden flyout menu directly to the LEFT of MODES -->
+    <div class="modes-flyout-menu" id="modesFlyoutMenu" aria-hidden="true">
+      <div class="modes-flyout-label">BASEMAP MODES</div>
+      <div class="modes-flyout-items">
+        <!-- 1. OCEAN (Basemap) -->
+        <button class="mode-btn active" id="btnModeOcean" data-mode="ocean" aria-label="Ocean Mode">
+          <!-- Custom SVG: Undulating ocean wave crests & horizon -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 6c3.2-2 6.8-2 10 0s6.8 2 10 0"/>
+            <path d="M2 12c3.2-2.5 6.8-2.5 10 0s6.8 2.5 10 0"/>
+            <path d="M2 18c3.2-2.5 6.8-2.5 10 0s6.8 2.5 10 0"/>
+          </svg>
+          <div class="mode-tooltip">
+            <span class="badge-tag badge-base">BASEMAP</span>
+            <span>Ocean Bathymetry</span>
+          </div>
+        </button>
+
+        <!-- 2. SATELLITE (Basemap) -->
+        <button class="mode-btn" id="btnModeSatellite" data-mode="satellite" aria-label="Satellite Mode">
+          <!-- Custom SVG: Orbital satellite with solar panels and sensor dish -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9.5" y="9.5" width="5" height="5" rx="1" transform="rotate(45 12 12)"/>
+            <path d="M4 8l3-3 3 3-3 3z"/>
+            <path d="M14 18l3-3 3 3-3 3z"/>
+            <path d="M12.5 7.5L14 6"/>
+            <path d="M11.5 16.5L10 18"/>
+            <path d="M4 20a10 10 0 0 0 16-16"/>
+            <circle cx="4" cy="20" r="1.2" fill="currentColor"/>
+          </svg>
+          <div class="mode-tooltip">
+            <span class="badge-tag badge-base">BASEMAP</span>
+            <span>True-Color Satellite</span>
+          </div>
+        </button>
+
+        <!-- 3. NAUTICAL (Basemap) -->
+        <button class="mode-btn" id="btnModeNautical" data-mode="nautical" aria-label="Nautical Mode">
+          <!-- Custom SVG: Maritime anchor with stock, shank, flukes, and compass ring -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="5" r="2.2"/>
+            <line x1="12" y1="7.2" x2="12" y2="21"/>
+            <line x1="7" y1="10" x2="17" y2="10"/>
+            <path d="M5 14c0 4.5 3.5 7 7 7s7-2.5 7-7"/>
+            <path d="M4 13l2 2"/>
+            <path d="M20 13l-2 2"/>
+          </svg>
+          <div class="mode-tooltip">
+            <span class="badge-tag badge-base">BASEMAP</span>
+            <span>Nautical Charts & Ports</span>
+          </div>
+        </button>
+
+        <!-- 4. BATHYMETRY (Basemap) -->
+        <button class="mode-btn" id="btnModeBathymetry" data-mode="bathymetry" aria-label="Bathymetry Mode">
+          <!-- Custom SVG: Concentric isobath depth contour rings descending into abyssal trench -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="12" rx="9.5" ry="8"/>
+            <ellipse cx="12" cy="12" rx="6.5" ry="5"/>
+            <ellipse cx="12" cy="12" rx="3.2" ry="2.2"/>
+            <line x1="12" y1="2" x2="12" y2="4"/>
+            <line x1="12" y1="20" x2="12" y2="22"/>
+          </svg>
+          <div class="mode-tooltip">
+            <span class="badge-tag badge-base">BASEMAP</span>
+            <span>Seafloor Relief & Trenches</span>
+          </div>
+        </button>
+      </div>
     </div>
-  </button>
-
-  <!-- 2. SATELLITE (Basemap) -->
-  <button class="mode-btn" id="btnModeSatellite" data-mode="satellite" aria-label="Satellite Mode">
-    <!-- Custom SVG: Orbital satellite with solar panels and sensor dish -->
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="9.5" y="9.5" width="5" height="5" rx="1" transform="rotate(45 12 12)"/>
-      <path d="M4 8l3-3 3 3-3 3z"/>
-      <path d="M14 18l3-3 3 3-3 3z"/>
-      <path d="M12.5 7.5L14 6"/>
-      <path d="M11.5 16.5L10 18"/>
-      <path d="M4 20a10 10 0 0 0 16-16"/>
-      <circle cx="4" cy="20" r="1.2" fill="currentColor"/>
-    </svg>
-    <div class="mode-tooltip">
-      <span class="badge-tag badge-base">BASEMAP</span>
-      <span>True-Color Satellite</span>
-    </div>
-  </button>
-
-  <!-- 3. NAUTICAL (Basemap) -->
-  <button class="mode-btn" id="btnModeNautical" data-mode="nautical" aria-label="Nautical Mode">
-    <!-- Custom SVG: Maritime anchor with stock, shank, flukes, and compass ring -->
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="5" r="2.2"/>
-      <line x1="12" y1="7.2" x2="12" y2="21"/>
-      <line x1="7" y1="10" x2="17" y2="10"/>
-      <path d="M5 14c0 4.5 3.5 7 7 7s7-2.5 7-7"/>
-      <path d="M4 13l2 2"/>
-      <path d="M20 13l-2 2"/>
-    </svg>
-    <div class="mode-tooltip">
-      <span class="badge-tag badge-base">BASEMAP</span>
-      <span>Nautical Charts & Ports</span>
-    </div>
-  </button>
-
-  <!-- 4. BATHYMETRY (Basemap) -->
-  <button class="mode-btn" id="btnModeBathymetry" data-mode="bathymetry" aria-label="Bathymetry Mode">
-    <!-- Custom SVG: Concentric isobath depth contour rings descending into abyssal trench -->
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <ellipse cx="12" cy="12" rx="9.5" ry="8"/>
-      <ellipse cx="12" cy="12" rx="6.5" ry="5"/>
-      <ellipse cx="12" cy="12" rx="3.2" ry="2.2"/>
-      <line x1="12" y1="2" x2="12" y2="4"/>
-      <line x1="12" y1="20" x2="12" y2="22"/>
-    </svg>
-    <div class="mode-tooltip">
-      <span class="badge-tag badge-base">BASEMAP</span>
-      <span>Seafloor Relief & Trenches</span>
-    </div>
-  </button>
-
-  <div class="modes-divider"></div>
+  </div>
 
   <!-- 5. WEATHER (Thematic Overlay) -->
   <button class="mode-btn" id="btnModeWeather" data-mode="weather" aria-label="Weather Overlay">
@@ -3284,6 +3483,65 @@ document.querySelectorAll(".mode-btn").forEach(btn => {
     }
   });
 });
+
+// Modes Toggle Dropdown Flyout Controller
+const modesToggleBtn = document.getElementById("modesToggleBtn");
+const modesFlyoutMenu = document.getElementById("modesFlyoutMenu");
+
+function closeModesFlyout() {
+  if (!modesFlyoutMenu) return;
+  modesFlyoutMenu.classList.remove("open");
+  modesFlyoutMenu.setAttribute("aria-hidden", "true");
+  if (modesToggleBtn) {
+    modesToggleBtn.classList.remove("open");
+    modesToggleBtn.setAttribute("aria-expanded", "false");
+  }
+}
+
+function openModesFlyout() {
+  if (!modesFlyoutMenu) return;
+  modesFlyoutMenu.classList.add("open");
+  modesFlyoutMenu.setAttribute("aria-hidden", "false");
+  if (modesToggleBtn) {
+    modesToggleBtn.classList.add("open");
+    modesToggleBtn.setAttribute("aria-expanded", "true");
+  }
+}
+
+if (modesToggleBtn && modesFlyoutMenu) {
+  modesToggleBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (modesFlyoutMenu.classList.contains("open")) {
+      closeModesFlyout();
+    } else {
+      openModesFlyout();
+    }
+  });
+
+  // Selecting a mode inside the flyout closes the dropdown
+  modesFlyoutMenu.querySelectorAll(".mode-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      closeModesFlyout();
+    });
+  });
+
+  // Clicking outside closes the dropdown
+  document.addEventListener("click", (e) => {
+    if (modesFlyoutMenu.classList.contains("open")) {
+      if (!e.target.closest("#modesToggleWrapper") && !e.target.closest("#modesFlyoutMenu")) {
+        closeModesFlyout();
+      }
+    }
+  });
+
+  // Escape key closes the dropdown
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modesFlyoutMenu.classList.contains("open")) {
+      closeModesFlyout();
+    }
+  });
+}
 
 // ============================================================
 // 6. PARETO ROUTE PLANNER & XAI INTENTION ENGINE CONTROLLER
