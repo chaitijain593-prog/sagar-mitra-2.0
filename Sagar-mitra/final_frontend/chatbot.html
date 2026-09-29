@@ -205,11 +205,13 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 .sidebar-search{
   margin:0 14px 12px;
   position:relative;
+  display:flex;
+  align-items:center;
 }
 .sidebar-search input{
   width:100%;
   height:34px;
-  padding:0 12px 0 32px;
+  padding:0 96px 0 32px !important;
   border-radius:8px;
   border:1px solid var(--sidebar-border);
   background:var(--bg);
@@ -217,18 +219,21 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   font:12px "DM Sans",sans-serif;
   outline:none;
   transition:border-color .2s ease;
+  box-sizing:border-box;
 }
 .sidebar-search input:focus{
   border-color:var(--blue);
 }
-.sidebar-search svg{
+.sidebar-search > svg.search-icon{
   position:absolute;
   left:10px;
-  top:9px;
+  top:50%;
+  transform:translateY(-50%);
   width:15px;
   height:15px;
   stroke:var(--text-dim);
   fill:none;
+  pointer-events:none;
 }
 
 /* Sidebar Scrollable Body */
@@ -241,13 +246,89 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
 .sidebar-body::-webkit-scrollbar-thumb{background:var(--sidebar-border);border-radius:4px}
 
 #savedSessionsList{
-  max-height:195px;
+  max-height:175px;
   overflow-y:auto;
   overflow-x:hidden;
   padding-right:2px;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
 }
 #savedSessionsList::-webkit-scrollbar{width:4px}
 #savedSessionsList::-webkit-scrollbar-thumb{background:var(--sidebar-border, rgba(56,189,248,0.25));border-radius:4px}
+#savedSessionsList::-webkit-scrollbar-thumb:hover{background:var(--blue, #38bdf8)}
+
+.sidebar-search-actions{
+  position:absolute;
+  right:6px;
+  top:50%;
+  transform:translateY(-50%);
+  display:flex;
+  align-items:center;
+  gap:5px;
+  z-index:10;
+}
+.search-action-btn{
+  height:26px;
+  min-width:38px;
+  padding:0 7px;
+  border-radius:6px;
+  background:rgba(56,189,248,0.12);
+  border:1px solid rgba(56,189,248,0.38);
+  color:var(--blue-dark, #0284c7);
+  font:700 12px 'DM Mono', monospace;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:3px !important;
+  cursor:pointer;
+  transition:all 0.2s ease;
+  white-space:nowrap;
+  box-sizing:border-box;
+  user-select:none;
+  position:relative !important;
+  right:auto !important;
+  top:auto !important;
+  transform:none !important;
+}
+.search-action-btn:hover{
+  background:rgba(56,189,248,0.25);
+  border-color:var(--blue, #38bdf8);
+  color:var(--blue, #38bdf8);
+  box-shadow:0 2px 8px rgba(56,189,248,0.28);
+  transform:scale(1.04) !important;
+}
+[data-theme="dark"] .search-action-btn{
+  color:#38bdf8;
+  background:rgba(56,189,248,0.14);
+  border-color:rgba(56,189,248,0.38);
+}
+[data-theme="dark"] .search-action-btn:hover{
+  background:rgba(56,189,248,0.28);
+  border-color:#38bdf8;
+}
+.search-action-btn .btn-plus{
+  font-weight:700;
+  font-size:13px;
+  line-height:1;
+  pointer-events:none;
+  display:inline-block;
+}
+.search-action-btn svg{
+  position:static !important;
+  left:auto !important;
+  top:auto !important;
+  width:14px !important;
+  height:14px !important;
+  min-width:14px !important;
+  min-height:14px !important;
+  stroke:currentColor !important;
+  fill:none !important;
+  display:inline-block !important;
+  flex-shrink:0 !important;
+  vertical-align:middle !important;
+  pointer-events:none !important;
+}
 
 #researchWorkspacesList{
   max-height:180px;
@@ -1788,10 +1869,22 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
     <!-- Search archives & Group Chats into Marine Notebook -->
     <div class="sidebar-search" id="sidebarSearchContainer">
       <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      <input type="text" id="searchInput" placeholder="Search or group dives...">
-      <button class="search-new-notebook-btn" id="searchNewNotebookBtn" title="Group similar chats into new Marine Notebook" aria-label="Create Marine Notebook">
-        <span>+ Notebook</span>
-      </button>
+      <input type="text" id="searchInput" placeholder="Search dives & chats...">
+      <div class="sidebar-search-actions">
+        <button type="button" class="search-action-btn search-add-chat-btn" id="searchNewChatBtn" title="Start new dive (saves current chat)" aria-label="Add Chat">
+          <span class="btn-plus">+</span>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </button>
+        <button type="button" class="search-action-btn search-add-notebook-btn" id="searchNewNotebookBtn" title="Create new notebook workspace" aria-label="Add Notebook">
+          <span class="btn-plus">+</span>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <!-- Scrollable History / Workspaces -->
@@ -2674,17 +2767,23 @@ openBtn.addEventListener("click", () => {
   openBtn.classList.remove("show");
 });
 
-// New Chat / Dive Reset
-document.getElementById("newChatBtn").addEventListener("click", () => {
-  currentSessionId = "session_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
-  document.getElementById("messagesList").innerHTML = "";
-  document.getElementById("greetingSection").style.display = "flex";
-  document.getElementById("composerInput").value = "";
-  document.getElementById("composerInput").style.height = "auto";
-  document.getElementById("sendBtn").classList.remove("active");
-  document.querySelectorAll("#savedSessionsList .sidebar-item").forEach(i => i.classList.remove("active"));
-  document.getElementById("composerInput").focus();
-});
+// New Chat / Dive Reset (saves current conversation with context heading)
+const newChatBtn = document.getElementById("newChatBtn");
+if (newChatBtn) {
+  newChatBtn.addEventListener("click", () => {
+    createNewChat();
+  });
+}
+
+// Add Chat button (+ 💬) in searchbar
+const searchNewChatBtn = document.getElementById("searchNewChatBtn");
+if (searchNewChatBtn) {
+  searchNewChatBtn.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    createNewChat();
+  };
+}
 
 
 
@@ -2881,7 +2980,8 @@ function applyPersona(roleId){
   // 5. Toggle Researcher UI Sections (Searchbar notebook button & top-right sources bar)
   if(researchNotebooksBar) researchNotebooksBar.style.display = cfg.showNotebooks ? "flex" : "none";
   if(searchNewNotebookBtn) searchNewNotebookBtn.style.display = "inline-flex";
-  if(searchInput) searchInput.style.paddingRight = "98px";
+  if(searchNewChatBtn) searchNewChatBtn.style.display = "inline-flex";
+  if(searchInput) searchInput.style.paddingRight = "96px";
   if(researchSourcesBar) researchSourcesBar.style.display = cfg.showSources ? "flex" : "none";
 
   // 6. Update Composer Placeholder
@@ -3176,6 +3276,7 @@ if (addNotebookBtn) {
 if (searchNewNotebookBtn) {
   searchNewNotebookBtn.onclick = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     openAddWorkspaceModal();
   };
 }
@@ -3864,8 +3965,141 @@ if (cmdTickerEl) {
 
 // Multi-Device SQLite Session & Segregated Workspace Persistence
 let allWorkspaces = [];
-let currentWorkspaceId = localStorage.getItem("sagar_mitra_active_workspace_id") || null;
+let currentWorkspaceId = localStorage.getItem("sagar_mitra_active_workspace_id") || "arabian";
 let currentSessionsData = [];
+
+// Context-aware Heading Generator for Dives & Chats
+function generateChatHeading(userPrompt) {
+  if (!userPrompt || !userPrompt.trim()) return "Oceanographic Dive";
+
+  const raw = userPrompt.trim();
+  let cleaned = raw.replace(/^\/(?:queue|schedule(?:\s+[^\s]+)?)\s*/i, "").trim();
+  if (!cleaned) cleaned = raw;
+
+  const patterns = [
+    { regex: /somali\s*current/i, title: "Somali Current Velocity" },
+    { regex: /argo\s*(?:float)?\s*#?(\d+)/i, title: (m) => `ARGO #${m[1]} Telemetry` },
+    { regex: /chlorophyll|bloom/i, title: "Chlorophyll-a Spectral Survey" },
+    { regex: /cyclone|storm|typhoon/i, title: "Cyclone Track & Hazard Scan" },
+    { regex: /salinity|halocline/i, title: "Subsurface Salinity Profile" },
+    { regex: /pfz|fishing\s*zone|fisheries/i, title: "PFZ Advisory & Aggregations" },
+    { regex: /coral|bleaching|reef/i, title: "Reef Ecology & Thermal Stress" },
+    { regex: /heatwave/i, title: "Marine Heatwave Alert" },
+    { regex: /eez|border|maritime/i, title: "EEZ Boundary & Geofence" },
+    { regex: /depth|bathymetry|trench/i, title: "Bathymetric Depth Profile" }
+  ];
+
+  for (const p of patterns) {
+    const match = cleaned.match(p.regex);
+    if (match) {
+      return typeof p.title === "function" ? p.title(match) : p.title;
+    }
+  }
+
+  cleaned = cleaned.replace(/^[^\w\d]+|[^\w\d]+$/g, "");
+  if (cleaned.length > 34) {
+    const truncated = cleaned.slice(0, 34);
+    const lastSpace = truncated.lastIndexOf(" ");
+    return (lastSpace > 18 ? truncated.slice(0, lastSpace) : truncated) + "…";
+  }
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+// Local Storage Session Cache (dual-synced with SQLite backend)
+function saveSessionLocally(session_id, role, text, title, workspace_id) {
+  const wsId = workspace_id || currentWorkspaceId || "default";
+  const wsKey = "sagar_mitra_sessions_" + wsId;
+  try {
+    let list = JSON.parse(localStorage.getItem(wsKey) || "[]");
+    let sess = list.find(s => s.session_id === session_id);
+    const nowIso = new Date().toISOString();
+    if (!sess) {
+      sess = {
+        session_id: session_id,
+        title: title || generateChatHeading(text),
+        workspace_id: wsId,
+        created_at: nowIso,
+        updated_at: nowIso,
+        messages: []
+      };
+      list.unshift(sess);
+    } else {
+      sess.updated_at = nowIso;
+      if (title && (!sess.title || sess.title === "Oceanographic Dive")) {
+        sess.title = title;
+      }
+    }
+    if (text) {
+      sess.messages.push({ role, text, timestamp: nowIso });
+    }
+    localStorage.setItem(wsKey, JSON.stringify(list));
+    return sess;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Ensure active chat has been logged & saved before starting a new chat
+function ensureActiveChatSaved() {
+  const userBubbles = document.querySelectorAll(".message-row.user .user-text-content");
+  if (!userBubbles || !userBubbles.length) return;
+  const firstUserText = userBubbles[0].textContent.trim();
+  if (!firstUserText) return;
+
+  const heading = generateChatHeading(firstUserText);
+  const wsId = currentWorkspaceId || "default";
+
+  let existing = currentSessionsData.find(s => s.session_id === currentSessionId);
+  if (!existing) {
+    const nowIso = new Date().toISOString();
+    existing = {
+      session_id: currentSessionId,
+      title: heading,
+      workspace_id: wsId,
+      created_at: nowIso,
+      updated_at: nowIso
+    };
+    currentSessionsData.unshift(existing);
+  } else if (!existing.title || existing.title === "Oceanographic Dive") {
+    existing.title = heading;
+  }
+
+  saveSessionLocally(currentSessionId, "user", "", heading, wsId);
+
+  callApi(`/api/sessions/${currentSessionId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      role: "user",
+      text: firstUserText,
+      title: heading,
+      workspace_id: wsId
+    })
+  }).catch(() => {});
+}
+
+// Create New Dive / Chat
+function createNewChat() {
+  ensureActiveChatSaved();
+
+  currentSessionId = "session_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+  localStorage.setItem("sagarMitraChatSessionId", currentSessionId);
+
+  messagesList.innerHTML = "";
+  greetingSection.style.display = "flex";
+  composerInput.value = "";
+  composerInput.style.height = "auto";
+  sendBtn.classList.remove("active");
+
+  renderSavedSessionsList(currentSessionsData);
+  scrollArea.scrollTop = 0;
+}
+
+const DEFAULT_WORKSPACES = [
+  { workspace_id: "arabian", name: "Arabian Sea Survey" },
+  { workspace_id: "bengal", name: "Bay of Bengal PFZ" },
+  { workspace_id: "deepsea", name: "Central Indian Basin" }
+];
 
 async function loadWorkspaces() {
   try {
@@ -3874,17 +4108,24 @@ async function loadWorkspaces() {
       const data = await resp.json();
       allWorkspaces = data.workspaces || [];
     }
-  } catch (err) {
-    allWorkspaces = JSON.parse(localStorage.getItem("sagar_mitra_workspaces") || "[]");
+  } catch (err) {}
+
+  if (!allWorkspaces || !allWorkspaces.length) {
+    try {
+      allWorkspaces = JSON.parse(localStorage.getItem("sagar_mitra_workspaces") || "[]");
+    } catch(e) {}
   }
 
-  if (currentWorkspaceId && !allWorkspaces.some(w => w.workspace_id === currentWorkspaceId)) {
-    currentWorkspaceId = allWorkspaces.length > 0 ? allWorkspaces[0].workspace_id : null;
-    if (currentWorkspaceId) {
-      localStorage.setItem("sagar_mitra_active_workspace_id", currentWorkspaceId);
-    } else {
-      localStorage.removeItem("sagar_mitra_active_workspace_id");
-    }
+  if (!allWorkspaces || !allWorkspaces.length) {
+    allWorkspaces = [...DEFAULT_WORKSPACES];
+    try {
+      localStorage.setItem("sagar_mitra_workspaces", JSON.stringify(allWorkspaces));
+    } catch(e) {}
+  }
+
+  if (!currentWorkspaceId || !allWorkspaces.some(w => w.workspace_id === currentWorkspaceId)) {
+    currentWorkspaceId = allWorkspaces.length > 0 ? allWorkspaces[0].workspace_id : "arabian";
+    localStorage.setItem("sagar_mitra_active_workspace_id", currentWorkspaceId);
   }
 
   renderWorkspacesList();
@@ -3910,6 +4151,10 @@ function renderWorkspacesList() {
 }
 
 async function selectWorkspace(workspaceId) {
+  if (workspaceId === currentWorkspaceId) return;
+
+  ensureActiveChatSaved();
+
   currentWorkspaceId = workspaceId;
   localStorage.setItem("sagar_mitra_active_workspace_id", workspaceId);
   renderWorkspacesList();
@@ -3917,11 +4162,12 @@ async function selectWorkspace(workspaceId) {
 
   // Reset active session for clean view in this workspace
   currentSessionId = "session_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
-  document.getElementById("messagesList").innerHTML = "";
-  document.getElementById("greetingSection").style.display = "flex";
-  document.getElementById("composerInput").value = "";
-  document.getElementById("composerInput").style.height = "auto";
-  document.getElementById("sendBtn").classList.remove("active");
+  localStorage.setItem("sagarMitraChatSessionId", currentSessionId);
+  messagesList.innerHTML = "";
+  greetingSection.style.display = "flex";
+  composerInput.value = "";
+  composerInput.style.height = "auto";
+  sendBtn.classList.remove("active");
 
   await loadSavedSessions();
 }
@@ -3938,26 +4184,42 @@ function updateActiveWorkspaceLabel() {
 }
 
 async function loadSavedSessions() {
+  const wsId = currentWorkspaceId || "default";
+  const wsKey = "sagar_mitra_sessions_" + wsId;
+  let localSessions = [];
   try {
-    let url = "/api/sessions";
-    if (currentWorkspaceId) {
-      url += `?workspace_id=${encodeURIComponent(currentWorkspaceId)}`;
+    localSessions = JSON.parse(localStorage.getItem(wsKey) || "[]");
+  } catch (e) {}
+
+  try {
+    const resp = await callApi(`/api/sessions?workspace_id=${encodeURIComponent(wsId)}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      const backendSessions = data.sessions || [];
+      const map = new Map();
+      backendSessions.forEach(s => map.set(s.session_id, s));
+      localSessions.forEach(s => {
+        if (!map.has(s.session_id)) {
+          map.set(s.session_id, s);
+        }
+      });
+      currentSessionsData = Array.from(map.values());
     } else {
-      url += `?workspace_id=default`;
+      currentSessionsData = localSessions;
     }
-    const resp = await callApi(url);
-    if (!resp.ok) return;
-    const data = await resp.json();
-    currentSessionsData = data.sessions || [];
-    renderSavedSessionsList(currentSessionsData);
-  } catch (err) {}
+  } catch (err) {
+    currentSessionsData = localSessions;
+  }
+
+  // Ensure current active session is at top if it has title
+  renderSavedSessionsList(currentSessionsData);
 }
 
 function renderSavedSessionsList(sessions) {
   const container = document.getElementById("savedSessionsList");
   if (!container) return;
   if (!sessions || !sessions.length) {
-    container.innerHTML = "";
+    container.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:8px 10px;line-height:1.4;">No dives saved in this notebook yet. Click <strong>+ 💬</strong> to start a dive.</div>`;
     return;
   }
   container.innerHTML = sessions.map(s => `
@@ -3972,7 +4234,12 @@ function renderSavedSessionsList(sessions) {
 }
 
 async function switchSession(sessionId) {
+  if (sessionId === currentSessionId) return;
+
+  ensureActiveChatSaved();
+
   currentSessionId = sessionId;
+  localStorage.setItem("sagarMitraChatSessionId", currentSessionId);
   greetingSection.style.display = "none";
   await loadSessionTranscript(sessionId, true);
   renderSavedSessionsList(currentSessionsData);
@@ -3999,29 +4266,56 @@ if (searchInput) {
 }
 
 async function loadSessionTranscript(sessionId, scrollToBottom = true) {
+  const wsId = currentWorkspaceId || "default";
+  const wsKey = "sagar_mitra_sessions_" + wsId;
+  let messages = [];
+
   try {
     const resp = await callApi(`/api/sessions/${sessionId}`);
-    if (!resp.ok) return;
-    const data = await resp.json();
-    const messages = data.messages || [];
-    renderSessionMessages(messages);
-    if (scrollToBottom && scrollArea) {
-      scrollArea.scrollTop = scrollArea.scrollHeight;
+    if (resp.ok) {
+      const data = await resp.json();
+      messages = data.messages || [];
     }
   } catch (err) {}
+
+  if (!messages.length) {
+    try {
+      const localList = JSON.parse(localStorage.getItem(wsKey) || "[]");
+      const found = localList.find(s => s.session_id === sessionId);
+      if (found && found.messages) {
+        messages = found.messages;
+      }
+    } catch (e) {}
+  }
+
+  renderSessionMessages(messages);
+  if (scrollToBottom && scrollArea) {
+    scrollArea.scrollTop = scrollArea.scrollHeight;
+  }
 }
 
 async function deleteSessionItem(sessionId, event) {
   if (event) event.stopPropagation();
+  const wsId = currentWorkspaceId || "default";
+  const wsKey = "sagar_mitra_sessions_" + wsId;
+
+  currentSessionsData = currentSessionsData.filter(s => s.session_id !== sessionId);
+
+  try {
+    let localList = JSON.parse(localStorage.getItem(wsKey) || "[]");
+    localList = localList.filter(s => s.session_id !== sessionId);
+    localStorage.setItem(wsKey, JSON.stringify(localList));
+  } catch (e) {}
+
   try {
     await callApi(`/api/sessions/${sessionId}`, { method: "DELETE" });
-    if (currentSessionId === sessionId) {
-      currentSessionId = "session_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
-      messagesList.innerHTML = "";
-      greetingSection.style.display = "flex";
-    }
-    loadSavedSessions();
   } catch (err) {}
+
+  if (currentSessionId === sessionId) {
+    createNewChat();
+  } else {
+    renderSavedSessionsList(currentSessionsData);
+  }
 }
 
 function renderSessionMessages(messages) {
@@ -4044,17 +4338,14 @@ function renderSessionMessages(messages) {
         </div>
       `;
       messagesList.appendChild(userRow);
+
     } else {
       const aiRow = document.createElement("div");
       aiRow.className = "message-row ai";
       const isScheduled = msg.meta && msg.meta.scheduled;
       const scheduledBadge = isScheduled ? `<div style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;background:rgba(56,189,248,0.15);color:var(--blue);font-size:11px;font-weight:700;margin-bottom:8px;">⏰ Scheduled Task Result</div><br>` : "";
 
-      let formattedText = escapeHtml(msg.text)
-        .replace(/\n\n/g, "<br><br>")
-        .replace(/\n/g, "<br>")
-        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-        .replace(/\*(.*?)\*/g, "<em>$1</em>");
+      let formattedText = renderChatMarkdown(msg.text);
 
       aiRow.innerHTML = `
         <div class="ai-avatar">
@@ -4815,6 +5106,37 @@ async function sendQuery(text){
   greetingSection.style.display = "none";
   isGenerating = true;
 
+  // Save user turn to active session with context-generated heading
+  const activeHeading = generateChatHeading(text);
+  const wsId = currentWorkspaceId || "default";
+
+  let existingSession = currentSessionsData.find(s => s.session_id === currentSessionId);
+  if (!existingSession) {
+    existingSession = {
+      session_id: currentSessionId,
+      title: activeHeading,
+      workspace_id: wsId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    currentSessionsData.unshift(existingSession);
+  } else if (!existingSession.title || existingSession.title === "Oceanographic Dive") {
+    existingSession.title = activeHeading;
+  }
+  saveSessionLocally(currentSessionId, "user", text, activeHeading, wsId);
+  renderSavedSessionsList(currentSessionsData);
+
+  callApi(`/api/sessions/${currentSessionId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      role: "user",
+      text: text,
+      title: activeHeading,
+      workspace_id: wsId
+    })
+  }).catch(() => {});
+
   // Capture any attached documents for this query
   const docsToAnalyze = [...attachedDocuments];
   attachedDocuments = [];
@@ -4998,6 +5320,20 @@ async function sendQuery(text){
     target.innerHTML = responseText;
     if (target.id) target.removeAttribute("id");
   }
+
+  // Save assistant response to active session
+  const finalReplyText = (typeof liveAdvisory === "string" && liveAdvisory.trim()) ? liveAdvisory : responseText;
+  saveSessionLocally(currentSessionId, "assistant", finalReplyText, null, currentWorkspaceId || "default");
+  callApi(`/api/sessions/${currentSessionId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      role: "assistant",
+      text: finalReplyText,
+      workspace_id: currentWorkspaceId || "default"
+    })
+  }).catch(() => {});
+
   scrollArea.scrollTop = scrollArea.scrollHeight;
   isGenerating = false;
   processNextQueuedPrompt();
@@ -5295,7 +5631,12 @@ function initClimateTrendsCharts() {
 }
 
 function escapeHtml(str){
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function generateClientFallbackRoute(start_pos, target_pos, mode) {
