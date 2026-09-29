@@ -11,6 +11,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <!-- Chart.js for Historical Climate Trends Split Pane -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- KaTeX for High-Resolution Math Formula Typesetting -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 <!-- Shared Ocean Controls, News Feed & Chatbot Split Styles -->
 <link rel="stylesheet" href="ocean-shared.css">
 <link rel="stylesheet" href="chatbot-features.css">
@@ -1456,6 +1459,78 @@ body.page-exit{opacity:0;transform:translateX(-8vw)}
   font-size:15px;
   line-height:1.65;
   color:var(--ink);
+}
+.ai-text h1, .ai-text h2, .ai-text h3, .ai-text h4 {
+  margin: 14px 0 8px;
+  color: var(--blue-dark, #0284c7);
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 700;
+}
+.ai-text h1 { font-size: 18px; }
+.ai-text h2 { font-size: 16.5px; }
+.ai-text h3 { font-size: 15px; }
+.ai-text h4 { font-size: 14px; }
+.ai-text p {
+  margin-bottom: 8px;
+}
+.ai-text ul, .ai-text ol {
+  margin: 8px 0 10px 20px;
+}
+.ai-text li {
+  margin-bottom: 4px;
+}
+.ai-text strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+.katex-display-block {
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: rgba(56, 189, 248, 0.06);
+  border-left: 3px solid var(--blue, #38bdf8);
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: 'DM Mono', monospace, serif;
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+.katex-inline-block {
+  display: inline-block;
+  padding: 0 2px;
+}
+.math-block-fallback {
+  letter-spacing: 0.2px;
+}
+.chat-table-wrapper {
+  overflow-x: auto;
+  margin: 14px 0;
+  border-radius: 8px;
+  border: 1px solid var(--sidebar-border, #e2e8f0);
+}
+.chat-markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.chat-markdown-table th, .chat-markdown-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--sidebar-border, #e2e8f0);
+  text-align: left;
+}
+.chat-markdown-table th {
+  background: rgba(56, 189, 248, 0.08);
+  font-weight: 600;
+  color: var(--blue-dark, #0284c7);
+}
+.chat-code-block {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #1e293b;
+  color: #f8fafc;
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  overflow-x: auto;
 }
 
 /* Feature 4: Prompt Edit & TTS Speaker Action Buttons */
@@ -4892,32 +4967,324 @@ function buildMultiAgentTrackerHtml() {
 // Animate Multi-Agent Nodes sequentially
 
 function renderChatMarkdown(markdown){
+  if (!markdown) return "";
+  let text = String(markdown);
+
+  // 1. Extract and preserve charts
   const charts = [];
-  const tagged = String(markdown || "").replace(/\[(GRAPH|PIECHART)\]/g, (_, kind) => {
+  text = text.replace(/\[(GRAPH|PIECHART)\]/g, (_, kind) => {
     const token = `@@CHART_${charts.length}@@`;
     charts.push(`<div class="chat-chart-placeholder"><strong>${kind === "GRAPH" ? "Graph" : "Pie chart"}</strong><span>Visualization requested; no structured chart data was supplied.</span></div>`);
     return token;
   });
-  const inline = value => escapeHtml(value)
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>");
-  const lines = tagged.split(/\r?\n/);
-  let html = "", list = "";
-  const closeList = () => { if(list){ html += `</${list}>`; list = ""; } };
-  for(const raw of lines){
+
+  // 2. Extract and preserve display math blocks ($$...$$ and \[...\])
+  const mathBlocks = [];
+  text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+    const token = `@@MATH_BLOCK_${mathBlocks.length}@@`;
+    mathBlocks.push(renderMathDisplay(math));
+    return token;
+  });
+  text = text.replace(/\\\[([\s\S]+?)\\\]/g, (_, math) => {
+    const token = `@@MATH_BLOCK_${mathBlocks.length}@@`;
+    mathBlocks.push(renderMathDisplay(math));
+    return token;
+  });
+
+  // 3. Extract and preserve fenced code blocks (```...```)
+  const codeBlocks = [];
+  text = text.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const token = `@@CODE_BLOCK_${codeBlocks.length}@@`;
+    codeBlocks.push(`<pre class="chat-code-block"><code class="language-${escapeHtml(lang || 'text')}">${escapeHtml(code.trim())}</code></pre>`);
+    return token;
+  });
+
+  // Inline formatting function
+  const inline = val => {
+    let s = String(val == null ? "" : val);
+
+    // Render inline math $...$ and \(...\)
+    s = s.replace(/(^|[^\\])\$([^\$\n]+?)\$/g, (_, prefix, m) => {
+      return prefix + renderMathInline(m);
+    });
+    s = s.replace(/\\\(([\s\S]+?)\\\)/g, (_, m) => {
+      return renderMathInline(m);
+    });
+
+    // Clean any remaining raw LaTeX formulas, \circ, \text{...}, symbols, degree units
+    s = cleanMathFallback(s);
+
+    // Markdown bold, italic, inline code
+    s = s.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
+         .replace(/__([^_]+?)__/g, "<strong>$1</strong>")
+         .replace(/\*([^*]+?)\*/g, "<em>$1</em>")
+         .replace(/_([^_]+?)_/g, "<em>$1</em>")
+         .replace(/`([^`]+)`/g, "<code>$1</code>");
+
+    return s;
+  };
+
+  const lines = text.split(/\r?\n/);
+  let html = "";
+  let listType = "";
+  let inTable = false;
+  let tableRows = [];
+
+  const closeList = () => {
+    if (listType) {
+      html += `</${listType}>`;
+      listType = "";
+    }
+  };
+
+  const flushTable = () => {
+    if (!inTable || !tableRows.length) {
+      inTable = false;
+      tableRows = [];
+      return;
+    }
+    let tableHtml = `<div class="chat-table-wrapper"><table class="chat-markdown-table">`;
+    let isHeader = true;
+    for (let r = 0; r < tableRows.length; r++) {
+      const rowStr = tableRows[r];
+      // Skip markdown separator row |---|---|
+      if (/^\|?\s*[-:]+[-| :]*\|?$/.test(rowStr)) {
+        isHeader = false;
+        continue;
+      }
+      const cells = rowStr.replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+      if (isHeader && r === 0) {
+        tableHtml += `<thead><tr>` + cells.map(c => `<th>${inline(c)}</th>`).join("") + `</tr></thead><tbody>`;
+      } else {
+        tableHtml += `<tr>` + cells.map(c => `<td>${inline(c)}</td>`).join("") + `</tr>`;
+      }
+    }
+    tableHtml += `</tbody></table></div>`;
+    html += tableHtml;
+    inTable = false;
+    tableRows = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
     const line = raw.trim();
-    if(!line){ closeList(); continue; }
-    const heading = line.match(/^(#{1,3})\s+(.+)$/);
-    const bullet = line.match(/^[-*]\s+(.+)$/);
+
+    // Table row detection
+    if (/^\|.*\|$/.test(line)) {
+      closeList();
+      inTable = true;
+      tableRows.push(line);
+      continue;
+    } else if (inTable) {
+      flushTable();
+    }
+
+    if (!line) {
+      closeList();
+      continue;
+    }
+
+    // Code block placeholder
+    const codeMatch = line.match(/^@@CODE_BLOCK_(\d+)@@$/);
+    if (codeMatch) {
+      closeList();
+      html += codeBlocks[Number(codeMatch[1])];
+      continue;
+    }
+
+    // Math block placeholder
+    const mathMatch = line.match(/^@@MATH_BLOCK_(\d+)@@$/);
+    if (mathMatch) {
+      closeList();
+      html += mathBlocks[Number(mathMatch[1])];
+      continue;
+    }
+
+    // Chart placeholder
+    const chartMatch = line.match(/^@@CHART_(\d+)@@$/);
+    if (chartMatch) {
+      closeList();
+      html += charts[Number(chartMatch[1])];
+      continue;
+    }
+
+    // Headings
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      html += `<h${level}>${inline(heading[2])}</h${level}>`;
+      continue;
+    }
+
+    // Bullet list
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    if (bullet) {
+      if (listType !== "ul") {
+        closeList();
+        listType = "ul";
+        html += `<ul>`;
+      }
+      html += `<li>${inline(bullet[1])}</li>`;
+      continue;
+    }
+
+    // Numbered list
     const numbered = line.match(/^\d+[.)]\s+(.+)$/);
-    const chart = line.match(/^@@CHART_(\d+)@@$/);
-    if(heading){ closeList(); const level = heading[1].length; html += `<h${level}>${inline(heading[2])}</h${level}>`; }
-    else if(bullet || numbered){ const kind = bullet ? "ul" : "ol"; if(list !== kind){ closeList(); list = kind; html += `<${list}>`; } html += `<li>${inline((bullet || numbered)[1])}</li>`; }
-    else { closeList(); html += chart ? charts[Number(chart[1])] : `<p>${inline(line)}</p>`; }
+    if (numbered) {
+      if (listType !== "ol") {
+        closeList();
+        listType = "ol";
+        html += `<ol>`;
+      }
+      html += `<li>${inline(numbered[1])}</li>`;
+      continue;
+    }
+
+    // Standard paragraph
+    closeList();
+    html += `<p>${inline(line)}</p>`;
   }
+
   closeList();
+  flushTable();
   return html;
+}
+
+function renderMathDisplay(math) {
+  if (typeof katex !== "undefined") {
+    try {
+      return `<div class="katex-display-block">${katex.renderToString(math.trim(), { displayMode: true, throwOnError: false })}</div>`;
+    } catch (e) {}
+  }
+  return `<div class="katex-display-block math-block-fallback">${cleanMathFallback(math)}</div>`;
+}
+
+function renderMathInline(math) {
+  if (typeof katex !== "undefined") {
+    try {
+      return `<span class="katex-inline-block">${katex.renderToString(math.trim(), { displayMode: false, throwOnError: false })}</span>`;
+    } catch (e) {}
+  }
+  return `<span class="katex-inline-block math-inline-fallback">${cleanMathFallback(math)}</span>`;
+}
+
+function cleanMathFallback(text) {
+  if (!text) return "";
+  let str = text;
+
+  // Degrees and temperatures: 28^\circ\text{C}, 28^\circ\text{ C}, 28^\circ C, 28^\circ, 18.9^\circ\text{N}
+  str = str.replace(/(\d+(?:\.\d+)?)\s*(?:\^\{?\\circ\}?|\\circ)\s*(?:\\text\{\s*([A-Za-z]+)\s*\}|([A-Za-z]))/g, (m, num, u1, u2) => num + "°" + (u1 || u2 || "").trim());
+  str = str.replace(/(?:\^\{?\\circ\}?|\\circ)\s*(?:\\text\{\s*([A-Za-z]+)\s*\}|([A-Za-z]))/g, (m, u1, u2) => "°" + (u1 || u2 || "").trim());
+  str = str.replace(/(\d+(?:\.\d+)?)\s*(?:\^\{?\\circ\}?|\\circ)(?!\w)/g, "$1°");
+  str = str.replace(/(?:\^\{?\\circ\}?|\\circ)/g, "°");
+
+  // Brackets, parentheses, delimiters FIRST to prevent \le colliding with \left
+  str = str.replace(/\\left\s*\(/g, "(").replace(/\\right\s*\)/g, ")")
+           .replace(/\\left\s*\[/g, "[").replace(/\\right\s*\]/g, "]")
+           .replace(/\\left\s*\\?\{/g, "{").replace(/\\right\s*\\?\}/g, "}")
+           .replace(/\\left\s*\|/g, "|").replace(/\\right\s*\|/g, "|")
+           .replace(/\\left\s*\./g, "").replace(/\\right\s*\./g, "")
+           .replace(/\\\{/g, "{").replace(/\\\}/g, "}")
+           .replace(/\\langle\b/g, "⟨").replace(/\\rangle\b/g, "⟩")
+           .replace(/\\lceil\b/g, "⌈").replace(/\\rceil\b/g, "⌉")
+           .replace(/\\lfloor\b/g, "⌊").replace(/\\rfloor\b/g, "⌋")
+           .replace(/\\quad\b|\\qquad\b/g, " ")
+           .replace(/\\[,;:!]/g, " ");
+
+  // \text{...}, \mathrm{...}, \mathbf{...}, \mathit{...}
+  while (/\\text\{\s*([^{}]+?)\s*\}/.test(str)) {
+    str = str.replace(/\\text\{\s*([^{}]+?)\s*\}/g, "$1");
+  }
+  while (/\\mathrm\{\s*([^{}]+?)\s*\}/.test(str)) {
+    str = str.replace(/\\mathrm\{\s*([^{}]+?)\s*\}/g, "$1");
+  }
+  while (/\\mathbf\{\s*([^{}]+?)\s*\}/.test(str)) {
+    str = str.replace(/\\mathbf\{\s*([^{}]+?)\s*\}/g, "<strong>$1</strong>");
+  }
+  while (/\\mathit\{\s*([^{}]+?)\s*\}/.test(str)) {
+    str = str.replace(/\\mathit\{\s*([^{}]+?)\s*\}/g, "<em>$1</em>");
+  }
+
+  // Common operators and symbols with word boundary or lookahead
+  str = str.replace(/\\times\b/g, "×")
+           .replace(/\\cdot\b/g, "·")
+           .replace(/\\div\b/g, "÷")
+           .replace(/\\pm\b/g, "±")
+           .replace(/\\mp\b/g, "∓")
+           .replace(/\\approx\b/g, "≈")
+           .replace(/\\sim\b/g, "~")
+           .replace(/\\neq\b/g, "≠")
+           .replace(/\\(?:leq|le)\b/g, "≤")
+           .replace(/\\(?:geq|ge)\b/g, "≥")
+           .replace(/\\ll\b/g, "≪")
+           .replace(/\\gg\b/g, "≫")
+           .replace(/\\equiv\b/g, "≡")
+           .replace(/\\propto\b/g, "∝")
+           .replace(/\\infty\b/g, "∞")
+           .replace(/\\partial\b/g, "∂")
+           .replace(/\\nabla\b/g, "∇")
+           .replace(/\\sum\b/g, "∑")
+           .replace(/\\prod\b/g, "∏")
+           .replace(/\\int\b/g, "∫")
+           .replace(/\\Delta\b/g, "Δ")
+           .replace(/\\Omega\b/g, "Ω")
+           .replace(/\\omega\b/g, "ω")
+           .replace(/\\alpha\b/g, "α")
+           .replace(/\\beta\b/g, "β")
+           .replace(/\\gamma\b/g, "γ")
+           .replace(/\\Gamma\b/g, "Γ")
+           .replace(/\\delta\b/g, "δ")
+           .replace(/\\(?:epsilon|varepsilon)\b/g, "ε")
+           .replace(/\\zeta\b/g, "ζ")
+           .replace(/\\eta\b/g, "η")
+           .replace(/\\(?:theta|vartheta)\b/g, "θ")
+           .replace(/\\Theta\b/g, "Θ")
+           .replace(/\\lambda\b/g, "λ")
+           .replace(/\\Lambda\b/g, "Λ")
+           .replace(/\\mu\b/g, "µ")
+           .replace(/\\nu\b/g, "ν")
+           .replace(/\\pi\b/g, "π")
+           .replace(/\\rho\b/g, "ρ")
+           .replace(/\\sigma\b/g, "σ")
+           .replace(/\\Sigma\b/g, "Σ")
+           .replace(/\\tau\b/g, "τ")
+           .replace(/\\(?:phi|varphi)\b/g, "φ")
+           .replace(/\\Phi\b/g, "Φ")
+           .replace(/\\chi\b/g, "χ")
+           .replace(/\\psi\b/g, "ψ")
+           .replace(/\\to\b|\\rightarrow\b/g, "→")
+           .replace(/\\leftarrow\b/g, "←")
+           .replace(/\\leftrightarrow\b/g, "↔")
+           .replace(/\\uparrow\b/g, "↑")
+           .replace(/\\downarrow\b/g, "↓")
+           .replace(/\\sin\b/g, "sin")
+           .replace(/\\cos\b/g, "cos")
+           .replace(/\\tan\b/g, "tan")
+           .replace(/\\ln\b/g, "ln")
+           .replace(/\\log\b/g, "log")
+           .replace(/\\exp\b/g, "exp");
+
+  // Fractions: \frac{a}{b} -> (a / b)
+  while (/\\frac\{\s*([^{}]+?)\s*\}\{\s*([^{}]+?)\s*\}/.test(str)) {
+    str = str.replace(/\\frac\{\s*([^{}]+?)\s*\}\{\s*([^{}]+?)\s*\}/g, "($1 / $2)");
+  }
+
+  // Square roots: \sqrt{x} -> √(x)
+  while (/\\sqrt\{\s*([^{}]+?)\s*\}/.test(str)) {
+    str = str.replace(/\\sqrt\{\s*([^{}]+?)\s*\}/g, "√($1)");
+  }
+
+  // Superscripts & Subscripts: ^{...} and _{...}
+  str = str.replace(/\^\{([^{}]+)\}/g, "<sup>$1</sup>");
+  str = str.replace(/\_\{([^{}]+)\}/g, "<sub>$1</sub>");
+  str = str.replace(/\^([0-9+-]+)/g, "<sup>$1</sup>");
+  str = str.replace(/\_([0-9a-zA-Z]+)/g, "<sub>$1</sub>");
+
+  // Strip residual math brackets and dollar delimiters
+  str = str.replace(/\$\$/g, "").replace(/\$/g, "");
+
+  return str;
 }
 
 function finishMultiAgentTracker(containerEl, backendData) {
