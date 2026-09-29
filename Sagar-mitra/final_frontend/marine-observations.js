@@ -261,9 +261,18 @@
         ? Array.from({length:maxWaypoints}, (_, i) => distinct[Math.round(i * (distinct.length - 1) / (maxWaypoints - 1))])
         : distinct;
       if (sampled.length >= 2) {
-        const line = L.polyline(sampled.map(point => [point.lat, point.lon]), {color:PATH_COLOR, weight:2.5, opacity:.78, dashArray:"6 6", className:"marine-migration-path"});
+        const pathPoints = sampled.map(point => L.latLng(point.lat, point.lon));
+        const line = L.polyline(pathPoints, {color:PATH_COLOR, weight:2.5, opacity:.78, dashArray:"6 6", className:"marine-migration-path"});
         line.bindTooltip(`${escapeText(speciesInput.value.trim())} | ${escapeText(sampled[0].date)} to ${escapeText(sampled.at(-1).date)} | ${distinct.length} dated population observations`);
         line.addTo(obisLayerGroup);
+        const from = map.latLngToLayerPoint(pathPoints.at(-2));
+        const to = map.latLngToLayerPoint(pathPoints.at(-1));
+        const angle = Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI;
+        L.marker(pathPoints.at(-1), {interactive:false, keyboard:false, icon:L.divIcon({
+          className:"marine-path-arrow-icon",
+          html:`<span style="display:block;color:${PATH_COLOR};font-size:20px;line-height:18px;transform:rotate(${angle}deg)">➤</span>`,
+          iconSize:[18,18], iconAnchor:[9,9]
+        })}).addTo(obisLayerGroup);
         legend.insertAdjacentHTML("beforeend", `<span><i style="--path-color:${PATH_COLOR}"></i>${escapeText(speciesInput.value.trim())} | ${distinct.length} dated records</span>`);
         drawn = 1;
       }
